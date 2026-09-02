@@ -1,0 +1,39 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env files — 密码与连接串只放本地，永不入库
+.env
+.env.local
+.env.*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# backups
+/backups/
+
+# 研究过程文件（含接口逆向分析，不入公开历史）
+/.workbuddy/
+
+# cloudflared 临时隧道工具（53MB 二进制，不入库）
+/tools/cloudflared.exe

@@ -1,0 +1,49 @@
+/** DSAT 接口返回类型定义（src/lib/dsat/types.ts）
+ *  实测响应信封：{ data: <载荷>, header: <状态码> }；header '1200' = token 无效
+ */
+
+/** 线路站点序列条目（getRouteData → data.routeInfo[]） */
+export interface RouteStationItem {
+  staCode?: string; // 'C653'
+  staName?: string; // '金峰南岸/金譽峰'
+  busstopcode?: string; // '00050001'
+  laneName?: string;
+  suspendState?: string;
+}
+
+/** 实时车辆信息（routestation/bus → data.routeInfo[].busInfo[]） */
+export interface BusPosition {
+  busPlate?: string; // 车牌 'MY9362'
+  busCode?: string; // 车号 'E3390'
+  speed?: string | number;
+  status?: string; // '0'/'1'
+  passengerFlow?: number;
+}
+
+/** 某站的车辆列表 */
+export interface StationBuses {
+  staCode: string;
+  busInfo: BusPosition[];
+}
+
+/** getRouteData 载荷 */
+export interface RouteDataPayload {
+  routeCode?: string;
+  routeInfo?: RouteStationItem[];
+  [k: string]: unknown;
+}
+
+/** routestation/bus 载荷 */
+export interface BusPositionsPayload {
+  routeInfo?: StationBuses[];
+  [k: string]: unknown;
+}
+
+/** DSAT 调用结果 */
+export interface DsatResult<T> {
+  ok: boolean;
+  data?: T;
+  error?: string;
+  httpStatus?: number;
+  latencyMs: number;
+}

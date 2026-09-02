@@ -1,0 +1,35 @@
+{
+  "name": "must-dengxiao",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MUST登校 · 擎天汇↔澳科大↔横琴 通勤计时与数据采集系统",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "db:schema": "tsx db/apply-schema.ts",
+    "db:seed": "tsx db/seed.ts",
+    "db:sync-routes": "tsx db/sync-routes.ts",
+    "db:backup": "powershell -ExecutionPolicy Bypass -File db/backup.ps1",
+    "test:dsat": "tsx scripts/test-dsat.ts"
+  },
+  "dependencies": {
+    "next": "^15.1.6",
+    "pg": "^8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.4",
+    "@types/react-dom": "^19.0.2",
+    "eslint": "^9.18.0",
+    "eslint-config-next": "^15.1.6",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

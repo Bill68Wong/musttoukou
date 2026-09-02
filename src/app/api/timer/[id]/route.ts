@@ -30,6 +30,22 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
        FROM plan_legs WHERE plan_id = $1 ORDER BY seq`,
       [session.plan_id],
     );
+    // route_options 是 TEXT 列存的 JSON 字符串 → 统一解析成数组（客户端按数组使用）
+    const legs = (
+      legsRes.rows as {
+        seq: number;
+        leg_kind: string;
+        route_options: string | string[] | null;
+        from_station: string | null;
+        to_station: string | null;
+      }[]
+    ).map((r) => ({
+      ...r,
+      route_options:
+        typeof r.route_options === "string"
+          ? (JSON.parse(r.route_options) as string[])
+          : r.route_options,
+    }));
 
     const eventsRes = await pool.query(
       `SELECT id, seq, event_type, station_code, recorded_at
@@ -48,12 +64,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
     // 各载具段首选项线路的站序（乘车阶段「下一站」提示用）
     const routeStopsByRoute: Record<string, { seq: number; code: string; name: string }[]> = {};
-    const vehicleLegs = (legsRes.rows as {
-      leg_kind: string;
-      route_options: string | null;
-    }[]).filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
+    const vehicleLegs = legs.filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
     for (const leg of vehicleLegs) {
-      const opts = leg.route_options ? (JSON.parse(leg.route_options) as string[]) : [];
+      const opts = leg.route_options ?? [];
       const rc = opts[0];
       if (!rc || routeStopsByRoute[rc]) continue;
       const stopsRes = await pool.query(
@@ -70,7 +83,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
     return NextResponse.json({
       session,
-      legs: legsRes.rows,
+      legs,
       events: eventsRes.rows,
       snapshots: snapsRes.rows,
       stationNames: Object.fromEntries(

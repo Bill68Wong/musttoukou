@@ -32,7 +32,7 @@ export interface Step {
   stationCode?: string | null;
   /** 等车阶段的快捷条类型（board 步骤专用） */
   quickKind?: "stops" | "minutes";
-  /** 下车步骤所属载具段的候选线路（乘车阶段「下一站」提示用） */
+  /** 本步骤涉及的候选巴士线路（depart/wait_start/board = 等 ETA 显示用；alight = 乘车推算用） */
   routeOptions?: string[] | null;
   /** 下车步骤的上车站编码（推算乘车进度用） */
   fromStationCode?: string | null;
@@ -58,6 +58,7 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
                 ? "stops"
                 : "minutes"
               : undefined,
+            routeOptions: nextVehicle?.leg_kind === "bus" ? nextVehicle.route_options : null,
           });
         } else if (i === legs.length - 1) {
           // 末段步行 = 抵达目的地
@@ -72,12 +73,14 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
           sub: `${leg.from_station ?? ""} 等候`,
           stationCode: leg.from_station,
           quickKind: leg.leg_kind === "bus" ? "stops" : "minutes",
+          routeOptions: leg.leg_kind === "bus" ? leg.route_options : null,
         });
         steps.push({
           eventType: "board",
           label: "上车",
           stationCode: leg.from_station,
           quickKind: leg.leg_kind === "bus" ? "stops" : "minutes",
+          routeOptions: leg.leg_kind === "bus" ? leg.route_options : null,
         });
         steps.push({
           eventType: "alight",

@@ -16,7 +16,14 @@ export interface BusPosition {
   busPlate?: string; // 车牌 'MY9362'
   busCode?: string; // 车号 'E3390'
   speed?: string | number;
-  status?: string; // '0'/'1'
+  /**
+   * '1' = 進站中/已到达挂载站（含总站停靠待发，此时 speed 常为空）
+   * '0' = 行驶中/已离站——挂载站是该车的"下一站"，尚未到达
+   * 结论来源：2026-09-02/03 实测 26 路 6 轮连续采样（AC4098 挂新站瞬间恒为 1、
+   * 同站第二轮变 0；MY9282 到总站 M95/3 后连停多轮 status 恒 1 speed 空）。
+   * ETA 修正：status='0' 时车距用户站数 = 取模结果 + 1
+   */
+  status?: string;
   passengerFlow?: number;
 }
 

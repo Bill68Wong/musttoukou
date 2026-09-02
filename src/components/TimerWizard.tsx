@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildSteps, currentStepIndex, type PlanLegLite } from "@/lib/timer-flow";
+import LiveEta from "./LiveEta";
 
 interface SessionData {
   session: {
@@ -12,6 +13,7 @@ interface SessionData {
     missed_count: number;
     crowd_level: number | null;
     total_minutes: number | null;
+    dsat_dir: string | null;
   };
   legs: PlanLegLite[];
   events: { id: number; seq: number; event_type: string; station_code: string | null; recorded_at: string }[];
@@ -194,6 +196,18 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         <p style={{ color: "var(--muted)", margin: "auto 0" }}>已完成，正在进入结束页…</p>
       ) : (
         <div style={{ marginTop: "auto", marginBottom: "auto" }}>
+          {/* 实时车距：出门/等车阶段（巴士段才显示，轻轨无实时数据） */}
+          {(departing || waiting) &&
+            step.quickKind === "stops" &&
+            (step.routeOptions?.length ?? 0) > 0 &&
+            step.stationCode && (
+              <LiveEta
+                station={step.stationCode}
+                routes={step.routeOptions!}
+                dir={data.session.dsat_dir ?? "0"}
+              />
+            )}
+
           {/* 车距快捷条：出门/走路阶段记初估，等车阶段记实测 */}
           {showQuick && (
             <div style={{ marginBottom: 16 }}>

@@ -37,3 +37,6 @@ next-env.d.ts
 
 # cloudflared 临时隧道工具（53MB 二进制，不入库）
 /tools/cloudflared.exe
+
+# 本地浏览器诊断脚本（机器特定路径，不入库）
+/scripts/diag-browser.cjs

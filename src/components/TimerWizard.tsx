@@ -205,6 +205,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                 station={step.stationCode}
                 routes={step.routeOptions!}
                 dir={data.session.dsat_dir ?? "0"}
+                dest={step.destStationCode}
               />
             )}
 

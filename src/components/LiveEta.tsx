@@ -38,10 +38,12 @@ export default function LiveEta({
   station,
   routes,
   dir,
+  dest,
 }: {
   station: string;
   routes: string[];
   dir: string;
+  dest?: string | null;
 }) {
   const [data, setData] = useState<EtaData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -52,10 +54,13 @@ export default function LiveEta({
     const id = ++reqId.current;
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/dsat/eta?station=${encodeURIComponent(station)}&routes=${encodeURIComponent(routesKey)}&dir=${encodeURIComponent(dir)}`,
-        { cache: "no-store" },
-      );
+      const qs = new URLSearchParams({
+        station,
+        routes: routesKey,
+        dir,
+        ...(dest ? { dest } : {}),
+      });
+      const res = await fetch(`/api/dsat/eta?${qs.toString()}`, { cache: "no-store" });
       if (!res.ok) return;
       const body = (await res.json()) as EtaData;
       if (id === reqId.current) setData(body);
@@ -64,7 +69,7 @@ export default function LiveEta({
     } finally {
       if (id === reqId.current) setLoading(false);
     }
-  }, [station, routesKey, dir]);
+  }, [station, routesKey, dir, dest]);
 
   useEffect(() => {
     fetchEta();

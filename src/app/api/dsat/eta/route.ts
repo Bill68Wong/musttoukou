@@ -4,8 +4,10 @@ import { getBusPositions } from "@/lib/dsat/client";
 import { findStopIdx } from "@/lib/station-match";
 
 /**
- * GET /api/dsat/eta?station=T358&routes=26,51A&dir=0
+ * GET /api/dsat/eta?station=T358&routes=26,51A&dir=0&dest=C688
  * 实时车距：对每条线路查 DB 站序 + DSAT 实时车辆，算最近的車距用户站还有几站。
+ *  - dest（目标站）提供时，每条线路自行推导方向（from 在 to 之前的 dir），
+ *    多段方案各段方向不同也能查对；推导不出时回退 dir 参数
  *  - status='1'（進站中/到达）→ 车就在挂载站，stopsAway = 站差
  *  - status='0'（行驶中）→ 挂载站是车的下一站，stopsAway = 站差 + 1
  *  - 循环线（DB 只有 dir=0 一套站序）取模 wrap；双方向线跳过已过站的车
@@ -25,6 +27,8 @@ interface EtaBus {
 interface EtaRouteResult {
   route: string;
   ok: boolean;
+  /** 本线路实际查询的方向（按 dest 推导，可能不同于 dir 参数） */
+  dir?: string;
   isLoop?: boolean;
   nearest?: EtaBus;
   busCount?: number;
@@ -48,6 +52,7 @@ export async function GET(req: NextRequest) {
   const station = sp.get("station")?.trim() ?? "";
   const routesParam = sp.get("routes")?.trim() ?? "";
   const dir = sp.get("dir")?.trim() || "0";
+  const dest = sp.get("dest")?.trim() || "";
 
   if (!station || !routesParam) {
     return NextResponse.json({ error: "缺少 station 或 routes 参数" }, { status: 400 });
@@ -62,7 +67,7 @@ export async function GET(req: NextRequest) {
   }
 
   // 缓存命中直接返回
-  const cacheKey = `${station}|${routes.join(",")}|${dir}`;
+  const cacheKey = `${station}|${routes.join(",")}|${dir}|${dest}`;
   const cached = g.__etaCache!.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
     return NextResponse.json(cached.data);
@@ -73,6 +78,42 @@ export async function GET(req: NextRequest) {
 
   for (const route of routes) {
     try {
+      // 方向推导：dest 提供时按 from→to 找方向；推导不出回退 dir 参数
+      // （循环线单方向 + from>to 时也回退，因循环线绕圈无所谓先后）
+      let queryDir = dir;
+      if (dest) {
+        const dirRes = await pool.query(
+          `SELECT rs.dsat_dir,
+                  max(rs.seq) FILTER (WHERE rs.station_code = $2 OR rs.station_code LIKE $2 || '/%') AS from_seq,
+                  max(rs.seq) FILTER (WHERE rs.station_code = $3 OR rs.station_code LIKE $3 || '/%') AS to_seq
+           FROM route_stations rs
+           JOIN routes r ON rs.route_id = r.id
+           WHERE r.code = $1 AND r.kind = 'bus'
+           GROUP BY rs.dsat_dir`,
+          [route, station, dest],
+        );
+        let fallbackDir: string | null = null;
+        let bothCount = 0;
+        for (const row of dirRes.rows as {
+          dsat_dir: string;
+          from_seq: number | null;
+          to_seq: number | null;
+        }[]) {
+          if (row.from_seq !== null && row.to_seq !== null) {
+            bothCount++;
+            fallbackDir = row.dsat_dir;
+          }
+          if (row.from_seq !== null && row.to_seq !== null && row.from_seq < row.to_seq) {
+            queryDir = row.dsat_dir;
+            break;
+          }
+        }
+        // 兜底：循环线只有一套站序（from>to 绕圈）→ 用唯一含两站的方向
+        if (queryDir === dir && bothCount === 1 && fallbackDir) {
+          queryDir = fallbackDir;
+        }
+      }
+
       // 站序 + 站名（该方向）
       const stopsRes = await pool.query(
         `SELECT rs.seq, rs.station_code AS code, st.name_tc AS name
@@ -81,11 +122,11 @@ export async function GET(req: NextRequest) {
          JOIN stations st ON rs.station_code = st.code
          WHERE r.code = $1 AND r.kind = 'bus' AND rs.dsat_dir = $2
          ORDER BY rs.seq`,
-        [route, dir],
+        [route, queryDir],
       );
       const stops = stopsRes.rows as { seq: number; code: string; name: string }[];
       if (stops.length === 0) {
-        results.push({ route, ok: false, error: `线路 ${route} 未同步站序（dir=${dir}）` });
+        results.push({ route, ok: false, error: `线路 ${route} 未同步站序（dir=${queryDir}）` });
         continue;
       }
 
@@ -104,7 +145,7 @@ export async function GET(req: NextRequest) {
       }
 
       // DSAT 实时车辆
-      const res = await getBusPositions(route, dir, "poll");
+      const res = await getBusPositions(route, queryDir, "poll");
       if (!res.ok || !res.data?.routeInfo) {
         results.push({ route, ok: false, error: res.error ?? "DSAT 无数据" });
         continue;
@@ -150,6 +191,7 @@ export async function GET(req: NextRequest) {
       results.push({
         route,
         ok: true,
+        dir: queryDir,
         isLoop,
         nearest: nearest ?? undefined,
         busCount,

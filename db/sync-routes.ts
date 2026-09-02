@@ -23,12 +23,19 @@ try {
 const BUS_DIRS = ["0", "1"];
 
 async function main() {
+  const target = process.argv[2] as "local" | "cloud" | undefined;
   const connStr =
-    process.env.DATABASE_URL_LOCAL || process.env.DATABASE_URL;
+    target === "cloud"
+      ? process.env.DATABASE_URL
+      : target === "local"
+        ? process.env.DATABASE_URL_LOCAL
+        : (process.env.DATABASE_URL_LOCAL || process.env.DATABASE_URL);
   if (!connStr) {
     console.error("❌ 未找到连接串：请先在 .env 配置");
     process.exit(1);
   }
+  const masked = connStr.replace(/:[^:@/]+@/, ":****@");
+  console.log(`目标库：${masked}`);
   const pool = new Pool({
     connectionString: connStr,
     max: 1,

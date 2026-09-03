@@ -18,15 +18,13 @@ const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
 const CROWD_LABELS = ["空", "正常", "挤", "爆满"];
 
+// 固定模板格式化（MM/DD HH:mm），避免 toLocaleString 在 iOS/安卓输出
+// 「2026年9月3日 上午12:35」等长格式把行挤爆/截断
 function fmtDateTime(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleString("zh-CN", {
-    timeZone: "Asia/Macau",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const macau = new Date(d.getTime() + 8 * 3600 * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(macau.getUTCMonth() + 1)}/${p(macau.getUTCDate())} ${p(macau.getUTCHours())}:${p(macau.getUTCMinutes())}`;
 }
 
 export default function RecordsClient({
@@ -91,14 +89,14 @@ export default function RecordsClient({
               gap: 10,
             }}
           >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 15 }}>
+            <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" }}>
+              <p style={{ fontSize: 15, lineHeight: 1.5 }}>
                 {fmtDateTime(r.started_at)}
                 {r.route_code && (
                   <span style={{ color: "var(--muted)", fontSize: 13 }}> · {r.route_code} 路</span>
                 )}
               </p>
-              <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>
+              <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 2, lineHeight: 1.5 }}>
                 {r.ended_at ? (
                   <>
                     {r.total_minutes !== null ? `${r.total_minutes} 分钟` : "已结束"}
@@ -120,10 +118,14 @@ export default function RecordsClient({
                 color: "var(--danger)",
                 border: "1px solid var(--danger)",
                 borderRadius: 10,
-                padding: "12px 14px",
-                fontSize: 14,
-                minWidth: 64,
+                padding: 0,
+                fontSize: 13,
+                minWidth: 56,
+                width: 56,
+                minHeight: 44,
+                height: 44,
                 flexShrink: 0,
+                alignSelf: "center",
               }}
             >
               {deleting === r.id ? "…" : "删除"}

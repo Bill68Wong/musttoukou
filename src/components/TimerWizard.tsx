@@ -183,9 +183,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // 出门/走路阶段（出发前 或 已出门未到站）
   const departing =
     step?.eventType === "depart" || step?.eventType === "wait_start";
-  // 手动车距条：仅轻轨（minutes）保留——巴士（stops）由系统自动记录
+  // 手动分钟条：仅轻轨「到站，开始等车」时询问一次——出门与上车不再打断
+  //（巴士段 stops 由系统自动记录，不出手动条）
   const showManualMinutes =
-    (waiting || departing) && step.quickKind === "minutes";
+    step?.eventType === "wait_start" && step.quickKind === "minutes";
   // 巴士段出门/到站：打点后系统自动记录（提示文案，非操作项）
   const autoRecordStops = departing && step.quickKind === "stops";
   // 乘车阶段（已上车、待下车）
@@ -283,9 +284,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           {showManualMinutes && (
             <div style={{ marginBottom: 16 }}>
               <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 8 }}>
-                {departing
-                  ? "出门看一眼：轻轨还有几分钟？"
-                  : "轻轨还有几分钟？"}
+                轻轨还有几分钟？
               </p>
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                 {QUICK_VALUES.map((v) => (

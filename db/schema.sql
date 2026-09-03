@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS routes (
     code        TEXT NOT NULL,             -- '50' | 'LRT-石排湾线'
     kind        TEXT NOT NULL,             -- 'bus' | 'lrt'
     company     TEXT,                      -- '澳巴' | '新福利' | '轻轨'
+    color       TEXT,                      -- v0.7.0+ 主题色 hex：巴士=公司色、轻轨=线路官方主题色
     is_active   BOOLEAN NOT NULL DEFAULT TRUE,
     UNIQUE (code, kind)
 );

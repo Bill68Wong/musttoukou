@@ -2,7 +2,7 @@
   "meta": {
     "version": "2026-09-03",
     "source": "用户实地走访（擎天汇 T8 / 澳科大 N座 为基准点）+ DSAT 站号核对",
-    "note": "步行时间为实测约数；乘车耗时待部署计时器后精化；站名已于 2026-09-03 用 DSAT 接口全量重同步（繁体）；v0.4.0 起所有巴士卡 summary 带站号，school-home 旧合并卡（51A/51B）已拆分停用",
+    "note": "步行时间为实测约数；乘车耗时待部署计时器后精化；站名已于 2026-09-03 用 DSAT 接口全量重同步（繁体）；v0.4.0 起所有巴士卡 summary 带站号，school-home 旧合并卡（51A/51B）已拆分停用；v0.7.0 起轻轨三线补官方编号/多语言名/换乘线标注与主题色，巴士 company 按 DSAT 官方归属修正（主人 2026-09-03 拍板以 DSAT 为准）",
     "api_verified": "标注 ✔ 的线路已用 DSAT 接口验证站点存在"
   },
   "places": [
@@ -32,29 +32,32 @@
     { "code": "T367", "kind": "bus", "name_tc": "望德聖母灣馬路/連貫公路", "walk": { "school": null }, "note": "DSAT 已核对；威尼斯人方向" },
     { "code": "T355/2", "kind": "bus", "name_tc": "蓮花路停車場", "walk": {}, "note": "換乘站（往橫琴）；六條過境線共用的站台（T355/2），對面 T355/1 為 26/50 往澳門方向" },
     { "code": "T560/4", "kind": "bus", "name_tc": "橫琴澳方口岸", "walk": { "hengqin": 0 }, "note": "DSAT 已核对；50 路站台 T560/4，25B 停 T560/2、102 停 T560/6、701X/N6 停 T560/5 與 T560/7（同站區不同台）" },
-    { "code": "LRT-SPW", "kind": "lrt", "name_tc": "石排灣站", "walk": { "home": 4 } },
-    { "code": "LRT-UH", "kind": "lrt", "name_tc": "協和醫院站", "walk": {}, "note": "石排灣線↔氹仔線換乘站" },
-    { "code": "LRT-LDE", "kind": "lrt", "name_tc": "路氹東站", "walk": { "school": null }, "note": "步行分鐘數待測" },
-    { "code": "LRT-MUST", "kind": "lrt", "name_tc": "科大站", "walk": { "school": 8 } },
-    { "code": "LRT-LOT", "kind": "lrt", "name_tc": "蓮花站", "walk": {}, "note": "氹仔線↔橫琴線換乘站" },
-    { "code": "LRT-HQ", "kind": "lrt", "name_tc": "橫琴站", "walk": { "hengqin": 0 } }
+    { "code": "LRT-SPW", "kind": "lrt", "no": null, "name_tc": "石排灣站", "name_pt": "Seac Pai Van", "name_en": "Seac Pai Van", "lines": ["LRT-石排湾线"], "walk": { "home": 4 } },
+    { "code": "LRT-UH", "kind": "lrt", "no": "18A", "name_tc": "協和醫院站", "name_pt": "Hospital Union", "name_en": "Union Hospital", "lines": ["LRT-氹仔线", "LRT-石排湾线"], "walk": {}, "note": "石排灣線↔氹仔線換乘站（編號 18A 沿氹仔線）" },
+    { "code": "LRT-EAG", "kind": "lrt", "no": "19", "name_tc": "東亞運站", "name_pt": "Jogos da Ásia Oriental", "name_en": "East Asian Games", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線中間站（協和醫院↔路氹東之間）；v0.7.0 補齊中間站" },
+    { "code": "LRT-LDE", "kind": "lrt", "no": "20", "name_tc": "路氹東站", "name_pt": "Cotai Leste", "name_en": "Cotai East", "lines": ["LRT-氹仔线"], "walk": { "school": null }, "note": "步行分鐘數待測" },
+    { "code": "LRT-MUST", "kind": "lrt", "no": "21", "name_tc": "科大站", "name_pt": "UCTM", "name_en": "MUST", "lines": ["LRT-氹仔线"], "walk": { "school": 8 } },
+    { "code": "LRT-AP", "kind": "lrt", "no": "22", "name_tc": "機場站", "name_pt": "Aeroporto", "name_en": "Airport", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站（科大之後；備用全網絡資料）" },
+    { "code": "LRT-TFT", "kind": "lrt", "no": "23", "name_tc": "氹仔碼頭站", "name_pt": "Terminal Marítimo da Taipa", "name_en": "Taipa Ferry Terminal", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線終點站（備用全網絡資料）" },
+    { "code": "LRT-LOT", "kind": "lrt", "no": "18", "name_tc": "蓮花站", "name_pt": "Lótus", "name_en": "Lotus", "lines": ["LRT-氹仔线", "LRT-横琴线"], "walk": {}, "note": "氹仔線↔橫琴線換乘站（編號 18 沿氹仔線）" },
+    { "code": "LRT-HQ", "kind": "lrt", "no": null, "name_tc": "橫琴站", "name_pt": "Hengqin", "name_en": "Hengqin", "lines": ["LRT-横琴线"], "walk": { "hengqin": 0 } }
   ],
   "routes": [
-    { "code": "26", "kind": "bus", "company": "澳巴", "api_verified": true, "note": "循環線（DSAT 僅一套站序）" },
-    { "code": "50", "kind": "bus", "company": "澳巴", "api_verified": true, "note": "循環線：蓮花路→橫琴口岸→石排灣→澳門→繞回" },
-    { "code": "51", "kind": "bus", "company": "澳巴", "api_verified": true, "note": "循環線" },
-    { "code": "51A", "kind": "bus", "company": "澳巴", "api_verified": true },
-    { "code": "51B", "kind": "bus", "company": "澳巴", "api_verified": true, "note": "循環線：石排灣→連貫公路→科大→蓮花→石排灣" },
-    { "code": "26A", "kind": "bus", "company": "澳巴", "api_verified": true },
-    { "code": "56", "kind": "bus", "company": "澳巴", "api_verified": true, "note": "循環線" },
-    { "code": "25B", "kind": "bus", "api_verified": true },
-    { "code": "25BS", "kind": "bus", "api_verified": true, "note": "循環線" },
-    { "code": "102", "kind": "bus", "api_verified": true },
-    { "code": "701X", "kind": "bus", "api_verified": true, "note": "循環線" },
-    { "code": "N6", "kind": "bus", "api_verified": true, "note": "夜班線；循環線" },
-    { "code": "LRT-石排湾线", "kind": "lrt" },
-    { "code": "LRT-氹仔线", "kind": "lrt" },
-    { "code": "LRT-横琴线", "kind": "lrt" }
+    { "code": "26", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "循環線（DSAT 僅一套站序）；DSAT 官方歸屬=新福利" },
+    { "code": "50", "kind": "bus", "company": "澳巴", "color": "#C26D32", "api_verified": true, "note": "循環線：蓮花路→橫琴口岸→石排灣→澳門→繞回" },
+    { "code": "51", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "循環線；DSAT 官方歸屬=新福利" },
+    { "code": "51A", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "DSAT 官方歸屬=新福利" },
+    { "code": "51B", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "循環線：石排灣→連貫公路→科大→蓮花→石排灣；DSAT 官方歸屬=新福利" },
+    { "code": "26A", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "DSAT 官方歸屬=新福利" },
+    { "code": "56", "kind": "bus", "company": "澳巴", "color": "#C26D32", "api_verified": true, "note": "循環線" },
+    { "code": "25B", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true },
+    { "code": "25BS", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "循環線" },
+    { "code": "102", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true },
+    { "code": "701X", "kind": "bus", "company": "澳巴", "color": "#C26D32", "api_verified": true, "note": "循環線" },
+    { "code": "N6", "kind": "bus", "company": "澳巴", "color": "#C26D32", "api_verified": true, "note": "夜班線；循環線" },
+    { "code": "LRT-石排湾线", "kind": "lrt", "company": "輕軌", "color": "#8a66c3", "note": "石排灣線官方主題色" },
+    { "code": "LRT-氹仔线", "kind": "lrt", "company": "輕軌", "color": "#93d50a", "note": "氹仔線官方主題色" },
+    { "code": "LRT-横琴线", "kind": "lrt", "company": "輕軌", "color": "#bd273a", "note": "橫琴線官方主題色" }
   ],
   "plans": [
     {

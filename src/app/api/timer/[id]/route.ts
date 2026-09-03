@@ -34,6 +34,13 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
        FROM plan_legs WHERE plan_id = $1 ORDER BY seq`,
       [session.plan_id],
     );
+    // v0.7.0：线路主题色表（code → color），给 legs 每段主线路填色
+    const colorRows = await pool.query(`SELECT code, color FROM routes`);
+    const colorByCode = new Map(
+      (colorRows.rows as { code: string; color: string | null }[])
+        .filter((r) => !!r.color)
+        .map((r) => [r.code, r.color] as [string, string]),
+    );
     // route_options 是 TEXT 列存的 JSON 字符串 → 统一解析成数组（客户端按数组使用）
     const legs = (
       legsRes.rows as {
@@ -45,13 +52,22 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         board_candidates: string[] | null;
         alight_candidates: string[] | null;
       }[]
-    ).map((r) => ({
-      ...r,
-      route_options:
+    ).map((r) => {
+      const route_options =
         typeof r.route_options === "string"
           ? (JSON.parse(r.route_options) as string[])
-          : r.route_options,
-    }));
+          : r.route_options;
+      const isVehicle = r.leg_kind === "bus" || r.leg_kind === "lrt";
+      return {
+        ...r,
+        route_options,
+        // 主线路 = route_options 首项（与首页卡片色带同口径）；无则中性
+        color:
+          isVehicle && route_options?.length
+            ? (colorByCode.get(route_options[0]) ?? null)
+            : null,
+      };
+    });
 
     const eventsRes = await pool.query(
       `SELECT id, seq, event_type, station_code, recorded_at

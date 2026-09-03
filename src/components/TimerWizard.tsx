@@ -66,6 +66,24 @@ function tryVibrate() {
   }
 }
 
+/* ---------- v0.7.0 主题色工具：徽章文字对比色 / 轻轨线名美化 ---------- */
+function textOn(hex: string): string {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = parseInt(full, 16);
+  if (Number.isNaN(n)) return "#fff";
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#101418" : "#fff";
+}
+const lrtLabelOf = (code: string) =>
+  code
+    .replace("LRT-", "輕軌·")
+    .replace(/湾/g, "灣")
+    .replace(/横/g, "橫")
+    .replace(/线/g, "線");
+
 export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const router = useRouter();
   const [data, setData] = useState<SessionData | null>(null);
@@ -251,6 +269,18 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const idx = currentStepIndex(effSteps, data.events);
   const step = effSteps[idx];
   const finished = idx >= steps.length || !!data.session.ended_at;
+  // v0.7.0：当前阶段主题色（出门=将乘载具色；乘车=本段线路色；步行/到达无）
+  const curLine = step?.lineColor ?? null;
+  const curRoute = step?.routeOptions?.length ? step.routeOptions[0] : null;
+  const curLabel = curRoute
+    ? curRoute.startsWith("LRT-")
+      ? lrtLabelOf(curRoute)
+      : `${curRoute}路`
+    : step?.quickKind === "minutes"
+      ? "輕軌"
+      : step?.quickKind === "stops"
+        ? "巴士"
+        : null;
   // 当前生效的上车站（chips 高亮用；null = 未选 = 默认站）
   const firstVehicle = data.legs.find((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
   const boardCands =
@@ -441,8 +471,23 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   return (
     <main className="page">
       <header style={{ marginBottom: 20 }}>
-        <p className="t-label t-muted" style={{ marginBottom: 6 }}>
-          {data.session.summary}
+        {curLine && <div className="phase-band" style={{ background: curLine }} />}
+        <p
+          className="t-label t-muted"
+          style={{
+            marginBottom: 6,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ flex: 1, minWidth: 0 }}>{data.session.summary}</span>
+          {curLine && curLabel && (
+            <span className="route-chip" style={{ background: curLine, color: textOn(curLine) }}>
+              {curLabel}
+            </span>
+          )}
         </p>
         <p className="t-label t-muted">
           第 {Math.min(idx + 1, steps.length)} / {steps.length} 步

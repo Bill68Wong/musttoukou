@@ -66,7 +66,7 @@ const net = JSON.parse(
 ) as {
   places: { id: string; name: string; type: string }[];
   stations: StationSeed[];
-  routes: { code: string; kind: string; company?: string }[];
+  routes: { code: string; kind: string; company?: string; color?: string }[];
   plans: PlanSeed[];
 };
 
@@ -132,12 +132,12 @@ async function main() {
     const routeIds = new Map<string, number>();
     for (const r of net.routes) {
       const res = await q(
-        `INSERT INTO routes (code, kind, company) VALUES ($1,$2,$3) RETURNING id`,
-        [r.code, r.kind, r.company ?? null],
+        `INSERT INTO routes (code, kind, company, color) VALUES ($1,$2,$3,$4) RETURNING id`,
+        [r.code, r.kind, r.company ?? null, r.color ?? null],
       );
       routeIds.set(r.code, (res.rows[0] as { id: number }).id);
     }
-    console.log(`✅ routes：${net.routes.length} 条`);
+    console.log(`✅ routes：${net.routes.length} 条（含主题色）`);
 
     // 5. plans + legs
     let legCount = 0;

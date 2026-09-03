@@ -8,6 +8,8 @@ export interface PlanRow {
   summary: string;
   to_kind: string;
   samples: number;
+  /** v0.7.0：各载具段主线路主题色（按乘坐顺序，walk 段不参与） */
+  colors?: (string | null)[];
 }
 
 export interface ActiveSession {
@@ -20,6 +22,36 @@ const GROUPS: { kind: string; title: string }[] = [
   { kind: "school", title: "去学校" },
   { kind: "border", title: "去横琴口岸" },
 ];
+
+/* ---------- v0.7.0 主题色：hex → rgba 淡色，供卡片底色均分渐变 ---------- */
+function hexA(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const full =
+    h.length === 3
+      ? h
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : h;
+  const n = parseInt(full, 16);
+  if (Number.isNaN(n)) return `rgba(128,128,128,${alpha})`;
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+/** 卡片底色：1 段=斜向单色淡渐变；多段=按段均分左右色块（换乘几次就几段） */
+function veilGradient(colors: (string | null)[]): string {
+  const segs = colors.filter((c): c is string => !!c);
+  if (segs.length === 0) return "";
+  const A = 0.16;
+  if (segs.length === 1) {
+    return `linear-gradient(135deg, ${hexA(segs[0], A)} 0%, ${hexA(segs[0], A * 0.5)} 100%)`;
+  }
+  const w = 100 / segs.length;
+  const stops = segs
+    .map((c, i) => `${hexA(c, A)} ${(i * w).toFixed(2)}% ${((i + 1) * w).toFixed(2)}%`)
+    .join(", ");
+  return `linear-gradient(to right, ${stops})`;
+}
 
 export default function HomeClient({
   plans,
@@ -117,30 +149,27 @@ export default function HomeClient({
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {groupPlans.map((p, pi) => {
                 const isStarting = starting === p.id;
+                const veil = p.colors?.some(Boolean) ? veilGradient(p.colors!) : "";
                 return (
                   <button
                     key={p.id}
-                    className="press-card anim-fade-up"
+                    className="press-card plan-card anim-fade-up"
                     onClick={() => start(p.id)}
                     disabled={starting !== null}
                     aria-busy={isStarting}
                     style={{ animationDelay: `${pi * 30}ms` }}
                   >
-                    <span
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        textAlign: "left",
-                        opacity: isStarting ? 0.75 : 1,
-                      }}
-                    >
-                      {isStarting ? "启动中…" : p.summary}
-                    </span>
-                    <span
-                      className={p.samples >= 5 ? "t-ok" : "t-muted"}
-                      style={{ fontSize: 13, flexShrink: 0, fontWeight: 600 }}
-                    >
-                      {isStarting ? "" : `${p.samples} 份`}
+                    {veil && <span aria-hidden className="pc-veil" style={{ background: veil }} />}
+                    <span className="pc-inner" style={{ opacity: isStarting ? 0.75 : 1 }}>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        {isStarting ? "启动中…" : p.summary}
+                      </span>
+                      <span
+                        className={p.samples >= 5 ? "t-ok" : "t-muted"}
+                        style={{ fontSize: 13, flexShrink: 0, fontWeight: 600 }}
+                      >
+                        {isStarting ? "" : `${p.samples} 份`}
+                      </span>
                     </span>
                   </button>
                 );

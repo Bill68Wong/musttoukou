@@ -22,6 +22,8 @@ export interface PlanLegLite {
   route_options: string[] | null;
   from_station: string | null;
   to_station: string | null;
+  /** v0.7.0：本段主线路主题色（bus=公司色 / lrt=线路官方色），由服务端按 route_options[0] 填好 */
+  color?: string | null;
   /** bus 段可选上车站（去学校 51 系：首项=默认展示） */
   board_candidates?: string[] | null;
   /** bus 段可选下车点（回宿舍动态下车：末位=强制终点，与 to_station 一致） */
@@ -47,6 +49,8 @@ export interface Step {
   boardCandidates?: string[] | null;
   /** 下车点候选（乘车中动态下车：命中非末位时提示「下车/途经」；末位=强制终点） */
   alightCandidates?: string[] | null;
+  /** v0.7.0：当前阶段载具主题色（出门=首段载具色；乘车=本段线路色；步行/到达无） */
+  lineColor?: string | null;
 }
 
 /** 由方案分段生成打点步骤序列 */
@@ -69,8 +73,9 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
                 ? "stops"
                 : "minutes"
               : undefined,
-            routeOptions: nextVehicle?.leg_kind === "bus" ? nextVehicle.route_options : null,
+            routeOptions: nextVehicle?.route_options ?? null,
             destStationCode: nextVehicle?.to_station ?? null,
+            lineColor: nextVehicle?.color ?? null,
             // 出门前可选上车站（去学校 51 系卡）：候选来自首载具段，选后覆盖 depart/wait/board 站
             boardCandidates:
               nextVehicle?.leg_kind === "bus" ? nextVehicle.board_candidates ?? null : null,
@@ -88,16 +93,18 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
           sub: `${leg.from_station ?? ""} 等候`,
           stationCode: leg.from_station,
           quickKind: leg.leg_kind === "bus" ? "stops" : "minutes",
-          routeOptions: leg.leg_kind === "bus" ? leg.route_options : null,
+          routeOptions: leg.route_options,
           destStationCode: leg.to_station ?? null,
+          lineColor: leg.color ?? null,
         });
         steps.push({
           eventType: "board",
           label: "上车",
           stationCode: leg.from_station,
           quickKind: leg.leg_kind === "bus" ? "stops" : "minutes",
-          routeOptions: leg.leg_kind === "bus" ? leg.route_options : null,
+          routeOptions: leg.route_options,
           destStationCode: leg.to_station ?? null,
+          lineColor: leg.color ?? null,
         });
         steps.push({
           eventType: "alight",
@@ -111,6 +118,7 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
             leg.leg_kind === "bus" && leg.alight_candidates?.length
               ? leg.alight_candidates
               : null,
+          lineColor: leg.color ?? null,
         });
         break;
       case "cross_border":

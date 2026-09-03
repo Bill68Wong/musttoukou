@@ -352,6 +352,69 @@ button:disabled {
   background: var(--ok-container);
 }
 
+/* 首页方案卡主题色（v0.7.0）：载具色作卡片背景，多载具段均分左右色块 */
+.plan-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.pc-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.95;
+  transition: opacity var(--dur-fast) var(--ease-em);
+}
+
+.press-card:hover:not(:disabled) .pc-veil {
+  opacity: 1;
+}
+
+.press-card:active:not(:disabled) .pc-veil {
+  opacity: 1;
+}
+
+.pc-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+
+/* 乘车界面线路徽章（v0.7.0 主题色点缀） */
+.route-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 10px;
+  border-radius: var(--r-pill);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+/* 乘车界面顶部阶段色带（当前载具主题色） */
+.phase-band {
+  height: 4px;
+  border-radius: 2px;
+  margin-bottom: 10px;
+  opacity: 0.9;
+}
+
+@media (prefers-color-scheme: dark) {
+  .route-chip {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  }
+}
+
 /* 图标徽标（小圆圈图标） */
 .icon-badge {
   flex-shrink: 0;

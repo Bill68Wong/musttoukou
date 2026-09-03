@@ -15,7 +15,18 @@ export default async function Home() {
              pt.kind AS to_kind,
              (SELECT count(*)::int FROM timer_sessions s
                WHERE s.plan_id = p.id AND s.deleted_at IS NULL
-                 AND s.total_minutes IS NOT NULL) AS samples
+                 AND s.total_minutes IS NOT NULL) AS samples,
+             -- v0.7.0：方案各载具段主线路主题色（取 route_options 首项；walk/transfer 不参与）
+             COALESCE(
+               (SELECT array_agg(r.color ORDER BY l.seq)
+                  FROM plan_legs l
+                  LEFT JOIN routes r
+                    ON r.code = (l.route_options::jsonb ->> 0) AND r.kind = l.leg_kind
+                 WHERE l.plan_id = p.id
+                   AND l.leg_kind IN ('bus','lrt')
+                   AND l.route_options IS NOT NULL
+                   AND r.color IS NOT NULL),
+               '{}'::text[]) AS colors
       FROM commute_plans p
       JOIN places pt ON p.to_place = pt.id
       WHERE p.is_active

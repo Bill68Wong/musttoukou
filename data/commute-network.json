@@ -13,9 +13,14 @@
   "stations": [
     { "code": "C653", "kind": "bus", "name_tc": "金峰南岸/金譽峰", "walk": { "home": 3 } },
     { "code": "C652", "kind": "bus", "name_tc": "安順大廈", "walk": { "home": 3 } },
-    { "code": "C688", "kind": "bus", "name_tc": "和諧廣場/興業大廈", "walk": { "home": 9 } },
-    { "code": "C690", "kind": "bus", "name_tc": "蝴蝶谷大馬路總站", "walk": { "home": 7 } },
-    { "code": "C651", "kind": "bus", "name_tc": "和諧廣場/樂群樓", "walk": { "home": null }, "note": "DSAT 已核对；同站另有 C689/1 C689/2 台" },
+    { "code": "C688", "kind": "bus", "name_tc": "和諧廣場/興業大廈", "walk": { "home": 9 }, "note": "旧无分台写法；DSAT 实际分台为 C688/2（和諧廣場/業興大廈）" },
+    { "code": "C688/2", "kind": "bus", "name_tc": "和諧廣場/業興大廈", "walk": { "home": 9 }, "note": "DSAT 分台码（51/51A/51B 回宿舍停靠）；对侧 C688/1" },
+    { "code": "C690", "kind": "bus", "name_tc": "蝴蝶谷大馬路總站", "walk": { "home": 7 }, "note": "旧无分台写法；DSAT 实际分台：C690/1=51A、C690/2=51B、C690/3=51" },
+    { "code": "C690/1", "kind": "bus", "name_tc": "蝴蝶谷大馬路總站", "walk": { "home": 7 }, "note": "51A 总站台" },
+    { "code": "C690/2", "kind": "bus", "name_tc": "蝴蝶谷大馬路總站", "walk": { "home": 7 }, "note": "51B 总站台" },
+    { "code": "C690/3", "kind": "bus", "name_tc": "蝴蝶谷大馬路總站", "walk": { "home": 7 }, "note": "51 总站台" },
+    { "code": "C689/2", "kind": "bus", "name_tc": "和諧廣場/樂群樓", "walk": { "home": null }, "note": "DSAT 分台码（51/51A/51B 去学校方向经停）；步行分钟待实测" },
+    { "code": "C651", "kind": "bus", "name_tc": "和諧廣場/樂群樓", "walk": { "home": null }, "note": "幽灵码（三线站序均无）；乐群楼真实分台为 C689/2" },
     { "code": "C691", "kind": "bus", "name_tc": "樂居大馬路/居雅大廈", "walk": { "home": null }, "note": "26/26A/50 經停；DSAT 已核对" },
     { "code": "T358", "kind": "bus", "name_tc": "偉龍/科大醫院", "walk": { "school": null }, "note": "途经站（非回宿舍上車站）；26/51A/51B/N6 停靠；與正門站 T373/2 相鄰一站" },
     { "code": "T373/2", "kind": "bus", "name_tc": "偉龍/科技大學", "walk": { "school": null }, "note": "回宿舍上車站（正門）；26/51A/51B 停靠；N6 停對面 T373/1" },
@@ -23,6 +28,7 @@
     { "code": "T417", "kind": "bus", "name_tc": "科大/機場貨運站", "walk": { "school": 8 } },
     { "code": "T429", "kind": "bus", "name_tc": "機場大馬路/科大醫院", "walk": { "school": null }, "note": "DSAT 已核对；P座側門方向" },
     { "code": "T400", "kind": "bus", "name_tc": "路氹東/新濠天地", "walk": { "school": null }, "note": "DSAT 已核对" },
+    { "code": "T363/1", "kind": "bus", "name_tc": "連貫公路/威尼斯人", "walk": { "school": null }, "note": "51B 分台码（51B 停靠）；去学校下车步行分钟待实测" },
     { "code": "T367", "kind": "bus", "name_tc": "望德聖母灣馬路/連貫公路", "walk": { "school": null }, "note": "DSAT 已核对；威尼斯人方向" },
     { "code": "T355/2", "kind": "bus", "name_tc": "蓮花路停車場", "walk": {}, "note": "換乘站（往橫琴）；六條過境線共用的站台（T355/2），對面 T355/1 為 26/50 往澳門方向" },
     { "code": "T560/4", "kind": "bus", "name_tc": "橫琴澳方口岸", "walk": { "hengqin": 0 }, "note": "DSAT 已核对；50 路站台 T560/4，25B 停 T560/2、102 停 T560/6、701X/N6 停 T560/5 與 T560/7（同站區不同台）" },
@@ -76,15 +82,16 @@
       ]
     },
     {
-      "id": "home-school-4", "from": "home", "to": "school", "summary": "51路 C690 蝴蝶谷大馬路總站→T429 機場大馬路/科大醫院", "compare_routes": ["51", "51A", "51B"],
+      "id": "home-school-4", "from": "home", "to": "school", "summary": "51路 C690/3 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T429 機場大馬路/科大醫院", "compare_routes": ["51", "51A", "51B"],
+      "board_candidates": ["C690/3", "C689/2"],
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690", "minutes": 7 },
-        { "seq": 2, "kind": "bus", "routes": ["51"], "from": "station:C690", "to": "station:T429", "minutes": null },
+        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/3", "minutes": 7 },
+        { "seq": 2, "kind": "bus", "routes": ["51"], "from": "station:C690/3", "to": "station:T429", "minutes": null },
         { "seq": 3, "kind": "walk", "from": "station:T429", "to": "place:school", "minutes": null }
       ]
     },
     {
-      "id": "home-school-5", "from": "home", "to": "school", "summary": "51路 C651 和諧廣場/樂群樓→T429 機場大馬路/科大醫院", "note": "上車站 C651 在 DSAT 全量站序中無任何線路經停（同區另有 C688/C689 分台），存疑待實地核對；此卡暫保留" ,
+      "id": "home-school-5", "from": "home", "to": "school", "summary": "51路（已併入 home-school-4，上車站 C651 為 DSAT 空碼）", "is_active": false,
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C651", "minutes": null },
         { "seq": 2, "kind": "bus", "routes": ["51"], "from": "station:C651", "to": "station:T429", "minutes": null },
@@ -92,19 +99,30 @@
       ]
     },
     {
-      "id": "home-school-6", "from": "home", "to": "school", "summary": "51A路 C690 蝴蝶谷大馬路總站→T374 澳門土木工程實驗室", "compare_routes": ["51A", "51", "51B"],
+      "id": "home-school-6", "from": "home", "to": "school", "summary": "51A路 C690/1 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T374 澳門土木工程實驗室", "compare_routes": ["51A", "51", "51B"],
+      "board_candidates": ["C690/1", "C689/2"],
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690", "minutes": 7 },
-        { "seq": 2, "kind": "bus", "routes": ["51A"], "from": "station:C690", "to": "station:T374", "minutes": null },
+        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/1", "minutes": 7 },
+        { "seq": 2, "kind": "bus", "routes": ["51A"], "from": "station:C690/1", "to": "station:T374", "minutes": null },
         { "seq": 3, "kind": "walk", "from": "station:T374", "to": "place:school", "minutes": 6 }
       ]
     },
     {
-      "id": "home-school-7", "from": "home", "to": "school", "summary": "51A路 C651 和諧廣場/樂群樓→T374 澳門土木工程實驗室", "note": "上車站 C651 在 DSAT 全量站序中無任何線路經停（同區另有 C688/C689 分台），存疑待實地核對；此卡暫保留" ,
+      "id": "home-school-7", "from": "home", "to": "school", "summary": "51A路（已併入 home-school-6，上車站 C651 為 DSAT 空碼）", "is_active": false,
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C651", "minutes": null },
         { "seq": 2, "kind": "bus", "routes": ["51A"], "from": "station:C651", "to": "station:T374", "minutes": null },
         { "seq": 3, "kind": "walk", "from": "station:T374", "to": "place:school", "minutes": 6 }
+      ]
+    },
+    {
+      "id": "home-school-10", "from": "home", "to": "school", "summary": "51B路 C690/2 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T363/1 連貫公路/威尼斯人", "compare_routes": ["51B", "51A", "51"],
+      "board_candidates": ["C690/2", "C689/2"],
+      "note": "51B 循环线第 5 站即 T363/1 連貫公路/威尼斯人（近路，不绕澳门半岛）；下车步行到校，分钟数待实测",
+      "legs": [
+        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/2", "minutes": 7 },
+        { "seq": 2, "kind": "bus", "routes": ["51B"], "from": "station:C690/2", "to": "station:T363/1", "minutes": null },
+        { "seq": 3, "kind": "walk", "from": "station:T363/1", "to": "place:school", "minutes": null }
       ]
     },
     {
@@ -144,19 +162,19 @@
       ]
     },
     {
-      "id": "school-home-2-51a", "from": "school", "to": "home", "summary": "51A路 T373/2 偉龍/科技大學→C688 和諧廣場/興業大廈", "compare_routes": ["26", "51A", "51B"],
+      "id": "school-home-2-51a", "from": "school", "to": "home", "summary": "51A路 T373/2 偉龍/科技大學→C688/2 和諧廣場 或 C690/1 蝴蝶谷（動態下車）", "compare_routes": ["26", "51A", "51B"],
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["51A"], "from": "station:T373/2", "to": "station:C688", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:C688", "to": "place:home", "minutes": 9 }
+        { "seq": 2, "kind": "bus", "routes": ["51A"], "from": "station:T373/2", "to": "station:C690/1", "alight_candidates": ["C688/2", "C690/1"], "minutes": null },
+        { "seq": 3, "kind": "walk", "from": "station:C690/1", "to": "place:home", "minutes": 7 }
       ]
     },
     {
-      "id": "school-home-2-51b", "from": "school", "to": "home", "summary": "51B路 T373/2 偉龍/科技大學→C688 和諧廣場/興業大廈", "compare_routes": ["26", "51A", "51B"],
+      "id": "school-home-2-51b", "from": "school", "to": "home", "summary": "51B路 T373/2 偉龍/科技大學→C688/2 和諧廣場 或 C690/2 蝴蝶谷（動態下車）", "compare_routes": ["26", "51A", "51B"],
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["51B"], "from": "station:T373/2", "to": "station:C688", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:C688", "to": "place:home", "minutes": 9 }
+        { "seq": 2, "kind": "bus", "routes": ["51B"], "from": "station:T373/2", "to": "station:C690/2", "alight_candidates": ["C688/2", "C690/2"], "minutes": null },
+        { "seq": 3, "kind": "walk", "from": "station:C690/2", "to": "place:home", "minutes": 7 }
       ]
     },
     {
@@ -168,7 +186,8 @@
       ]
     },
     {
-      "id": "school-home-3-51a", "from": "school", "to": "home", "summary": "51A路 T373/2 偉龍/科技大學→C690 蝴蝶谷大馬路總站", "compare_routes": ["26", "51A", "51B"],
+      "id": "school-home-3-51a", "from": "school", "to": "home", "summary": "51A路（已併入 school-home-2-51a，動態下車含 C690/1）", "is_active": false,
+      "note": "旧「直达总站」卡，与改造后的动态下车主卡 school-home-2-51a 重复；停用保留历史统计",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
         { "seq": 2, "kind": "bus", "routes": ["51A"], "from": "station:T373/2", "to": "station:C690", "minutes": null },
@@ -176,7 +195,8 @@
       ]
     },
     {
-      "id": "school-home-3-51b", "from": "school", "to": "home", "summary": "51B路 T373/2 偉龍/科技大學→C690 蝴蝶谷大馬路總站", "compare_routes": ["26", "51A", "51B"],
+      "id": "school-home-3-51b", "from": "school", "to": "home", "summary": "51B路（已併入 school-home-2-51b，動態下車含 C690/2）", "is_active": false,
+      "note": "旧「直达总站」卡，与改造后的动态下车主卡 school-home-2-51b 重复；停用保留历史统计",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
         { "seq": 2, "kind": "bus", "routes": ["51B"], "from": "station:T373/2", "to": "station:C690", "minutes": null },
@@ -184,15 +204,16 @@
       ]
     },
     {
-      "id": "school-home-4", "from": "school", "to": "home", "summary": "51路 T417 科大/機場貨運站→C688 和諧廣場/興業大廈",
+      "id": "school-home-4", "from": "school", "to": "home", "summary": "51路 T417 科大/機場貨運站→C688/2 和諧廣場 或 C690/3 蝴蝶谷（動態下車）", "compare_routes": ["26", "51A", "51B"],
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T417", "minutes": 8 },
-        { "seq": 2, "kind": "bus", "routes": ["51"], "from": "station:T417", "to": "station:C688", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:C688", "to": "place:home", "minutes": 9 }
+        { "seq": 2, "kind": "bus", "routes": ["51"], "from": "station:T417", "to": "station:C690/3", "alight_candidates": ["C688/2", "C690/3"], "minutes": null },
+        { "seq": 3, "kind": "walk", "from": "station:C690/3", "to": "place:home", "minutes": 7 }
       ]
     },
     {
-      "id": "school-home-5", "from": "school", "to": "home", "summary": "51路 T417 科大/機場貨運站→C690 蝴蝶谷大馬路總站",
+      "id": "school-home-5", "from": "school", "to": "home", "summary": "51路（已併入 school-home-4，動態下車含 C690/3）", "is_active": false,
+      "note": "旧「直达总站」卡，与改造后的动态下车主卡 school-home-4 重复；停用保留历史统计",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T417", "minutes": 8 },
         { "seq": 2, "kind": "bus", "routes": ["51"], "from": "station:T417", "to": "station:C690", "minutes": null },

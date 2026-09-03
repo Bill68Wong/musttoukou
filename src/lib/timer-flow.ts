@@ -22,6 +22,10 @@ export interface PlanLegLite {
   route_options: string[] | null;
   from_station: string | null;
   to_station: string | null;
+  /** bus 段可选上车站（去学校 51 系：首项=默认展示） */
+  board_candidates?: string[] | null;
+  /** bus 段可选下车点（回宿舍动态下车：末位=强制终点，与 to_station 一致） */
+  alight_candidates?: string[] | null;
 }
 
 export interface Step {
@@ -39,6 +43,10 @@ export interface Step {
   destStationCode?: string | null;
   /** 下车步骤的上车站编码（推算乘车进度用） */
   fromStationCode?: string | null;
+  /** 上车点候选（depart 步骤前让用户选；来自该程首个载具段的 board_candidates） */
+  boardCandidates?: string[] | null;
+  /** 下车点候选（乘车中动态下车：命中非末位时提示「下车/途经」；末位=强制终点） */
+  alightCandidates?: string[] | null;
 }
 
 /** 由方案分段生成打点步骤序列 */
@@ -63,6 +71,9 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
               : undefined,
             routeOptions: nextVehicle?.leg_kind === "bus" ? nextVehicle.route_options : null,
             destStationCode: nextVehicle?.to_station ?? null,
+            // 出门前可选上车站（去学校 51 系卡）：候选来自首载具段，选后覆盖 depart/wait/board 站
+            boardCandidates:
+              nextVehicle?.leg_kind === "bus" ? nextVehicle.board_candidates ?? null : null,
           });
         } else if (i === legs.length - 1) {
           // 末段步行 = 抵达目的地
@@ -96,6 +107,10 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
           quickKind: leg.leg_kind === "bus" ? "stops" : "minutes",
           routeOptions: leg.route_options,
           fromStationCode: leg.from_station,
+          alightCandidates:
+            leg.leg_kind === "bus" && leg.alight_candidates?.length
+              ? leg.alight_candidates
+              : null,
         });
         break;
       case "cross_border":
@@ -134,6 +149,46 @@ export function currentStepIndex(
     // 乱序/多余事件忽略，不推进
   }
   return i;
+}
+
+/** 站区码三段式兼容：C688↔C688、C688↔C688/2、T560/4↔T560 */
+export function stationCodesEq(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  return a === b || a.startsWith(b + "/") || b.startsWith(a + "/");
+}
+
+/**
+ * 去学校 51 系「上车点覆盖」：方案首个载具段若带多个 board_candidates，
+ * 把默认上车站（defFrom）相关的 depart/wait_start/board/alight 步骤统一替换为所选站。
+ * 选择优先级：用户本次选择 > 已打点事件中的上车站（刷新恢复）> 默认站（不改写）。
+ */
+export function applyBoardSteps(
+  steps: Step[],
+  legs: PlanLegLite[],
+  events: { event_type: string; station_code: string | null }[],
+  boardStation: string | null,
+): Step[] {
+  const firstVehicle = legs.find((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
+  const boardCands =
+    (firstVehicle?.board_candidates?.length ?? 0) > 1 ? firstVehicle!.board_candidates! : null;
+  if (!boardCands) return steps;
+  const defFrom = firstVehicle!.from_station;
+  const lastEvt = [...events]
+    .reverse()
+    .find((e) => e.event_type === "depart" || e.event_type === "wait_start" || e.event_type === "board");
+  const chosen =
+    boardStation ??
+    (lastEvt?.station_code && boardCands.includes(lastEvt.station_code)
+      ? lastEvt.station_code
+      : null);
+  if (!chosen || !defFrom) return steps;
+  return steps.map((s) => {
+    let next: Step = s;
+    if (s.stationCode === defFrom) next = { ...next, stationCode: chosen };
+    if (s.fromStationCode === defFrom) next = { ...next, fromStationCode: chosen };
+    if (next.sub && next.sub.includes(defFrom)) next = { ...next, sub: next.sub.split(defFrom).join(chosen) };
+    return next === s ? s : next;
+  });
 }
 
 /** 时段分桶（GMT+8 小时）：早高峰/日间/晚高峰/夜间 */

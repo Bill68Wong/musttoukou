@@ -32,14 +32,20 @@ interface LegSeed {
   at?: string; // transfer/cross_border 的位置
   minutes: number | null;
   note?: string;
+  /** 动态下车候选（bus 回宿舍），末位 = 强制终点 */
+  alight_candidates?: string[];
 }
 interface PlanSeed {
   id: string;
   from: string;
   to: string;
   summary: string;
+  is_active?: boolean;
   legs: LegSeed[];
   note?: string;
+  compare_routes?: string[];
+  /** 可选上车站（去学校 51 系卡），首项 = 默认展示 */
+  board_candidates?: string[];
 }
 
 const target = process.argv[2] as "local" | "cloud" | undefined;
@@ -137,11 +143,22 @@ async function main() {
     let legCount = 0;
     for (const p of net.plans) {
       const res = await q(
-        `INSERT INTO commute_plans (plan_key, from_place, to_place, summary, note)
-         VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-        [p.id, placeIds.get(p.from), placeIds.get(p.to), p.summary, p.note ?? null],
+        `INSERT INTO commute_plans (plan_key, from_place, to_place, summary, is_active, note, compare_routes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [
+          p.id,
+          placeIds.get(p.from),
+          placeIds.get(p.to),
+          p.summary,
+          p.is_active !== false,
+          p.note ?? null,
+          p.compare_routes?.length ? JSON.stringify(p.compare_routes) : null,
+        ],
       );
       const planId = (res.rows[0] as { id: number }).id;
+
+      // plan 顶层 board_candidates → 挂到该 plan 首个载具段（bus/lrt）行
+      const firstVehicleSeq = p.legs.find((l) => l.kind === "bus" || l.kind === "lrt")?.seq ?? null;
 
       for (const leg of p.legs) {
         const ref = (v?: string): string | null => {
@@ -160,10 +177,20 @@ async function main() {
         };
         const atStation = resolveStation(leg.at);
 
+        const isVehicle = leg.kind === "bus" || leg.kind === "lrt";
+        const boardCands =
+          isVehicle && firstVehicleSeq === leg.seq && p.board_candidates?.length
+            ? (p.board_candidates.map(resolveStation).filter(Boolean) as string[])
+            : [];
+        const alightCands = (leg.alight_candidates ?? [])
+          .map(resolveStation)
+          .filter(Boolean) as string[];
+
         await q(
           `INSERT INTO plan_legs (plan_id, seq, leg_kind, route_id, route_options,
-                                  from_station, to_station, minutes, note)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+                                  from_station, to_station, minutes, note,
+                                  board_candidates, alight_candidates)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
           [
             planId,
             leg.seq,
@@ -178,6 +205,8 @@ async function main() {
               : resolveStation(leg.to),
             leg.minutes,
             leg.note ?? null,
+            boardCands.length ? boardCands : null,
+            alightCands.length ? alightCands : null,
           ],
         );
         legCount++;

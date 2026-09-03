@@ -29,7 +29,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     }
 
     const legsRes = await pool.query(
-      `SELECT seq, leg_kind, route_options, from_station, to_station
+      `SELECT seq, leg_kind, route_options, from_station, to_station,
+              board_candidates, alight_candidates
        FROM plan_legs WHERE plan_id = $1 ORDER BY seq`,
       [session.plan_id],
     );
@@ -41,6 +42,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         route_options: string | string[] | null;
         from_station: string | null;
         to_station: string | null;
+        board_candidates: string[] | null;
+        alight_candidates: string[] | null;
       }[]
     ).map((r) => ({
       ...r,
@@ -57,7 +60,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     );
 
     const snapsRes = await pool.query(
-      `SELECT id, value_kind, value, recorded_at
+      `SELECT id, value_kind, value, station_code, recorded_at
        FROM wait_snapshots WHERE session_id = $1 ORDER BY id`,
       [sessionId],
     );

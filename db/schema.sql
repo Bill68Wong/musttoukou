@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS commute_plans (
     summary      TEXT NOT NULL,            -- '50路 金峰南岸→路氹东/新濠天地'
     is_active    BOOLEAN NOT NULL DEFAULT TRUE,
     note         TEXT,
+    compare_routes JSONB,                  -- v0.5.0+ /stats 排序用：备选线路 JSON 数组
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -80,6 +81,8 @@ CREATE TABLE IF NOT EXISTS plan_legs (
     to_station    TEXT REFERENCES stations(code),
     minutes       NUMERIC(5,1),            -- 已知耗时（步行实测值）；乘车段NULL走估算
     note          TEXT,
+    board_candidates TEXT[],               -- bus 段可选上车站（v0.6.0 去学校 51 系：首项=默认展示）
+    alight_candidates TEXT[],              -- bus 段可选下车点（v0.6.0 回宿舍动态下车：末位=强制终点）
     UNIQUE (plan_id, seq)
 );
 
@@ -153,6 +156,12 @@ DROP INDEX IF EXISTS uq_wait_snap_auto_once;
 CREATE UNIQUE INDEX uq_wait_snap_auto_once
     ON wait_snapshots (session_id, source, station_code)
     WHERE source IN ('auto_depart', 'auto_wait_start');
+
+-- 轻轨手动分钟单次幂等（v0.6.0 起）：同一会话同一上车站只记一条，改选分钟 = 覆盖原值
+-- 历史 manual 分钟行 station_code 为 NULL → 不满足谓词，建索引前无需去重
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wait_snap_manual_min_once
+    ON wait_snapshots (session_id, station_code)
+    WHERE source = 'manual' AND value_kind = 'minutes' AND station_code IS NOT NULL;
 
 -- 2.10b 编辑痕迹（人工修正审计：只插入不更新，保留全部原值）
 CREATE TABLE IF NOT EXISTS edit_audit (

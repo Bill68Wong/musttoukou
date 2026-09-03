@@ -57,13 +57,24 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
 
     // 等车快照：单独表
+    // - minutes（轻轨手动）：同一会话同一站只保留一条（单次乘坐只记一次）；改选分钟 = 覆盖原值（UPDATE）
+    // - stops（巴士自动）：走 /auto-snapshot（本路由不落 stops 手动）
     if (body.type === "wait_snapshot") {
       if (typeof body.value !== "number" || !body.value_kind) {
         return NextResponse.json({ error: "快照参数错误" }, { status: 400 });
       }
+      if (body.value_kind === "stops") {
+        return NextResponse.json({ error: "巴士段车距由系统自动记录" }, { status: 400 });
+      }
+      // 轻轨分钟：带上车站（多段轻轨各站独立）；部分唯一索引 (session_id, station_code)
+      // WHERE source='manual' AND value_kind='minutes' AND station_code IS NOT NULL
       await pool.query(
-        `INSERT INTO wait_snapshots (session_id, value_kind, value) VALUES ($1, $2, $3)`,
-        [sessionId, body.value_kind, body.value],
+        `INSERT INTO wait_snapshots (session_id, value_kind, value, source, station_code)
+         VALUES ($1, 'minutes', $2, 'manual', $3)
+         ON CONFLICT (session_id, station_code)
+           WHERE source = 'manual' AND value_kind = 'minutes' AND station_code IS NOT NULL
+         DO UPDATE SET value = EXCLUDED.value, recorded_at = now()`,
+        [sessionId, body.value, body.station_code ?? null],
       );
       return NextResponse.json({ ok: true });
     }

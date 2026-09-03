@@ -71,6 +71,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     if (!data || busy.current) return;
     busy.current = true;
     const prev = data; // 失败回滚用
+    // 当前被打点的步骤（自动记录车距用：depart / wait_start 的巴士段）
+    const curSteps = buildSteps(data.legs);
+    const curIdx = currentStepIndex(curSteps, data.events);
+    const curStep = curSteps[curIdx];
     try {
       // —— 乐观更新本地 state ——
       const nowIso = new Date().toISOString();
@@ -110,6 +114,27 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string; finished?: boolean };
       if (!res.ok) throw new Error(body.error ?? "打点失败");
+
+      // depart / wait_start 的巴士段：系统自动记录当时车距（不阻塞打点）
+      // 复用 /api/dsat/eta 30s 缓存，通常刚看过 LiveEta 时零额外 DSAT 请求
+      if (
+        (type === "depart" || type === "wait_start") &&
+        curStep?.quickKind === "stops" &&
+        curStep.stationCode &&
+        curStep.routeOptions?.length
+      ) {
+        void fetch(`/api/timer/${sessionId}/auto-snapshot`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            moment: type,
+            station: curStep.stationCode,
+            routes: curStep.routeOptions,
+            dir: data.session.dsat_dir ?? "0",
+            dest: curStep.destStationCode,
+          }),
+        }).catch(() => {});
+      }
 
       // wait_start 时顺手触发车辆抓取（不阻塞）
       if (type === "wait_start") {
@@ -155,11 +180,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
   // 等车阶段（已到站、待上车）
   const waiting = step?.eventType === "board";
-  // 出门/走路阶段（出发前 或 已出门未到站）：可记车距初估
+  // 出门/走路阶段（出发前 或 已出门未到站）
   const departing =
     step?.eventType === "depart" || step?.eventType === "wait_start";
-  const showQuick =
-    (waiting || departing) && step.quickKind !== undefined;
+  // 手动车距条：仅轻轨（minutes）保留——巴士（stops）由系统自动记录
+  const showManualMinutes =
+    (waiting || departing) && step.quickKind === "minutes";
+  // 巴士段出门/到站：打点后系统自动记录（提示文案，非操作项）
+  const autoRecordStops = departing && step.quickKind === "stops";
   // 乘车阶段（已上车、待下车）
   const riding = step?.eventType === "alight";
 
@@ -219,6 +247,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   }
 
   const recentEvents = [...data.events].reverse().slice(0, 4);
+  // 轻轨手动分钟快照（巴士 stops 快照为系统自动记录，不计入手动统计）
+  const minuteSnaps = data.snapshots.filter((s) => s.value_kind === "minutes");
 
   return (
     <main className="page">
@@ -249,23 +279,19 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
               />
             )}
 
-          {/* 车距快捷条：出门/走路阶段记初估，等车阶段记实测 */}
-          {showQuick && (
+          {/* 轻轨手动车距条（巴士段无手动条，见下方自动记录提示） */}
+          {showManualMinutes && (
             <div style={{ marginBottom: 16 }}>
               <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 8 }}>
                 {departing
-                  ? step.quickKind === "minutes"
-                    ? "出门看一眼：轻轨还有几分钟？"
-                    : "出门看一眼：车还有几站？"
-                  : step.quickKind === "minutes"
-                    ? "轻轨还有几分钟？"
-                    : "车还有几站？"}
+                  ? "出门看一眼：轻轨还有几分钟？"
+                  : "轻轨还有几分钟？"}
               </p>
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                 {QUICK_VALUES.map((v) => (
                   <button
                     key={v}
-                    onClick={() => postEvent("wait_snapshot", { value: v, value_kind: step.quickKind })}
+                    onClick={() => postEvent("wait_snapshot", { value: v, value_kind: "minutes" })}
                     style={{
                       width: "auto",
                       flex: "1 1 calc(25% - 5px)",
@@ -279,14 +305,19 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                   </button>
                 ))}
               </div>
-              {data.snapshots.length > 0 && (
+              {minuteSnaps.length > 0 && (
                 <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>
-                  已记 {data.snapshots.length} 次，最近：
-                  {data.snapshots[data.snapshots.length - 1].value}
-                  {step.quickKind === "minutes" ? " 分钟" : " 站"}
+                  已记 {minuteSnaps.length} 次，最近：{minuteSnaps[minuteSnaps.length - 1].value} 分钟
                 </p>
               )}
             </div>
+          )}
+
+          {/* 巴士段：打点后系统自动记录车距（无需手动选择） */}
+          {autoRecordStops && (
+            <p style={{ fontSize: 13, color: "var(--muted)", marginTop: -8, marginBottom: 12 }}>
+              ⚡ 点下方按钮后将自动记录当时车距
+            </p>
           )}
 
           {/* 主按钮 */}

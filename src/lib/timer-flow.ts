@@ -30,7 +30,7 @@ export interface Step {
   /** 辅助说明（去向 / 站名） */
   sub?: string;
   stationCode?: string | null;
-  /** 等车阶段的快捷条类型（board 步骤专用） */
+  /** 车距单位：'stops'=巴士（自动记录 DSAT 车距）| 'minutes'=轻轨（无实时源，保留手动） */
   quickKind?: "stops" | "minutes";
   /** 本步骤涉及的候选巴士线路（depart/wait_start/board = 等 ETA 显示用；alight = 乘车推算用） */
   routeOptions?: string[] | null;

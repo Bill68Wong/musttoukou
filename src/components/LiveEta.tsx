@@ -92,15 +92,7 @@ export default function LiveEta({
     });
 
   return (
-    <div
-      style={{
-        marginBottom: 16,
-        padding: "12px 14px",
-        borderRadius: 14,
-        background: "var(--card)",
-        border: "1px solid var(--border)",
-      }}
-    >
+    <div className="card anim-fade-up" style={{ padding: "12px 14px" }}>
       <div
         style={{
           display: "flex",
@@ -109,29 +101,27 @@ export default function LiveEta({
           marginBottom: 8,
         }}
       >
-        <p style={{ fontSize: 14, fontWeight: 600 }}>🚌 实时车距</p>
+        <p className="h-title">🚌 实时车距</p>
         <button
+          className="btn btn--text btn--sm"
           onClick={fetchEta}
           disabled={loading}
-          style={{
-            background: "transparent",
-            color: "var(--muted)",
-            fontSize: 13,
-            padding: "2px 8px",
-            minWidth: 0,
-          }}
+          aria-label="刷新车距"
         >
-          {loading ? "刷新中…" : "↻ 刷新"}
+          <span className={loading ? "anim-spin" : ""} style={{ display: "inline-block" }}>
+            ↻
+          </span>{" "}
+          {loading ? "刷新中…" : "刷新"}
         </button>
       </div>
 
       {!data ? (
-        <p style={{ fontSize: 14, color: "var(--muted)" }}>获取中…</p>
+        <p className="t-body t-muted">获取中…</p>
       ) : (
         data.results.map((r) => {
           if (!r.ok) {
             return (
-              <p key={r.route} style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.8 }}>
+              <p key={r.route} className="t-body t-muted" style={{ lineHeight: 1.7 }}>
                 {r.route} 路 · {r.error ?? "暂无数据"}
               </p>
             );
@@ -141,7 +131,7 @@ export default function LiveEta({
             if ((r.pending?.length ?? 0) > 0) {
               const p = r.pending![0];
               return (
-                <p key={r.route} style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.8 }}>
+                <p key={r.route} className="t-body t-muted" style={{ lineHeight: 1.7 }}>
                   {r.route} 路 · 未发车
                   <span style={{ fontSize: 12 }}>
                     {" "}
@@ -153,7 +143,7 @@ export default function LiveEta({
               );
             }
             return (
-              <p key={r.route} style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.8 }}>
+              <p key={r.route} className="t-body t-muted" style={{ lineHeight: 1.7 }}>
                 {r.route} 路 · {(r.busCount ?? 0) > 0 ? "本方向暂无来车" : "暂无在线车辆"}
               </p>
             );
@@ -170,16 +160,13 @@ export default function LiveEta({
                 ? { text: "即将进站", flash: true }
                 : { text: `还有 ${n} 站`, flash: false };
           return (
-            <p key={r.route} style={{ fontSize: 15, lineHeight: 1.8 }}>
+            <p key={r.route} className="t-body" style={{ lineHeight: 1.7 }}>
               <span
-                style={{
-                  fontWeight: 700,
-                  color: stage.flash ? "var(--accent)" : isNearest ? "var(--accent)" : undefined,
-                }}
+                className={stage.flash || isNearest ? "t-accent t-strong" : undefined}
               >
                 {r.route} 路 · {stage.text}
               </span>
-              <span style={{ fontSize: 13, color: "var(--muted)" }}>
+              <span className="t-muted" style={{ fontSize: 13 }}>
                 {" "}
                 {r.nearest.plate ?? ""}
                 {r.nearest.atStationName ? ` · 在${r.nearest.atStationName}` : ""}
@@ -191,7 +178,7 @@ export default function LiveEta({
       )}
 
       {data && (
-        <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+        <p className="t-label t-muted" style={{ marginTop: 6 }}>
           更新于 {fmtTime(data.fetchedAt)} · DSAT 数据约 1 分钟一轮，仅供参考
         </p>
       )}

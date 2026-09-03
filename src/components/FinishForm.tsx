@@ -36,8 +36,8 @@ export default function FinishForm({ sessionId }: { sessionId: number }) {
 
   if (!data) {
     return (
-      <main className="page">
-        <p style={{ color: "var(--muted)" }}>加载中…</p>
+      <main className="page page--center">
+        <p className="t-body t-muted t-center">加载中…</p>
       </main>
     );
   }
@@ -62,20 +62,43 @@ export default function FinishForm({ sessionId }: { sessionId: number }) {
 
   return (
     <main className="page">
-      <h1 style={{ fontSize: 22, marginBottom: 4 }}>🎉 到达了</h1>
-      <p style={{ color: "var(--muted)", marginBottom: 20 }}>{s.summary}</p>
+      <header style={{ marginBottom: 20, padding: "0 2px" }}>
+        <h1 className="h-display" style={{ marginBottom: 4 }}>
+          🎉 到达了
+        </h1>
+        <p className="t-label t-muted">{s.summary}</p>
+      </header>
 
-      <div style={{ background: "var(--card)", borderRadius: 12, padding: 16, marginBottom: 24 }}>
-        <p style={{ fontSize: 15 }}>
-          总耗时 <strong style={{ fontSize: 26 }}>{s.total_minutes ?? "—"}</strong> 分钟
+      <div
+        className="card anim-fade-up"
+        style={{ padding: 18, marginBottom: 24, textAlign: "center" }}
+      >
+        <p className="t-label t-muted" style={{ marginBottom: 4 }}>
+          总耗时
+        </p>
+        <p
+          className="h-display"
+          style={{
+            margin: 0,
+            fontVariantNumeric: "tabular-nums",
+            color: "var(--primary)",
+          }}
+        >
+          {s.total_minutes ?? "—"}
+          <span
+            className="t-body t-muted"
+            style={{ marginLeft: 6, fontWeight: 500 }}
+          >
+            分钟
+          </span>
         </p>
         {s.missed_count > 0 && (
-          <p style={{ fontSize: 14, color: "var(--danger)", marginTop: 4 }}>
+          <p className="t-label t-error" style={{ marginTop: 8 }}>
             没挤上 {s.missed_count} 次
           </p>
         )}
         {s.vehicle_plate && (
-          <p style={{ fontSize: 14, color: "var(--muted)", marginTop: 4 }}>
+          <p className="t-label t-muted" style={{ marginTop: 6 }}>
             车辆 {s.vehicle_plate}
           </p>
         )}
@@ -83,32 +106,31 @@ export default function FinishForm({ sessionId }: { sessionId: number }) {
 
       {done ? (
         <>
-          <p style={{ color: "var(--ok)", marginBottom: 16 }}>
+          <p className="t-body t-ok" style={{ marginBottom: 16, textAlign: "center" }}>
             ✓ 已提交（拥挤度：{CROWD_OPTIONS.find((c) => c.value === s.crowd_level)?.label}）
           </p>
-          <button onClick={() => router.push("/")}>回到首页</button>
+          <button className="btn btn--primary btn--block" onClick={() => router.push("/")}>
+            回到首页
+          </button>
         </>
       ) : (
         <>
-          <p style={{ fontSize: 15, marginBottom: 12 }}>这趟车挤吗？</p>
-          {CROWD_OPTIONS.map((c) => (
-            <button
-              key={c.value}
-              onClick={() => submit(c.value)}
-              disabled={saving}
-              style={{
-                marginBottom: 8,
-                background: "var(--card)",
-                color: "var(--text)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <span>{c.label}</span>
-              <span style={{ fontSize: 13, color: "var(--muted)" }}>{c.desc}</span>
-            </button>
-          ))}
+          <p className="t-body" style={{ marginBottom: 12 }}>
+            这趟车挤吗？
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {CROWD_OPTIONS.map((c) => (
+              <button
+                key={c.value}
+                className="press-card"
+                onClick={() => submit(c.value)}
+                disabled={saving}
+              >
+                <span className="h-title">{c.label}</span>
+                <span className="t-label t-muted">{c.desc}</span>
+              </button>
+            ))}
+          </div>
         </>
       )}
     </main>

@@ -36,6 +36,18 @@ const EVENT_LABELS: Record<string, string> = {
   arrive: "到达",
 };
 
+// 关键打点（出发/上车/下车/到达）触发 10ms 短振感；非每个点击都振。
+const HAPTIC_EVENTS = new Set(["depart", "board", "alight", "arrive"]);
+function tryVibrate() {
+  if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+    try {
+      navigator.vibrate(10);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const router = useRouter();
   const [data, setData] = useState<SessionData | null>(null);
@@ -106,6 +118,9 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         });
       }
 
+      // 关键打点：轻触觉反馈
+      if (HAPTIC_EVENTS.has(type)) tryVibrate();
+
       // —— 后台同步服务器 ——
       const res = await fetch(`/api/timer/${sessionId}/events`, {
         method: "POST",
@@ -158,15 +173,19 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   if (error) {
     return (
       <main className="page">
-        <p style={{ color: "var(--danger)", marginBottom: 16 }}>加载失败：{error}</p>
-        <button onClick={() => router.push("/")}>返回首页</button>
+        <p className="t-error t-body" style={{ marginBottom: 16 }}>
+          加载失败：{error}
+        </p>
+        <button className="btn btn--primary btn--block" onClick={() => router.push("/")}>
+          返回首页
+        </button>
       </main>
     );
   }
   if (!data) {
     return (
-      <main className="page">
-        <p style={{ color: "var(--muted)" }}>加载中…</p>
+      <main className="page page--center">
+        <p className="t-body t-muted t-center">加载中…</p>
       </main>
     );
   }
@@ -253,20 +272,34 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
   return (
     <main className="page">
-      <header style={{ marginBottom: 12 }}>
-        <p style={{ fontSize: 14, color: "var(--muted)" }}>{data.session.summary}</p>
-        <p style={{ fontSize: 13, color: "var(--muted)" }}>
+      <header style={{ marginBottom: 20 }}>
+        <p className="t-label t-muted" style={{ marginBottom: 6 }}>
+          {data.session.summary}
+        </p>
+        <p className="t-label t-muted">
           第 {Math.min(idx + 1, steps.length)} / {steps.length} 步
           {data.session.missed_count > 0 && (
-            <span style={{ color: "var(--danger)" }}> · 没挤上 ×{data.session.missed_count}</span>
+            <span className="t-error"> · 没挤上 ×{data.session.missed_count}</span>
           )}
         </p>
       </header>
 
       {finished ? (
-        <p style={{ color: "var(--muted)", margin: "auto 0" }}>已完成，正在进入结束页…</p>
+        <p className="t-body t-muted t-center" style={{ margin: "auto 0" }}>
+          已完成，正在进入结束页…
+        </p>
       ) : (
-        <div style={{ marginTop: "auto", marginBottom: "auto" }}>
+        <div
+          key={idx}
+          className="anim-fade-up"
+          style={{
+            marginTop: "auto",
+            marginBottom: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+          }}
+        >
           {/* 实时车距：出门/等车阶段（巴士段才显示，轻轨无实时数据） */}
           {(departing || waiting) &&
             step.quickKind === "stops" &&
@@ -282,30 +315,23 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
           {/* 轻轨手动车距条（巴士段无手动条，见下方自动记录提示） */}
           {showManualMinutes && (
-            <div style={{ marginBottom: 16 }}>
-              <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 8 }}>
+            <div>
+              <p className="t-label t-muted" style={{ marginBottom: 10 }}>
                 轻轨还有几分钟？
               </p>
-              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              <div className="chip-row">
                 {QUICK_VALUES.map((v) => (
                   <button
                     key={v}
+                    className="chip"
                     onClick={() => postEvent("wait_snapshot", { value: v, value_kind: "minutes" })}
-                    style={{
-                      width: "auto",
-                      flex: "1 1 calc(25% - 5px)",
-                      maxWidth: 72,
-                      padding: "12px 0",
-                      background: "var(--card)",
-                      fontSize: 17,
-                    }}
                   >
                     {v}
                   </button>
                 ))}
               </div>
               {minuteSnaps.length > 0 && (
-                <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>
+                <p className="t-label t-muted" style={{ marginTop: 10 }}>
                   已记 {minuteSnaps.length} 次，最近：{minuteSnaps[minuteSnaps.length - 1].value} 分钟
                 </p>
               )}
@@ -314,16 +340,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
           {/* 巴士段：打点后系统自动记录车距（无需手动选择） */}
           {autoRecordStops && (
-            <p style={{ fontSize: 13, color: "var(--muted)", marginTop: -8, marginBottom: 12 }}>
-              ⚡ 点下方按钮后将自动记录当时车距
-            </p>
+            <p className="t-label t-muted t-center">⚡ 点下方按钮后将自动记录当时车距</p>
           )}
 
           {/* 主按钮 */}
-          {step.sub && <p style={{ fontSize: 15, marginBottom: 10 }}>{step.sub}</p>}
+          {step.sub && <p className="t-body" style={{ margin: 0 }}>{step.sub}</p>}
           <button
+            className="btn btn--primary btn--lg btn--block"
             onClick={() => postEvent(step.eventType, { station_code: step.stationCode ?? null })}
-            style={{ fontSize: 22, padding: "22px 20px" }}
           >
             {step.label}
           </button>
@@ -331,8 +355,9 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           {/* 等车阶段：没挤上 */}
           {waiting && (
             <button
+              className="btn btn--text t-error"
+              style={{ alignSelf: "center" }}
               onClick={() => postEvent("missed")}
-              style={{ background: "transparent", color: "var(--danger)", marginTop: 10, fontSize: 15 }}
             >
               没挤上车（继续等下一趟）
             </button>
@@ -340,24 +365,24 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
           {/* 乘车阶段：下一站提示 + 途经站打点 */}
           {riding && (
-            <div style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {rideInfo ? (
                 <>
-                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>
+                  <p className="t-label t-muted">
                     乘车中 · {rideInfo.routeCode} 路
                     {rideInfo.remaining !== null &&
                       (rideInfo.remaining > 0
                         ? ` · 还剩 ${rideInfo.remaining} 站下车`
                         : " · 本站下车")}
                   </p>
-                  <p style={{ fontSize: 24, fontWeight: 700, marginBottom: 10 }}>
+                  <p className="h-headline" style={{ margin: 0 }}>
                     下一站：{rideInfo.nextName}
                   </p>
                   {rideInfo.upcoming.length > 1 && (
-                    <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10, lineHeight: 1.8 }}>
+                    <p className="t-label t-muted" style={{ lineHeight: 1.7 }}>
                       之后：
                       {rideInfo.upcoming.slice(1).map((u, i) => (
-                        <span key={i} style={u.isDest ? { color: "var(--accent)" } : undefined}>
+                        <span key={i} className={u.isDest ? "t-accent t-strong" : undefined}>
                           {u.name}
                           {i < rideInfo.upcoming.length - 2 ? " → " : ""}
                         </span>
@@ -366,17 +391,15 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                   )}
                 </>
               ) : (
-                <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 10 }}>
-                  {step.sub}
-                </p>
+                <p className="t-body t-muted">{step.sub}</p>
               )}
               <button
+                className="btn btn--tonal btn--block"
                 onClick={() =>
                   postEvent("station_arrive", {
                     station_code: rideInfo?.nextCode ?? step.stationCode ?? null,
                   })
                 }
-                style={{ background: "var(--card)", color: "var(--muted)", marginTop: 4, fontSize: 15 }}
               >
                 ✓ 到站了，记一站
               </button>
@@ -386,13 +409,16 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
       )}
 
       {/* 最近事件，校验有没有按错 */}
-      <footer style={{ marginTop: "auto" }}>
+      <footer className="timeline">
         {recentEvents.map((e) => (
-          <p key={e.id} style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.7 }}>
-            {new Date(e.recorded_at).toLocaleTimeString("zh-CN", { timeZone: "Asia/Macau" })}{" "}
-            {EVENT_LABELS[e.event_type] ?? e.event_type}
-            {e.station_code ? `（${stationName(e.station_code)}）` : ""}
-          </p>
+          <div key={e.id} className="timeline-item">
+            <span className="timeline-dot" />
+            <span>
+              {new Date(e.recorded_at).toLocaleTimeString("zh-CN", { timeZone: "Asia/Macau" })}{" "}
+              {EVENT_LABELS[e.event_type] ?? e.event_type}
+              {e.station_code ? `（${stationName(e.station_code)}）` : ""}
+            </span>
+          </div>
         ))}
       </footer>
     </main>

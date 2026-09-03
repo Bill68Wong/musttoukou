@@ -1,4 +1,6 @@
-/* 手机视口截图诊断（scripts/shot.cjs）：node scripts/shot.cjs <url> [outfile.png] [width height] */
+/* 手机视口截图诊断（scripts/shot.cjs）：
+   node scripts/shot.cjs <url> [outfile.png] [w h] [light|dark]
+   dark 通过 emulateMedia 模拟 prefers-color-scheme: dark */
 const path = require("path");
 const PW = path.join(
   "C:", "Users", "ASUS", ".workbuddy", "binaries", "node", "workspace", "node_modules", "playwright-core",
@@ -13,12 +15,14 @@ const CHROME = path.join(
   const out = process.argv[3] ?? "shot.png";
   const w = Number(process.argv[4] ?? 390);
   const h = Number(process.argv[5] ?? 844);
+  const scheme = (process.argv[6] ?? "light").toLowerCase();
   if (!url) {
-    console.error("用法: node scripts/shot.cjs <url> [outfile] [w h]");
+    console.error("用法: node scripts/shot.cjs <url> [outfile] [w h] [light|dark]");
     process.exit(1);
   }
   const browser = await chromium.launch({ headless: true, executablePath: CHROME });
   const page = await browser.newPage({ viewport: { width: w, height: h } });
+  await page.emulateMedia({ colorScheme: scheme });
   const errs = [];
   page.on("pageerror", (e) => errs.push(`[pageerror] ${e.message}`));
   page.on("console", (m) => {

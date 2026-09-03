@@ -60,83 +60,82 @@ export default function RecordsClient({
 
   return (
     <main className="page">
-      <header style={{ marginBottom: 16, width: "100%" }}>
-        <h1 style={{ fontSize: 22, marginBottom: 4 }}>通勤记录</h1>
-        <p style={{ fontSize: 14, color: "var(--muted)" }}>
+      <header style={{ marginBottom: 20, width: "100%", padding: "0 2px" }}>
+        <h1 className="h-headline">通勤记录</h1>
+        <p className="t-label t-muted" style={{ marginTop: 4 }}>
           共 {records.length} 条 · 点「删除」清掉测试数据，删除后不计入统计
         </p>
       </header>
 
       {dbError && (
-        <p style={{ color: "var(--danger)", marginBottom: 12 }}>数据库错误：{dbError}</p>
+        <p className="t-error t-body" style={{ marginBottom: 12, width: "100%" }}>
+          数据库错误：{dbError}
+        </p>
       )}
-      {error && <p style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</p>}
+      {error && (
+        <p className="t-error t-body" style={{ marginBottom: 12, width: "100%" }}>
+          {error}
+        </p>
+      )}
 
       {records.length === 0 && !dbError && (
-        <p style={{ color: "var(--muted)", margin: "auto 0" }}>还没有记录</p>
+        <p className="t-body t-muted t-center" style={{ margin: "auto 0" }}>
+          还没有记录
+        </p>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}
+        className="anim-fade-up"
+      >
         {records.map((r) => (
-          <div
-            key={r.id}
-            style={{
-              background: "var(--card)",
-              borderRadius: 12,
-              padding: "12px 14px",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" }}>
-              <p style={{ fontSize: 15, lineHeight: 1.5 }}>
-                {fmtDateTime(r.started_at)}
-                {r.route_code && (
-                  <span style={{ color: "var(--muted)", fontSize: 13 }}> · {r.route_code} 路</span>
-                )}
-              </p>
-              <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 2, lineHeight: 1.5 }}>
-                {r.ended_at ? (
-                  <>
-                    {r.total_minutes !== null ? `${r.total_minutes} 分钟` : "已结束"}
-                    {r.missed_count > 0 && (
-                      <span style={{ color: "var(--danger)" }}> · 没挤上 ×{r.missed_count}</span>
-                    )}
-                    {r.crowd_level !== null && ` · ${CROWD_LABELS[r.crowd_level] ?? "?"}`}
-                  </>
-                ) : (
-                  <span style={{ color: "var(--accent)" }}>进行中…</span>
-                )}
-              </p>
+          <article key={r.id} className="card" style={{ padding: "12px 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" }}>
+                <p className="t-body" style={{ lineHeight: 1.5 }}>
+                  {fmtDateTime(r.started_at)}
+                  {r.route_code && (
+                    <span className="t-muted" style={{ fontSize: 13 }}>
+                      {" · "}
+                      {r.route_code} 路
+                    </span>
+                  )}
+                </p>
+                <p
+                  className="t-label t-muted"
+                  style={{ marginTop: 4, lineHeight: 1.5 }}
+                >
+                  {r.ended_at ? (
+                    <>
+                      {r.total_minutes !== null ? `${r.total_minutes} 分钟` : "已结束"}
+                      {r.missed_count > 0 && (
+                        <span className="t-error"> · 没挤上 ×{r.missed_count}</span>
+                      )}
+                      {r.crowd_level !== null &&
+                        ` · ${CROWD_LABELS[r.crowd_level] ?? "?"}`}
+                    </>
+                  ) : (
+                    <span className="t-accent">进行中…</span>
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={() => remove(r.id)}
+                disabled={deleting === r.id}
+                className="btn btn--danger-outline btn--sm"
+                style={{ flexShrink: 0, alignSelf: "center" }}
+              >
+                {deleting === r.id ? "…" : "删除"}
+              </button>
             </div>
-            <button
-              onClick={() => remove(r.id)}
-              disabled={deleting === r.id}
-              style={{
-                background: "transparent",
-                color: "var(--danger)",
-                border: "1px solid var(--danger)",
-                borderRadius: 10,
-                padding: 0,
-                fontSize: 13,
-                minWidth: 56,
-                width: 56,
-                minHeight: 44,
-                height: 44,
-                flexShrink: 0,
-                alignSelf: "center",
-              }}
-            >
-              {deleting === r.id ? "…" : "删除"}
-            </button>
-          </div>
+          </article>
         ))}
       </div>
 
       <button
         onClick={() => router.push("/")}
-        style={{ marginTop: 20, background: "var(--card)", color: "var(--muted)" }}
+        className="btn btn--outline btn--block"
+        style={{ marginTop: 24 }}
       >
         回首页
       </button>

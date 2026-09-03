@@ -53,9 +53,13 @@ export default function HomeClient({
   if (dbError) {
     return (
       <main className="page">
-        <h1 style={{ fontSize: 24, marginBottom: 8 }}>MUST登校</h1>
-        <p style={{ color: "var(--danger)", marginBottom: 12 }}>数据库未就绪</p>
-        <p style={{ color: "var(--muted)", fontSize: 14, lineHeight: 1.6 }}>
+        <h1 className="h-headline" style={{ marginBottom: 8 }}>
+          MUST登校
+        </h1>
+        <p className="t-error t-body" style={{ marginBottom: 12 }}>
+          数据库未就绪
+        </p>
+        <p className="t-label t-muted" style={{ lineHeight: 1.6 }}>
           请先完成初始化：配置 .env → npm run db:schema → npm run db:seed
           <br />
           详情：{dbError}
@@ -66,65 +70,78 @@ export default function HomeClient({
 
   return (
     <main className="page">
-      <h1 style={{ fontSize: 24, marginBottom: 4 }}>MUST登校</h1>
-      <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 16 }}>
-        选一条方案，开始计时
-      </p>
+      <header style={{ marginBottom: 20, padding: "4px 2px" }}>
+        <h1 className="h-headline">MUST登校</h1>
+        <p className="t-label t-muted" style={{ marginTop: 2 }}>
+          选一条方案，开始计时
+        </p>
+      </header>
 
       {active && (
         <button
+          className="press-card press-card--ok anim-pop"
           onClick={() => router.push(`/timer/${active.id}`)}
-          style={{ background: "var(--ok)", marginBottom: 20 }}
+          style={{ marginBottom: 20, minHeight: 68 }}
         >
-          ▶ 继续进行中的计时（{active.summary}）
+          <span className="icon-badge">▶</span>
+          <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+            <span className="h-title" style={{ display: "block" }}>
+              继续进行中的计时
+            </span>
+            <span
+              className="t-label"
+              style={{ display: "block", opacity: 0.85, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              {active.summary}
+            </span>
+          </span>
+          <span aria-hidden style={{ fontSize: 20, opacity: 0.7 }}>
+            ›
+          </span>
         </button>
       )}
 
-      {GROUPS.map((g) => {
+      {GROUPS.map((g, gi) => {
         const groupPlans = plans.filter((p) => p.to_kind === g.kind);
         if (groupPlans.length === 0) return null;
         return (
-          <section key={g.kind} style={{ marginBottom: 24 }}>
-            <h2 style={{ fontSize: 17, marginBottom: 10 }}>{g.title}</h2>
-            {groupPlans.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => start(p.id)}
-                disabled={starting !== null}
-                style={{
-                  marginBottom: 8,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  background: "var(--card)",
-                  color: "var(--text)",
-                }}
-              >
-                <span style={{ textAlign: "left" }}>{p.summary}</span>
-                <span
-                  style={{
-                    fontSize: 13,
-                    color: p.samples >= 5 ? "var(--ok)" : "var(--muted)",
-                    flexShrink: 0,
-                    marginLeft: 8,
-                  }}
+          <section key={g.kind} style={{ marginBottom: gi === GROUPS.length - 1 ? 28 : 24 }}>
+            <h2 className="group-title">{g.title}</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {groupPlans.map((p, pi) => (
+                <button
+                  key={p.id}
+                  className="press-card anim-fade-up"
+                  onClick={() => start(p.id)}
+                  disabled={starting !== null}
+                  style={{ animationDelay: `${pi * 30}ms` }}
                 >
-                  {p.samples} 份
-                </span>
-              </button>
-            ))}
+                  <span style={{ flex: 1, minWidth: 0 }}>{p.summary}</span>
+                  <span
+                    className={p.samples >= 5 ? "t-ok" : "t-muted"}
+                    style={{ fontSize: 13, flexShrink: 0, fontWeight: 600 }}
+                  >
+                    {p.samples} 份
+                  </span>
+                </button>
+              ))}
+            </div>
           </section>
         );
       })}
 
       <button
+        className="btn btn--outline btn--block btn--sm"
         onClick={() => router.push("/records")}
-        style={{ background: "var(--card)", color: "var(--muted)", fontSize: 14, marginBottom: 8 }}
+        style={{ minHeight: 44, fontWeight: 500 }}
       >
         📋 通勤记录（查看 / 删除测试数据）
       </button>
 
-      <p style={{ marginTop: "auto", color: "var(--muted)", fontSize: 12, textAlign: "center" }}>
+      <p
+        className="t-label t-muted t-center"
+        style={{ marginTop: "auto", paddingTop: 20, opacity: 0.8 }}
+      >
         数据来源：澳门交通事务局
       </p>
     </main>

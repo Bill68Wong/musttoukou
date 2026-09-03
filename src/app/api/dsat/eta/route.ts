@@ -173,10 +173,10 @@ export async function GET(req: NextRequest) {
         if (busIdx < 0) continue;
         for (const b of st.busInfo) {
           busCount++;
-          const arrived = b.status === "1";
-          // 总站停靠待发：status=1（到达标记）+ 挂首/末站 → 不算站数（发车时间未知）
+          const arrived = b.status === "1"; // s1=已到挂载站；s0=正在驶向挂载站（挂载站=下一站）
+          // 总站停靠待发：s1 + 挂首/末站 + 该站不是用户等车站 → 不算站数（发车时间未知）
           // ★ speed 不可靠（实测 2026-09-03 主人反馈：待发车可能残留非空速度），不参与判定
-          if (arrived && (busIdx === 0 || busIdx === N - 1)) {
+          if (arrived && (busIdx === 0 || busIdx === N - 1) && busIdx !== userIdx) {
             pending.push({
               plate: b.busPlate ?? null,
               atStation: st.staCode,
@@ -184,17 +184,15 @@ export async function GET(req: NextRequest) {
             });
             continue;
           }
-          const diff = userIdx - busIdx; // >0 车在用户站后方（会开来）；=0 同站；<0 已过
+          const diff = userIdx - busIdx; // >0 车在用户站后方；=0 挂用户站；<0 已过用户站
           let stopsAway: number;
           if (diff >= 0) {
             stopsAway = arrived ? diff : diff + 1;
           } else {
-            // 车已过用户站：循环线绕一圈；双方向线跳过（不会开来）
+            // 车已过用户站：循环线绕一圈；双方向线跳过（不会再来）
             if (!isLoop) continue;
             stopsAway = diff + N + (arrived ? 0 : 1);
           }
-          // 已离站（status=0 且挂载站=用户站）的车已经开走：循环线算整圈，双方向线跳过
-          if (diff === 0 && !arrived && !isLoop) continue;
           if (stopsAway > N) stopsAway = N;
 
           if (!nearest || stopsAway < nearest.stopsAway) {

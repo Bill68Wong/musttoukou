@@ -159,19 +159,30 @@ export default function LiveEta({
             );
           }
           const isNearest = minAway === r.nearest.stopsAway;
+          // 报站档位（2026-09-03 主人定义的口径）：
+          //   s0 挂用户站（正驶来）→ 即将进站；s1 挂用户站 → 已进站；
+          //   s1 挂前一站 → 还有 1 站；更远 → 还有 N 站
+          const n = r.nearest.stopsAway;
+          const stage =
+            n === 0
+              ? { text: "已进站！", flash: true }
+              : n === 1 && r.nearest.status === "0"
+                ? { text: "即将进站", flash: true }
+                : { text: `还有 ${n} 站`, flash: false };
           return (
             <p key={r.route} style={{ fontSize: 15, lineHeight: 1.8 }}>
-              <span style={{ fontWeight: 700, color: isNearest ? "var(--accent)" : undefined }}>
-                {r.route} 路 ·{" "}
-                {r.nearest.stopsAway === 0
-                  ? "已到站！"
-                  : `还有 ${r.nearest.stopsAway} 站`}
+              <span
+                style={{
+                  fontWeight: 700,
+                  color: stage.flash ? "var(--accent)" : isNearest ? "var(--accent)" : undefined,
+                }}
+              >
+                {r.route} 路 · {stage.text}
               </span>
               <span style={{ fontSize: 13, color: "var(--muted)" }}>
                 {" "}
                 {r.nearest.plate ?? ""}
                 {r.nearest.atStationName ? ` · 在${r.nearest.atStationName}` : ""}
-                {r.nearest.status === "1" ? "（進站中）" : ""}
                 {(r.pending?.length ?? 0) > 0 && ` · 另有 ${r.pending!.length} 辆总站待发`}
               </span>
             </p>

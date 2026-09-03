@@ -16,7 +16,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   try {
     const { id } = await ctx.params;
     const sessionId = Number(id);
-    const body = (await req.json().catch(() => ({}))) as { stage?: string; routes?: string[] };
+    const body = (await req.json().catch(() => ({}))) as { stage?: string; routes?: string[]; refStation?: string };
     if (!Number.isInteger(sessionId)) {
       return NextResponse.json({ error: "无效的会话 ID" }, { status: 400 });
     }
@@ -29,6 +29,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       sessionId,
       stage,
       routes: Array.isArray(body.routes) ? body.routes : undefined,
+      refStation: body.refStation?.trim() || undefined,
     });
     return NextResponse.json(result);
   } catch (err) {

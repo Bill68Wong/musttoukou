@@ -40,3 +40,4 @@ next-env.d.ts
 
 # 本地浏览器诊断脚本（机器特定路径，不入库）
 /scripts/diag-browser.cjs
+.dev.log

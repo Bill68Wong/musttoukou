@@ -138,15 +138,20 @@ CREATE TABLE IF NOT EXISTS wait_snapshots (
     session_id    INT NOT NULL REFERENCES timer_sessions(id) ON DELETE CASCADE,
     value_kind    TEXT NOT NULL,           -- 'stops'（车还有几站）| 'minutes'（轻轨还有几分钟）
     value         SMALLINT NOT NULL,       -- 手动 10 表示 10+；自动记录存真实站数（2026-09-03 起）
-    source        TEXT NOT NULL DEFAULT 'manual',  -- 'manual'|'auto_depart'|'auto_wait_start'（自动记录幂等键）
+    source        TEXT NOT NULL DEFAULT 'manual',  -- 'manual'|'auto_depart'|'auto_wait_start'
+    station_code  TEXT REFERENCES stations(code),  -- 自动记录所在的上车站（多段方案分段键）
     recorded_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- 迁移（幂等）：既有库补 source 列
+-- 迁移（幂等）：既有库补 source / station_code 列
 ALTER TABLE wait_snapshots ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE wait_snapshots ADD COLUMN IF NOT EXISTS station_code TEXT;
 CREATE INDEX IF NOT EXISTS idx_wait_snap_session ON wait_snapshots (session_id, recorded_at);
--- 幂等约束：同一会话同一自动时刻只记一次（manual 可多次）
-CREATE UNIQUE INDEX IF NOT EXISTS uq_wait_snap_auto_once
-    ON wait_snapshots (session_id, source)
+-- 幂等约束（v0.4.2 起按站分段）：同一会话同一自动时刻同一上车站只记一次（manual 可多次）
+-- ⚠️ 分键必须含 station_code：多段方案第二段在另一上车站 wait_start 的 auto_wait_start
+--    若只按 (session_id, source) 会被第一段的同 source 行 ON CONFLICT 丢弃（v0.4.1 bug）。
+DROP INDEX IF EXISTS uq_wait_snap_auto_once;
+CREATE UNIQUE INDEX uq_wait_snap_auto_once
+    ON wait_snapshots (session_id, source, station_code)
     WHERE source IN ('auto_depart', 'auto_wait_start');
 
 -- 2.10b 编辑痕迹（人工修正审计：只插入不更新，保留全部原值）

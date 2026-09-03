@@ -13,7 +13,10 @@ export const preferredRegion = "sin1";
  *  - 用户在「出发」或「到站，开始等车」打点成功后由前端触发（不阻塞打点）
  *  - 复用 /api/dsat/eta 同款核心（queryEta），v0.4.0 起 force=true 绕过 10s 缓存直查
  *  - 取跨线路最近一辆车的 stopsAway，写入 wait_snapshots（value_kind='stops'）
- *  - source 区分自动时刻（auto_depart / auto_wait_start），配合唯一约束保证同会话同一时刻只记一次
+ *  - source 区分自动时刻（auto_depart / auto_wait_start）
+ *  - 幂等约束 v0.4.2 起按站分段：(session_id, source, station_code)
+ *    多段方案每一段的上车站不同 → 各段 auto_depart / auto_wait_start 都能落库
+ *    （v0.4.1 只按 (session_id, source)，第二段 wait_start 被第一段同 source 行 ON CONFLICT 丢弃）
  *  - 查不到任何在途车（DSAT 失败 / 未发车 / 暂无车辆）→ 静默跳过不写库，绝不影响计时
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -62,15 +65,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       return NextResponse.json({ ok: true, skipped: "no_bus_near" });
     }
 
-    // value_kind='stops'，value 存真实站数；source 幂等（同会话同自动时刻仅一条）
+    // value_kind='stops'，value 存真实站数；station_code 落上车站（多段分键，缺省留空）
+    // 幂等：同一会话同一自动时刻同一上车站仅一条（不同上车站可各记，见文件头注释）
     const ins = await pool.query(
-      `INSERT INTO wait_snapshots (session_id, value_kind, value, source)
-       VALUES ($1, 'stops', $2, $3)
-       ON CONFLICT (session_id, source)
+      `INSERT INTO wait_snapshots (session_id, value_kind, value, source, station_code)
+       VALUES ($1, 'stops', $2, $3, $4)
+       ON CONFLICT (session_id, source, station_code)
        WHERE source IN ('auto_depart', 'auto_wait_start')
        DO NOTHING
        RETURNING id`,
-      [sessionId, stopsAway, source],
+      [sessionId, stopsAway, source, station],
     );
     const recorded = (ins.rows[0] as { id: number } | undefined) !== undefined;
     return NextResponse.json({ ok: true, recorded, stopsAway });

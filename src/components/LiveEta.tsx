@@ -3,8 +3,13 @@
 /**
  * 实时车距卡片（src/components/LiveEta.tsx）
  * 出门/等车阶段显示候选线路最近的車距本站还有几站。
- * 数据链路：/api/dsat/eta → DSAT routestation/bus（30s 服务端缓存）。
- * 60 秒自动刷新 + 手动刷新；失败静默保留旧数据（不打断计时流程）。
+ * 数据链路：/api/dsat/eta → DSAT routestation/bus（10s 服务端缓存）。
+ *
+ * v0.4.0 刷新规则（用户定稿，2026-09-03）：
+ *  - ★ 无自动轮询（移除 60s setInterval）
+ *  - 手动刷新：最小间隔 10s（本地守卫，不带 force）
+ *  - 打点（depart/wait_start 等系统时刻）后经 refreshKey 递增 → 立即取一次最新（force 由后台采集端处理）
+ *  - 失败静默保留旧数据（不打断计时流程）
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -33,22 +38,28 @@ interface EtaData {
   results: EtaResult[];
 }
 
-const REFRESH_MS = 60_000;
+/** 手动刷新最小间隔（毫秒） */
+const MANUAL_MIN_MS = 10_000;
 
 export default function LiveEta({
   station,
   routes,
   dir,
   dest,
+  refreshKey = 0,
 }: {
   station: string;
   routes: string[];
   dir: string;
   dest?: string | null;
+  /** 打点成功后父组件递增 → 立即刷新（系统时刻，不受 10s 手动下限约束） */
+  refreshKey?: number;
 }) {
   const [data, setData] = useState<EtaData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [manualHint, setManualHint] = useState<string | null>(null);
   const reqId = useRef(0);
+  const lastManualAt = useRef(0);
   const routesKey = routes.join(",");
 
   const fetchEta = useCallback(async () => {
@@ -72,11 +83,31 @@ export default function LiveEta({
     }
   }, [station, routesKey, dir, dest]);
 
+  // 挂载时取一次
   useEffect(() => {
     fetchEta();
-    const t = setInterval(fetchEta, REFRESH_MS);
-    return () => clearInterval(t);
   }, [fetchEta]);
+
+  // 系统打点（refreshKey 递增）→ 事件驱动刷新；跳过首帧 0
+  const prevKey = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshKey !== prevKey.current && refreshKey > 0) {
+      prevKey.current = refreshKey;
+      fetchEta();
+    }
+  }, [refreshKey, fetchEta]);
+
+  // 手动刷新：10s 最小间隔（本地守卫；不带 force，命中服务端 10s 缓存）
+  const manualRefresh = () => {
+    const now = Date.now();
+    if (now - lastManualAt.current < MANUAL_MIN_MS) {
+      setManualHint("10 秒后可再次手动刷新");
+      return;
+    }
+    lastManualAt.current = now;
+    setManualHint(null);
+    fetchEta();
+  };
 
   // 所有线路里最近的站数（高亮"坐哪辆先来"）
   const okWithBus = data?.results.filter((r) => r.ok && r.nearest) ?? [];
@@ -104,7 +135,7 @@ export default function LiveEta({
         <p className="h-title">🚌 实时车距</p>
         <button
           className="btn btn--text btn--sm"
-          onClick={fetchEta}
+          onClick={manualRefresh}
           disabled={loading}
           aria-label="刷新车距"
         >
@@ -114,6 +145,11 @@ export default function LiveEta({
           {loading ? "刷新中…" : "刷新"}
         </button>
       </div>
+      {manualHint && (
+        <p className="t-label t-muted" style={{ marginBottom: 6 }}>
+          {manualHint}
+        </p>
+      )}
 
       {!data ? (
         <p className="t-body t-muted">获取中…</p>
@@ -179,7 +215,7 @@ export default function LiveEta({
 
       {data && (
         <p className="t-label t-muted" style={{ marginTop: 6 }}>
-          更新于 {fmtTime(data.fetchedAt)} · DSAT 数据约 1 分钟一轮，仅供参考
+          更新于 {fmtTime(data.fetchedAt)} · 手动刷新 ≥10s 间隔 · DSAT 仅供参考
         </p>
       )}
     </div>

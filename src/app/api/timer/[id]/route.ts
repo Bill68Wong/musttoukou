@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 
+/** 就近部署：Supabase 新加坡池化器 → sin1 */
+export const preferredRegion = "sin1";
+
 /** GET /api/timer/[id]：会话详情 + 方案分段 + 事件 + 站名表（向导恢复用） */
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -59,8 +62,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       [sessionId],
     );
 
-    // 站名对照表（站点总量小，全量取）
-    const stationsRes = await pool.query(`SELECT code, name_tc FROM stations`);
+    // 站名对照表（站点总量小，全量取）；v0.4.0：巴士站值带站号前缀 "T358 偉龍/科大醫院"，轻轨不带
+    const stationsRes = await pool.query(`SELECT code, name_tc, kind FROM stations`);
 
     // 各载具段首选项线路的站序（乘车阶段「下一站」提示用）
     const routeStopsByRoute: Record<string, { seq: number; code: string; name: string }[]> = {};
@@ -70,7 +73,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       const rc = opts[0];
       if (!rc || routeStopsByRoute[rc]) continue;
       const stopsRes = await pool.query(
-        `SELECT rs.seq, rs.station_code AS code, st.name_tc AS name
+        `SELECT rs.seq, rs.station_code AS code,
+                (CASE WHEN st.kind = 'bus' THEN rs.station_code || ' ' || st.name_tc ELSE st.name_tc END) AS name
          FROM route_stations rs
          JOIN routes r ON rs.route_id = r.id
          JOIN stations st ON rs.station_code = st.code
@@ -87,7 +91,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       events: eventsRes.rows,
       snapshots: snapsRes.rows,
       stationNames: Object.fromEntries(
-        (stationsRes.rows as { code: string; name_tc: string }[]).map((r) => [r.code, r.name_tc]),
+        (stationsRes.rows as { code: string; name_tc: string; kind: string }[]).map((r) => [
+          r.code,
+          r.kind === "bus" ? `${r.code} ${r.name_tc}` : r.name_tc,
+        ]),
       ),
       routeStopsByRoute,
     });

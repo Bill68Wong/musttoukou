@@ -10,6 +10,7 @@ export type EventType =
   | "missed"
   | "board"
   | "station_arrive"
+  | "station_pass"
   | "alight"
   | "border_start"
   | "border_end"
@@ -92,6 +93,7 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
           label: "下车",
           sub: `目标站：${leg.to_station ?? ""}`,
           stationCode: leg.to_station,
+          quickKind: leg.leg_kind === "bus" ? "stops" : "minutes",
           routeOptions: leg.route_options,
           fromStationCode: leg.from_station,
         });
@@ -112,7 +114,7 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
   return steps;
 }
 
-/** 回放事件定位当前步骤下标（missed / station_arrive / 快照不推进） */
+/** 回放事件定位当前步骤下标（missed / station_arrive / station_pass / 快照不推进） */
 export function currentStepIndex(
   steps: Step[],
   events: { event_type: string }[],
@@ -121,7 +123,13 @@ export function currentStepIndex(
   for (const e of events) {
     if (i >= steps.length) break;
     const t = e.event_type;
-    if (t === "missed" || t === "station_arrive" || t === "wait_snapshot") continue;
+    if (
+      t === "missed" ||
+      t === "station_arrive" ||
+      t === "station_pass" ||
+      t === "wait_snapshot"
+    )
+      continue;
     if (steps[i].eventType === t) i++;
     // 乱序/多余事件忽略，不推进
   }

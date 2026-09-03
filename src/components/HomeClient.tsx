@@ -42,8 +42,9 @@ export default function HomeClient({
         body: JSON.stringify({ planId }),
       });
       if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? "启动失败");
-      const { sessionId } = (await res.json()) as { sessionId: number };
-      router.push(`/timer/${sessionId}`);
+      const body = (await res.json()) as { sessionId?: number };
+      if (!body.sessionId) throw new Error("启动失败：未返回会话");
+      router.push(`/timer/${body.sessionId}`);
     } catch (e) {
       alert((e as Error).message);
       setStarting(null);
@@ -101,6 +102,12 @@ export default function HomeClient({
         </button>
       )}
 
+      {starting !== null && (
+        <p className="t-body t-accent t-center anim-fade-up" style={{ marginBottom: 12 }}>
+          正在启动计时，请稍候…
+        </p>
+      )}
+
       {GROUPS.map((g, gi) => {
         const groupPlans = plans.filter((p) => p.to_kind === g.kind);
         if (groupPlans.length === 0) return null;
@@ -108,23 +115,36 @@ export default function HomeClient({
           <section key={g.kind} style={{ marginBottom: gi === GROUPS.length - 1 ? 28 : 24 }}>
             <h2 className="group-title">{g.title}</h2>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {groupPlans.map((p, pi) => (
-                <button
-                  key={p.id}
-                  className="press-card anim-fade-up"
-                  onClick={() => start(p.id)}
-                  disabled={starting !== null}
-                  style={{ animationDelay: `${pi * 30}ms` }}
-                >
-                  <span style={{ flex: 1, minWidth: 0 }}>{p.summary}</span>
-                  <span
-                    className={p.samples >= 5 ? "t-ok" : "t-muted"}
-                    style={{ fontSize: 13, flexShrink: 0, fontWeight: 600 }}
+              {groupPlans.map((p, pi) => {
+                const isStarting = starting === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    className="press-card anim-fade-up"
+                    onClick={() => start(p.id)}
+                    disabled={starting !== null}
+                    aria-busy={isStarting}
+                    style={{ animationDelay: `${pi * 30}ms` }}
                   >
-                    {p.samples} 份
-                  </span>
-                </button>
-              ))}
+                    <span
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        textAlign: "left",
+                        opacity: isStarting ? 0.75 : 1,
+                      }}
+                    >
+                      {isStarting ? "启动中…" : p.summary}
+                    </span>
+                    <span
+                      className={p.samples >= 5 ? "t-ok" : "t-muted"}
+                      style={{ fontSize: 13, flexShrink: 0, fontWeight: 600 }}
+                    >
+                      {isStarting ? "" : `${p.samples} 份`}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </section>
         );

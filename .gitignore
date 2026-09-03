@@ -41,3 +41,9 @@ next-env.d.ts
 # 本地浏览器诊断脚本（机器特定路径，不入库）
 /scripts/diag-browser.cjs
 .dev.log
+
+# 推送/打 tag 的过程日志（机器特定临时产物）
+.push*.log
+
+# 本地截图验证输出
+/.verify/

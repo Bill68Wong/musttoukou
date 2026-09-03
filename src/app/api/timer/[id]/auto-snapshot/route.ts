@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { queryEta, nearestStopsAway } from "@/lib/dsat/eta";
 
+/** 就近部署：Supabase 新加坡池化器 → sin1 */
+export const preferredRegion = "sin1";
+
 /**
  * POST /api/timer/[id]/auto-snapshot
  * body: { moment: "depart" | "wait_start", station, routes: string[], dir, dest }
  *
  * 系统自动记录车距（替代手动 0-11 快捷条）：
  *  - 用户在「出发」或「到站，开始等车」打点成功后由前端触发（不阻塞打点）
- *  - 复用 /api/dsat/eta 同款核心（queryEta + 30s 缓存），口径与 LiveEta 卡片一致
+ *  - 复用 /api/dsat/eta 同款核心（queryEta），v0.4.0 起 force=true 绕过 10s 缓存直查
  *  - 取跨线路最近一辆车的 stopsAway，写入 wait_snapshots（value_kind='stops'）
  *  - source 区分自动时刻（auto_depart / auto_wait_start），配合唯一约束保证同会话同一时刻只记一次
  *  - 查不到任何在途车（DSAT 失败 / 未发车 / 暂无车辆）→ 静默跳过不写库，绝不影响计时
@@ -51,8 +54,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       return NextResponse.json({ ok: true, skipped: "no_bus_leg" }); // 非巴士段（轻轨）不自动记录
     }
 
-    // 查询实时车距（30s 缓存：刚看过 LiveEta 时通常零额外 DSAT 请求）
-    const eta = await queryEta(station, routes, dir, dest);
+    // 查询实时车距（force=true：系统打点绕过 10s 缓存，直查 DSAT 并回写）
+    const eta = await queryEta(station, routes, dir, dest, true);
     const stopsAway = nearestStopsAway(eta); // 跨线路最近
     if (stopsAway === null) {
       // DSAT 失败 / 全部未发车 / 无在途车 → 无可记录的车距

@@ -14,8 +14,6 @@ export interface RecordRow {
   travel_date: string;
 }
 
-const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
-
 const CROWD_LABELS = ["空", "正常", "挤", "爆满"];
 
 // 固定模板格式化（MM/DD HH:mm），避免 toLocaleString 在 iOS/安卓输出

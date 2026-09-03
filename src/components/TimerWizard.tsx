@@ -14,6 +14,10 @@ interface SessionData {
     crowd_level: number | null;
     total_minutes: number | null;
     dsat_dir: string | null;
+    from_slug: string | null;
+    to_slug: string | null;
+    from_zone: string | null;
+    to_zone: string | null;
   };
   legs: PlanLegLite[];
   events: { id: number; seq: number; event_type: string; station_code: string | null; recorded_at: string }[];
@@ -24,12 +28,20 @@ interface SessionData {
 
 const QUICK_VALUES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
+/** 学校分区（B/C、N/O、R 座）—— 步行分组上下文，需求 10 */
+const SCHOOL_ZONES = [
+  { value: "B/C", hint: "B/C 座" },
+  { value: "N/O", hint: "N/O 座" },
+  { value: "R", hint: "R 座" },
+];
+
 const EVENT_LABELS: Record<string, string> = {
   depart: "出发",
   wait_start: "到站等车",
   missed: "没挤上",
   board: "上车",
   station_arrive: "途经站",
+  station_pass: "甩站未停",
   alight: "下车",
   border_start: "开始通关",
   border_end: "通关完成",
@@ -54,6 +66,11 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const [error, setError] = useState<string | null>(null);
   // 防连点用 ref（不触发重渲染，打点全程零卡顿）
   const busy = useRef(false);
+  // 学校分区选择（B/C | N/O | R；可跳过）
+  const [fromZone, setFromZone] = useState<string | null>(null);
+  const [toZone, setToZone] = useState<string | null>(null);
+  // 打点成功后递增 → LiveEta 卡片事件驱动刷新（需求 7：无自动轮询）
+  const [etaTick, setEtaTick] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -130,13 +147,13 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
       const body = (await res.json().catch(() => ({}))) as { error?: string; finished?: boolean };
       if (!res.ok) throw new Error(body.error ?? "打点失败");
 
-      // depart / wait_start 的巴士段：系统自动记录当时车距（不阻塞打点）
-      // 复用 /api/dsat/eta 30s 缓存，通常刚看过 LiveEta 时零额外 DSAT 请求
+      // —— 后台数据采集（全部不阻塞打点；失败静默） ——
+      // ① depart/wait_start 巴士段：自动记录当时车距（value 真实站数，force 直查）
+      const busContext =
+        curStep?.quickKind === "stops" && !!curStep.stationCode && !!curStep.routeOptions?.length;
       if (
         (type === "depart" || type === "wait_start") &&
-        curStep?.quickKind === "stops" &&
-        curStep.stationCode &&
-        curStep.routeOptions?.length
+        busContext
       ) {
         void fetch(`/api/timer/${sessionId}/auto-snapshot`, {
           method: "POST",
@@ -151,14 +168,27 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         }).catch(() => {});
       }
 
-      // wait_start 时顺手触发车辆抓取（不阻塞）
-      if (type === "wait_start") {
+      // ② 反事实车队快照（需求 9）：depart / wait_start / alight 三个时点全量候选车队
+      if ((type === "depart" || type === "wait_start" || type === "alight") && busContext) {
+        void fetch(`/api/timer/${sessionId}/fleet-snapshot`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage: type }),
+        }).catch(() => {});
+      }
+
+      // ③ board（上车）：抓实际乘坐车辆（v0.4.0 从 wait_start 挪到上车时点）
+      if (type === "board" && busContext) {
         void fetch("/api/dsat/grab", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId }),
+          body: JSON.stringify({ sessionId, station: curStep.stationCode }),
         }).catch(() => {});
       }
+
+      // ④ 打点成功后实时车距卡片事件驱动刷新（无自动轮询）
+      setEtaTick((t) => t + 1);
+
       if (type === "arrive") {
         router.replace(`/finish/${sessionId}`);
       }
@@ -196,6 +226,13 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const finished = idx >= steps.length || !!data.session.ended_at;
   const stationName = (code?: string | null) =>
     code ? (data.stationNames[code] ?? code) : "";
+  // sub 内嵌的站号替换为「站号 站名」（巴士）/「站名」（轻轨）
+  const fullSub = (sub?: string) => {
+    if (!sub || !step.stationCode) return sub;
+    const full = stationName(step.stationCode);
+    if (!full || full === step.stationCode) return sub;
+    return sub.split(step.stationCode).join(full);
+  };
 
   // 等车阶段（已到站、待上车）
   const waiting = step?.eventType === "board";
@@ -210,6 +247,33 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const autoRecordStops = departing && step.quickKind === "stops";
   // 乘车阶段（已上车、待下车）
   const riding = step?.eventType === "alight";
+  // 学校分区（需求 10）：离校 → 从哪个座走；抵校 → 到了哪个座
+  const showFromZone = step?.eventType === "depart" && data.session.from_slug === "school";
+  const showToZone = step?.eventType === "arrive" && data.session.to_slug === "school";
+
+  /** 分区 chips（单选可取消；不选也不阻塞打点） */
+  const renderZones = (question: string, value: string | null, onChange: (v: string | null) => void) => (
+    <div className="card" style={{ padding: "12px 14px" }}>
+      <p className="t-label" style={{ marginBottom: 8 }}>
+        {question}
+      </p>
+      <div className="chip-row">
+        {SCHOOL_ZONES.map((z) => (
+          <button
+            key={z.value}
+            className={`chip${value === z.value ? " chip--on" : ""}`}
+            onClick={() => onChange(value === z.value ? null : z.value)}
+            aria-pressed={value === z.value}
+          >
+            {z.hint}
+          </button>
+        ))}
+      </div>
+      <p className="t-label t-muted" style={{ marginTop: 8 }}>
+        用于按座区分的步行分组统计（可选）
+      </p>
+    </div>
+  );
 
   // ===== 乘车进度推算（下一站 / 剩余站数）=====
   // 站区码兼容匹配：T560 匹配 T560、T560/4；T560/2 也匹配 T560（取首个命中）
@@ -238,10 +302,12 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     if (routeCode && stops && stops.length > 0) {
       const boardIdx = findStopIdx(stops, step.fromStationCode);
       const destIdx = findStopIdx(stops, step.stationCode);
-      // 本程已记的途经站数：最后一次 board 之后的 station_arrive 数量
+      // 本程已记的途经站数：最后一次 board 之后 station_arrive + station_pass 的总和
       const lastBoardSeq = [...data.events].reverse().find((e) => e.event_type === "board")?.seq ?? -1;
       const passed = data.events.filter(
-        (e) => e.event_type === "station_arrive" && (e.seq ?? 0) > lastBoardSeq,
+        (e) =>
+          (e.event_type === "station_arrive" || e.event_type === "station_pass") &&
+          (e.seq ?? 0) > lastBoardSeq,
       ).length;
       if (boardIdx >= 0 && destIdx >= 0) {
         const n = stops.length;
@@ -300,7 +366,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             gap: 14,
           }}
         >
-          {/* 实时车距：出门/等车阶段（巴士段才显示，轻轨无实时数据） */}
+          {/* 实时车距：出门/等车阶段（巴士段才显示，轻轨无实时数据；需求 7：无自动轮询，打点后经 refreshKey 刷新） */}
           {(departing || waiting) &&
             step.quickKind === "stops" &&
             (step.routeOptions?.length ?? 0) > 0 &&
@@ -310,6 +376,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                 routes={step.routeOptions!}
                 dir={data.session.dsat_dir ?? "0"}
                 dest={step.destStationCode}
+                refreshKey={etaTick}
               />
             )}
 
@@ -343,11 +410,21 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             <p className="t-label t-muted t-center">⚡ 点下方按钮后将自动记录当时车距</p>
           )}
 
-          {/* 主按钮 */}
-          {step.sub && <p className="t-body" style={{ margin: 0 }}>{step.sub}</p>}
+          {/* 学校分区：离校 → 从哪个座走 / 抵校 → 到了哪个座（需求 10） */}
+          {showFromZone && renderZones("从哪个座出发？", fromZone, setFromZone)}
+          {showToZone && renderZones("到了哪个座？", toZone, setToZone)}
+
+          {/* 主按钮（带分区字段：出发带 from_zone / 抵校带 to_zone） */}
+          {step.sub && <p className="t-body" style={{ margin: 0 }}>{fullSub(step.sub)}</p>}
           <button
             className="btn btn--primary btn--lg btn--block"
-            onClick={() => postEvent(step.eventType, { station_code: step.stationCode ?? null })}
+            onClick={() =>
+              postEvent(step.eventType, {
+                station_code: step.stationCode ?? null,
+                ...(step.eventType === "depart" && fromZone ? { from_zone: fromZone } : {}),
+                ...(step.eventType === "arrive" && toZone ? { to_zone: toZone } : {}),
+              })
+            }
           >
             {step.label}
           </button>
@@ -391,8 +468,9 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                   )}
                 </>
               ) : (
-                <p className="t-body t-muted">{step.sub}</p>
+                <p className="t-body t-muted">{fullSub(step.sub)}</p>
               )}
+              {/* 两按钮：停靠到站 / 甩站未停（都入库并推进剩余站数） */}
               <button
                 className="btn btn--tonal btn--block"
                 onClick={() =>
@@ -401,7 +479,17 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                   })
                 }
               >
-                ✓ 到站了，记一站
+                ✓ 停靠 · 记一站
+              </button>
+              <button
+                className="btn btn--outline btn--block"
+                onClick={() =>
+                  postEvent("station_pass", {
+                    station_code: rideInfo?.nextCode ?? step.stationCode ?? null,
+                  })
+                }
+              >
+                ↷ 甩站没停 · 也记一站
               </button>
             </div>
           )}

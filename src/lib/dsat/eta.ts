@@ -4,9 +4,15 @@ import { findStopIdx } from "@/lib/station-match";
 
 /**
  * DSAT 实时车距查询核心（src/lib/dsat/eta.ts）
- * 供两处复用，保证口径唯一、不漂移：
+ * 供多处复用，保证口径唯一、不漂移：
  *   1. GET  /api/dsat/eta           —— 前端 LiveEta 卡片展示
  *   2. POST /api/timer/[id]/auto-snapshot —— 出发/到站时系统自动记录车距
+ *   3.     fleet-snapshot / grab    —— 通过 deriveBusDir 共用方向推导
+ *
+ * v0.4.0 刷新规则（2026-09-03 用户定稿）：
+ *  - 服务端缓存 30s → 10s（手动刷新 10s 下限由前端守，服务端不做节流）
+ *  - 支持 force=true：系统打点（depart/wait_start/board/alight）绕过缓存直查并回写
+ *  - 手动刷新不带 force（命 10s 缓存即可）
  *
  * 对每条线路查 DB 站序 + DSAT 实时车辆，算最近的車距用户站还有几站。
  *  - dest（目标站）提供时，每条线路自行推导方向（from 在 to 之前的 dir），
@@ -16,7 +22,6 @@ import { findStopIdx } from "@/lib/station-match";
  *  - 总站待发（status=1 + 挂首/末站）→ 不参与站数计算，列入 pending 显示"未发车"
  *    ★ speed 不可靠不参与判定（实测待发车可能残留非空速度）
  *  - 循环线（DB 只有 dir=0 一套站序）取模 wrap；双方向线跳过已过站的车
- *  - 30 秒 globalThis 缓存（避免轮询/多入口重复打爆 DSAT）
  *  - 最多 3 条线路（一次调用 = 最多 3 次 DSAT 请求）
  */
 
@@ -65,19 +70,68 @@ export function nearestStopsAway(res: EtaResponse): number | null {
   return best;
 }
 
-// 30s 缓存（dev 热重载下存活；按 站|线路组|dir|dest 聚合，覆盖 51A/51B 共站组合）
-const CACHE_TTL_MS = 30_000;
+// 10s 缓存（dev 热重载下存活；按 站|线路组|dir|dest 聚合，覆盖 51A/51B 共站组合）
+// v0.4.0：30s → 10s；force=true 绕过读取但写回
+const CACHE_TTL_MS = 10_000;
 const g = globalThis as unknown as {
   __etaCache?: Map<string, { ts: number; data: EtaResponse }>;
 };
 if (!g.__etaCache) g.__etaCache = new Map();
 
-/** 查询多线路实时车距（命中 30s 缓存直接返回） */
+/**
+ * 方向推导（共享，eta / 创建会话 / fleet-snapshot 同口径）：
+ * dest 提供时找 from 在 to 之前的 dir；推导不出回退 fallbackDir；
+ * 循环线兜底：两站同时只出现在唯一一套站序时用该方向。
+ */
+export async function deriveBusDir(
+  route: string,
+  fromStation: string | null | undefined,
+  toStation: string | null | undefined,
+  fallbackDir = "0",
+): Promise<string> {
+  if (!fromStation || !toStation) return fallbackDir;
+  const pool = getPool();
+  const dirRes = await pool.query(
+    `SELECT rs.dsat_dir,
+            max(rs.seq) FILTER (WHERE rs.station_code = $2 OR rs.station_code LIKE $2 || '/%') AS from_seq,
+            max(rs.seq) FILTER (WHERE rs.station_code = $3 OR rs.station_code LIKE $3 || '/%') AS to_seq
+     FROM route_stations rs
+     JOIN routes r ON rs.route_id = r.id
+     WHERE r.code = $1 AND r.kind = 'bus'
+     GROUP BY rs.dsat_dir`,
+    [route, fromStation, toStation],
+  );
+  let dir = fallbackDir;
+  let fallbackDirCandidate: string | null = null;
+  let bothCount = 0;
+  for (const row of dirRes.rows as {
+    dsat_dir: string;
+    from_seq: number | null;
+    to_seq: number | null;
+  }[]) {
+    if (row.from_seq !== null && row.to_seq !== null) {
+      bothCount++;
+      fallbackDirCandidate = row.dsat_dir;
+    }
+    if (row.from_seq !== null && row.to_seq !== null && row.from_seq < row.to_seq) {
+      dir = row.dsat_dir;
+      break;
+    }
+  }
+  // 兜底：循环线只有一套站序（from>to 绕圈）→ 用唯一含两站的方向
+  if (dir === fallbackDir && bothCount === 1 && fallbackDirCandidate) {
+    dir = fallbackDirCandidate;
+  }
+  return dir;
+}
+
+/** 查询多线路实时车距（命中 10s 缓存直接返回；force=true 绕过缓存直查） */
 export async function queryEta(
   station: string,
   routesIn: string[],
   dirIn: string,
   dest: string,
+  force = false,
 ): Promise<EtaResponse> {
   const routes = routesIn
     .map((r) => r.trim())
@@ -85,7 +139,7 @@ export async function queryEta(
     .slice(0, 3); // 最多 3 条
   const cacheKey = `${station}|${routes.join(",")}|${dirIn}|${dest}`;
   const cached = g.__etaCache!.get(cacheKey);
-  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+  if (!force && cached && Date.now() - cached.ts < CACHE_TTL_MS) {
     return cached.data;
   }
 
@@ -97,43 +151,14 @@ export async function queryEta(
     try {
       // 方向推导：dest 提供时按 from→to 找方向；推导不出回退 dir 参数
       // （循环线单方向 + from>to 时也回退，因循环线绕圈无所谓先后）
-      let queryDir = dir;
-      if (dest) {
-        const dirRes = await pool.query(
-          `SELECT rs.dsat_dir,
-                  max(rs.seq) FILTER (WHERE rs.station_code = $2 OR rs.station_code LIKE $2 || '/%') AS from_seq,
-                  max(rs.seq) FILTER (WHERE rs.station_code = $3 OR rs.station_code LIKE $3 || '/%') AS to_seq
-           FROM route_stations rs
-           JOIN routes r ON rs.route_id = r.id
-           WHERE r.code = $1 AND r.kind = 'bus'
-           GROUP BY rs.dsat_dir`,
-          [route, station, dest],
-        );
-        let fallbackDir: string | null = null;
-        let bothCount = 0;
-        for (const row of dirRes.rows as {
-          dsat_dir: string;
-          from_seq: number | null;
-          to_seq: number | null;
-        }[]) {
-          if (row.from_seq !== null && row.to_seq !== null) {
-            bothCount++;
-            fallbackDir = row.dsat_dir;
-          }
-          if (row.from_seq !== null && row.to_seq !== null && row.from_seq < row.to_seq) {
-            queryDir = row.dsat_dir;
-            break;
-          }
-        }
-        // 兜底：循环线只有一套站序（from>to 绕圈）→ 用唯一含两站的方向
-        if (queryDir === dir && bothCount === 1 && fallbackDir) {
-          queryDir = fallbackDir;
-        }
-      }
+      const queryDir = dest
+        ? await deriveBusDir(route, station, dest, dir)
+        : dir;
 
-      // 站序 + 站名（该方向）
+      // 站序 + 站名（该方向）；v0.4.0 起巴士站名带站号前缀（"T358 偉龍/科大醫院"），轻轨不带
       const stopsRes = await pool.query(
-        `SELECT rs.seq, rs.station_code AS code, st.name_tc AS name
+        `SELECT rs.seq, rs.station_code AS code,
+                (CASE WHEN st.kind = 'bus' THEN rs.station_code || ' ' || st.name_tc ELSE st.name_tc END) AS name
          FROM route_stations rs
          JOIN routes r ON rs.route_id = r.id
          JOIN stations st ON rs.station_code = st.code

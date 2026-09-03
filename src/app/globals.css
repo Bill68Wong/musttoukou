@@ -397,6 +397,17 @@ button:disabled {
   color: var(--on-primary-container);
 }
 
+.chip--on {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.chip--on:active {
+  background: var(--primary);
+  color: var(--on-primary);
+  opacity: 0.9;
+}
+
 .chip-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

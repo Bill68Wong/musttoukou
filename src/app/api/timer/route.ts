@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import { deriveBusDir } from "@/lib/dsat/eta";
+
+/** 就近部署：Supabase 新加坡池化器 → sin1 */
+export const preferredRegion = "sin1";
 
 /**
  * POST /api/timer：创建计时会话 {planId}
@@ -37,41 +41,20 @@ export async function POST(req: NextRequest) {
         ? (JSON.parse(vehicleLeg.route_options) as string[])
         : [];
       routeCode = options[0] ?? null;
-      // 由 route_stations 推导方向：from 站在 to 站之前的方向
-      if (routeCode && vehicleLeg.from_station && vehicleLeg.to_station) {
-        // 站区匹配：同一站区不同站台用后缀区分（C690 vs C690/1、C690/2），
-        // 方案里存站区主码，推导时兼容所有站台变体
-        const dirRes = await pool.query(
-          `SELECT dsat_dir,
-                  max(seq) FILTER (WHERE station_code = $2 OR station_code LIKE $2 || '/%') AS from_seq,
-                  max(seq) FILTER (WHERE station_code = $3 OR station_code LIKE $3 || '/%') AS to_seq
-           FROM route_stations rs
-           JOIN routes r ON rs.route_id = r.id
-           WHERE r.code = $1 AND r.kind = 'bus'
-           GROUP BY dsat_dir`,
-          [routeCode, vehicleLeg.from_station, vehicleLeg.to_station],
+      // 由共享推导（src/lib/dsat/eta.ts）：from 站在 to 站之前的方向；
+      // 循环线兜底（仅一套站序时用唯一方向）；轻轨无站序 → null（保持历史语义）
+      if (
+        routeCode &&
+        vehicleLeg.leg_kind === "bus" &&
+        vehicleLeg.from_station &&
+        vehicleLeg.to_station
+      ) {
+        dsatDir = await deriveBusDir(
+          routeCode,
+          vehicleLeg.from_station,
+          vehicleLeg.to_station,
+          "0",
         );
-        let singleDir: string | null = null;
-        let dirCount = 0;
-        for (const row of dirRes.rows as {
-          dsat_dir: string;
-          from_seq: number | null;
-          to_seq: number | null;
-        }[]) {
-          if (row.from_seq !== null && row.to_seq !== null) {
-            dirCount++;
-            singleDir = row.dsat_dir;
-          }
-          if (row.from_seq !== null && row.to_seq !== null && row.from_seq < row.to_seq) {
-            dsatDir = row.dsat_dir;
-            break;
-          }
-        }
-        // 兜底：循环线只有一套站序（回程 from_seq > to_seq 匹配不上），
-        // 两站都在该方向的站序里时直接用这唯一方向。
-        if (!dsatDir && dirCount === 1 && singleDir) {
-          dsatDir = singleDir;
-        }
       }
     }
 

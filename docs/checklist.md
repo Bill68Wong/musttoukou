@@ -94,13 +94,13 @@
 
 **T2.3 统计概览**
 
-- [ ] 样本数/均值/最短/最长与手动 SQL 计算一致
-- [ ] ≥5 样本的方案进度条变绿
+- [x] 样本数/均值/最短/最长与手动 SQL 计算一致（v0.5.0：11 份样本对拍 n/days/avg/min/max 全匹配）
+- [x] ≥5 样本的方案进度条变绿（home-school-1 集满 5 份 → ✓ 达标 绿色进度条）
 
 **T2.4 CSV 导出**
 
-- [ ] Excel 直接打开不乱码（UTF-8 BOM 验证）
-- [ ] 行数 = 导出范围 session 数，事件时间列齐全
+- [x] Excel 直接打开不乱码（UTF-8 BOM 验证，Content-Disposition: attachment; filename=musttoukou-sessions-YYYYMMDD.csv）
+- [x] 行数 = 导出范围 session 数，事件时间列齐全（出发/等车开始/上车/下车/通关开始/通关完成/到达）
 
 **T2.5 备份**
 

@@ -150,13 +150,22 @@ export default function HomeClient({
         );
       })}
 
-      <button
-        className="btn btn--outline btn--block btn--sm"
-        onClick={() => router.push("/records")}
-        style={{ minHeight: 44, fontWeight: 500 }}
-      >
-        📋 通勤记录（查看 / 删除测试数据）
-      </button>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          className="btn btn--outline btn--sm"
+          onClick={() => router.push("/records")}
+          style={{ flex: 1, minHeight: 44, fontWeight: 500 }}
+        >
+          📋 通勤记录
+        </button>
+        <button
+          className="btn btn--outline btn--sm"
+          onClick={() => router.push("/stats")}
+          style={{ flex: 1, minHeight: 44, fontWeight: 500 }}
+        >
+          📊 通勤统计
+        </button>
+      </div>
 
       <p
         className="t-label t-muted t-center"

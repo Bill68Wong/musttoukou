@@ -14,7 +14,8 @@ export default async function Home() {
       SELECT p.id, p.summary,
              pt.kind AS to_kind,
              (SELECT count(*)::int FROM timer_sessions s
-               WHERE s.plan_id = p.id AND s.deleted_at IS NULL) AS samples
+               WHERE s.plan_id = p.id AND s.deleted_at IS NULL
+                 AND s.total_minutes IS NOT NULL) AS samples
       FROM commute_plans p
       JOIN places pt ON p.to_place = pt.id
       WHERE p.is_active

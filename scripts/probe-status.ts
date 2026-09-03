@@ -2,7 +2,7 @@
  * 车辆 status 字段探针（scripts/probe-status.ts）
  * 目的：搞清 BusPosition.status（'0'/'1'）与 speed 的语义——进站/停站 vs 行驶中
  * 用法：npx tsx scripts/probe-status.ts [routeName dir]
- * ⚠️ speed 不可靠（2026-09-03 主人实测反馈：待发车可能残留非空速度），仅作观察
+ * ⚠️ speed 不可靠（2026-09-03 实测反馈：待发车可能残留非空速度），仅作观察
  */
 import { getBusPositions } from "../src/lib/dsat/client";
 

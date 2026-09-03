@@ -159,7 +159,7 @@ export default function LiveEta({
             );
           }
           const isNearest = minAway === r.nearest.stopsAway;
-          // 报站档位（2026-09-03 主人定义的口径）：
+          // 报站档位（2026-09-03 实测定稿的口径）：
           //   s0 挂用户站（正驶来）→ 即将进站；s1 挂用户站 → 已进站；
           //   s1 挂前一站 → 还有 1 站；更远 → 还有 N 站
           const n = r.nearest.stopsAway;

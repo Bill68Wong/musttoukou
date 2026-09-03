@@ -175,7 +175,7 @@ export async function GET(req: NextRequest) {
           busCount++;
           const arrived = b.status === "1"; // s1=已到挂载站；s0=正在驶向挂载站（挂载站=下一站）
           // 总站停靠待发：s1 + 挂首/末站 + 该站不是用户等车站 → 不算站数（发车时间未知）
-          // ★ speed 不可靠（实测 2026-09-03 主人反馈：待发车可能残留非空速度），不参与判定
+          // ★ speed 不可靠（实测 2026-09-03：待发车可能残留非空速度），不参与判定
           if (arrived && (busIdx === 0 || busIdx === N - 1) && busIdx !== userIdx) {
             pending.push({
               plate: b.busPlate ?? null,

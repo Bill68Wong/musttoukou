@@ -10,6 +10,7 @@ import { findStopIdx } from "@/lib/station-match";
  *    多段方案各段方向不同也能查对；推导不出时回退 dir 参数
  *  - status='1'（進站中/到达）→ 车就在挂载站，stopsAway = 站差
  *  - status='0'（行驶中）→ 挂载站是车的下一站，stopsAway = 站差 + 1
+ *  - 总站待发（status=1 + speed 空 + 挂首/末站）→ 不参与站数计算，列入 pending 显示"未发车"
  *  - 循环线（DB 只有 dir=0 一套站序）取模 wrap；双方向线跳过已过站的车
  *  - 30 秒 globalThis 缓存（避免前端 60s 轮询 + 手动刷新打爆 DSAT）
  *  - 最多 3 条线路（一次调用 = 最多 3 次 DSAT 请求）
@@ -24,6 +25,13 @@ interface EtaBus {
   speed: string | number | null;
 }
 
+/** 总站停靠待发的车（status=1 + speed 空 + 挂首/末站）：不算站数，显示"未发车" */
+interface EtaPendingBus {
+  plate: string | null;
+  atStation: string;
+  atStationName: string;
+}
+
 interface EtaRouteResult {
   route: string;
   ok: boolean;
@@ -31,6 +39,8 @@ interface EtaRouteResult {
   dir?: string;
   isLoop?: boolean;
   nearest?: EtaBus;
+  /** 停在首/末总站尚未发车的车辆（不参与站数计算） */
+  pending?: EtaPendingBus[];
   busCount?: number;
   error?: string;
 }
@@ -154,6 +164,7 @@ export async function GET(req: NextRequest) {
       const N = stops.length;
       let nearest: EtaBus | null = null;
       let busCount = 0;
+      const pending: EtaPendingBus[] = [];
 
       for (const st of res.data.routeInfo) {
         if (!st.busInfo?.length) continue;
@@ -162,6 +173,16 @@ export async function GET(req: NextRequest) {
         for (const b of st.busInfo) {
           busCount++;
           const arrived = b.status === "1";
+          const noSpeed = b.speed === undefined || b.speed === null || b.speed === "";
+          // 总站停靠待发：進站中/到达 + 无速度 + 挂首末站 → 不算站数（发车时间未知）
+          if (arrived && noSpeed && (busIdx === 0 || busIdx === N - 1)) {
+            pending.push({
+              plate: b.busPlate ?? null,
+              atStation: st.staCode,
+              atStationName: stops[busIdx]?.name ?? st.staCode,
+            });
+            continue;
+          }
           const diff = userIdx - busIdx; // >0 车在用户站后方（会开来）；=0 同站；<0 已过
           let stopsAway: number;
           if (diff >= 0) {
@@ -194,6 +215,7 @@ export async function GET(req: NextRequest) {
         dir: queryDir,
         isLoop,
         nearest: nearest ?? undefined,
+        pending: pending.length > 0 ? pending : undefined,
         busCount,
       });
     } catch (err) {

@@ -23,6 +23,7 @@ interface EtaResult {
   ok: boolean;
   isLoop?: boolean;
   nearest?: EtaNearest;
+  pending?: { plate: string | null; atStation: string; atStationName: string }[];
   busCount?: number;
   error?: string;
 }
@@ -136,6 +137,21 @@ export default function LiveEta({
             );
           }
           if (!r.nearest) {
+            // 没有在途车：总站有待发车 → 未发车；否则按有无在线车辆区分
+            if ((r.pending?.length ?? 0) > 0) {
+              const p = r.pending![0];
+              return (
+                <p key={r.route} style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.8 }}>
+                  {r.route} 路 · 未发车
+                  <span style={{ fontSize: 12 }}>
+                    {" "}
+                    ({p.plate ?? ""}
+                    {p.atStationName ? `在${p.atStationName}` : ""}
+                    {(r.pending?.length ?? 0) > 1 ? ` 等${r.pending!.length}辆` : ""})
+                  </span>
+                </p>
+              );
+            }
             return (
               <p key={r.route} style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.8 }}>
                 {r.route} 路 · {(r.busCount ?? 0) > 0 ? "本方向暂无来车" : "暂无在线车辆"}
@@ -156,6 +172,7 @@ export default function LiveEta({
                 {r.nearest.plate ?? ""}
                 {r.nearest.atStationName ? ` · 在${r.nearest.atStationName}` : ""}
                 {r.nearest.status === "1" ? "（進站中）" : ""}
+                {(r.pending?.length ?? 0) > 0 && ` · 另有 ${r.pending!.length} 辆总站待发`}
               </span>
             </p>
           );

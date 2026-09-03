@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildSteps, currentStepIndex, type PlanLegLite } from "@/lib/timer-flow";
 import LiveEta from "./LiveEta";
@@ -40,7 +40,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const router = useRouter();
   const [data, setData] = useState<SessionData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [posting, setPosting] = useState(false);
+  // 防连点用 ref（不触发重渲染，打点全程零卡顿）
+  const busy = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -62,18 +63,54 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     if (data?.session.ended_at) router.replace(`/finish/${sessionId}`);
   }, [data, router, sessionId]);
 
+  /**
+   * 打点（乐观更新）：点击后本地立即推进 UI（无 loading 闪烁），POST 后台同步；
+   * 失败回滚并提示。arrive 由服务器收尾，成功后跳结束页。
+   */
   async function postEvent(type: string, extra?: Record<string, unknown>) {
-    setPosting(true);
+    if (!data || busy.current) return;
+    busy.current = true;
+    const prev = data; // 失败回滚用
     try {
+      // —— 乐观更新本地 state ——
+      const nowIso = new Date().toISOString();
+      const maxSeq = data.events.reduce((m, e) => Math.max(m, e.seq), 0);
+      if (type === "wait_snapshot") {
+        // 等车快照：只追加 snapshots（events 列表不显示快照）
+        const snap = {
+          id: -(Date.now() % 1e9) - 1,
+          value_kind: (extra?.value_kind as string) ?? "stops",
+          value: extra?.value as number,
+          recorded_at: nowIso,
+        };
+        setData({ ...data, snapshots: [...data.snapshots, snap] });
+      } else {
+        const evt = {
+          id: -(Date.now() % 1e9) - 1,
+          seq: maxSeq + 1,
+          event_type: type,
+          station_code: (extra?.station_code as string | null) ?? null,
+          recorded_at: nowIso,
+        };
+        setData({
+          ...data,
+          events: [...data.events, evt],
+          session:
+            type === "missed"
+              ? { ...data.session, missed_count: data.session.missed_count + 1 }
+              : data.session,
+        });
+      }
+
+      // —— 后台同步服务器 ——
       const res = await fetch(`/api/timer/${sessionId}/events`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, ...extra }),
       });
-      if (!res.ok) {
-        const body = (await res.json()) as { error?: string };
-        throw new Error(body.error ?? "打点失败");
-      }
+      const body = (await res.json().catch(() => ({}))) as { error?: string; finished?: boolean };
+      if (!res.ok) throw new Error(body.error ?? "打点失败");
+
       // wait_start 时顺手触发车辆抓取（不阻塞）
       if (type === "wait_start") {
         void fetch("/api/dsat/grab", {
@@ -82,11 +119,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           body: JSON.stringify({ sessionId }),
         }).catch(() => {});
       }
-      await load();
+      if (type === "arrive") {
+        router.replace(`/finish/${sessionId}`);
+      }
     } catch (e) {
+      setData(prev); // 回滚本地乐观更新
       alert((e as Error).message);
     } finally {
-      setPosting(false);
+      busy.current = false;
     }
   }
 
@@ -226,7 +266,6 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                   <button
                     key={v}
                     onClick={() => postEvent("wait_snapshot", { value: v, value_kind: step.quickKind })}
-                    disabled={posting}
                     style={{
                       width: "auto",
                       flex: "1 1 calc(25% - 5px)",
@@ -254,17 +293,15 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           {step.sub && <p style={{ fontSize: 15, marginBottom: 10 }}>{step.sub}</p>}
           <button
             onClick={() => postEvent(step.eventType, { station_code: step.stationCode ?? null })}
-            disabled={posting}
             style={{ fontSize: 22, padding: "22px 20px" }}
           >
-            {posting ? "记录中…" : step.label}
+            {step.label}
           </button>
 
           {/* 等车阶段：没挤上 */}
           {waiting && (
             <button
               onClick={() => postEvent("missed")}
-              disabled={posting}
               style={{ background: "transparent", color: "var(--danger)", marginTop: 10, fontSize: 15 }}
             >
               没挤上车（继续等下一趟）
@@ -309,7 +346,6 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                     station_code: rideInfo?.nextCode ?? step.stationCode ?? null,
                   })
                 }
-                disabled={posting}
                 style={{ background: "var(--card)", color: "var(--muted)", marginTop: 4, fontSize: 15 }}
               >
                 ✓ 到站了，记一站

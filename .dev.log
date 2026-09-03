@@ -1,0 +1,39 @@
+
+> must-dengxiao@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.25
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.100.11:3000
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 32.2s
+ ✓ Compiled /middleware in 186ms (115 modules)
+ ○ Compiling / ...
+ ✓ Compiled / in 648ms (537 modules)
+ GET / 200 in 1513ms
+ ✓ Compiled /api/dsat/eta in 326ms (563 modules)
+ GET /api/dsat/eta?station=C653&routes=50&dir=0&dest=T400 200 in 557ms
+ ✓ Compiled /api/timer in 157ms (565 modules)
+ POST /api/timer 200 in 221ms
+ ✓ Compiled /timer/[id] in 317ms (577 modules)
+ GET /timer/10 200 in 4979ms
+ ✓ Compiled /api/timer/[id] in 165ms (579 modules)
+ GET /api/timer/10 200 in 777ms
+ GET /api/dsat/eta?station=T358&routes=26&dir=0&dest=C652 200 in 96ms
+ GET /api/dsat/eta?station=T358&routes=26&dir=0&dest=C652 200 in 266ms
+ ✓ Compiled /api/timer/[id]/events in 145ms (582 modules)
+ POST /api/timer/10/events 200 in 682ms
+ GET /timer/10 200 in 136ms
+ GET /api/timer/10 200 in 73ms
+ GET /api/dsat/eta?station=T358&routes=26&dir=0&dest=C652 200 in 12ms
+ GET /api/dsat/eta?station=T358&routes=26&dir=0&dest=C652 200 in 18ms
+ POST /api/timer/10/events 200 in 27ms
+ ✓ Compiled /api/dsat/grab in 209ms (584 modules)
+ POST /api/dsat/grab 200 in 307ms
+ GET /timer/10 200 in 112ms
+ GET /api/timer/10 200 in 74ms
+ GET /api/dsat/eta?station=T358&routes=26&dir=0&dest=C652 200 in 54ms
+ GET /api/dsat/eta?station=T358&routes=26&dir=0&dest=C652 200 in 86ms
+ POST /api/timer/10/events 200 in 26ms

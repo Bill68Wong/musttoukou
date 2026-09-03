@@ -10,7 +10,8 @@ import { findStopIdx } from "@/lib/station-match";
  *    多段方案各段方向不同也能查对；推导不出时回退 dir 参数
  *  - status='1'（進站中/到达）→ 车就在挂载站，stopsAway = 站差
  *  - status='0'（行驶中）→ 挂载站是车的下一站，stopsAway = 站差 + 1
- *  - 总站待发（status=1 + speed 空 + 挂首/末站）→ 不参与站数计算，列入 pending 显示"未发车"
+ *  - 总站待发（status=1 + 挂首/末站）→ 不参与站数计算，列入 pending 显示"未发车"
+ *    ★ speed 不可靠不参与判定（实测待发车可能残留非空速度）
  *  - 循环线（DB 只有 dir=0 一套站序）取模 wrap；双方向线跳过已过站的车
  *  - 30 秒 globalThis 缓存（避免前端 60s 轮询 + 手动刷新打爆 DSAT）
  *  - 最多 3 条线路（一次调用 = 最多 3 次 DSAT 请求）
@@ -173,9 +174,9 @@ export async function GET(req: NextRequest) {
         for (const b of st.busInfo) {
           busCount++;
           const arrived = b.status === "1";
-          const noSpeed = b.speed === undefined || b.speed === null || b.speed === "";
-          // 总站停靠待发：進站中/到达 + 无速度 + 挂首末站 → 不算站数（发车时间未知）
-          if (arrived && noSpeed && (busIdx === 0 || busIdx === N - 1)) {
+          // 总站停靠待发：status=1（到达标记）+ 挂首/末站 → 不算站数（发车时间未知）
+          // ★ speed 不可靠（实测 2026-09-03 主人反馈：待发车可能残留非空速度），不参与判定
+          if (arrived && (busIdx === 0 || busIdx === N - 1)) {
             pending.push({
               plate: b.busPlate ?? null,
               atStation: st.staCode,

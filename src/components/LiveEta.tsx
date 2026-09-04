@@ -12,9 +12,14 @@
  *    （v0.8.1 修复竞态：此前 GET 不带 force 会命中打点前旧缓存，与 auto-snapshot 的
  *      force 直查结果不一致导致界面横跳；现打点后两者同刻直查，口径一致）
  *  - 失败静默保留旧数据（不打断计时流程）
+ *
+ * v0.8.2（2026-09-04）：同车只降不升平滑（src/lib/eta-smooth.ts）
+ *  DSAT 站间过渡帧（车已离站、记录未切下一站）会把停 U−2 的 2 算成 3 → 界面 2→3→1 假倒退。
+ *  现按「线路|车牌」记住上一帧：同车回涨沿用旧值；新车/超时（120s）按真实值显示。
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { smoothStopsAway } from "@/lib/eta-smooth";
 
 interface EtaNearest {
   plate: string | null;
@@ -62,6 +67,8 @@ export default function LiveEta({
   const [manualHint, setManualHint] = useState<string | null>(null);
   const reqId = useRef(0);
   const lastManualAt = useRef(0);
+  /** 同车单调记忆（v0.8.2 修复 C 抖动 2→3→1）：跨帧持有，只降不升 */
+  const prevByBus = useRef(new Map<string, { stopsAway: number; ts: number }>());
   const routesKey = routes.join(",");
 
   const fetchEta = useCallback(
@@ -79,7 +86,11 @@ export default function LiveEta({
         const res = await fetch(`/api/dsat/eta?${qs.toString()}`, { cache: "no-store" });
         if (!res.ok) return;
         const body = (await res.json()) as EtaData;
-        if (id === reqId.current) setData(body);
+        if (id === reqId.current) {
+          // v0.8.2：同车只降不升，消除 DSAT 过渡帧导致的 2→3→1 假倒退
+          smoothStopsAway(prevByBus.current, body.results);
+          setData(body);
+        }
       } catch {
         // 静默失败，保留旧数据
       } finally {

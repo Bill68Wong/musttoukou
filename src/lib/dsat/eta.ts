@@ -17,11 +17,19 @@ import { findStopIdx } from "@/lib/station-match";
  * 对每条线路查 DB 站序 + DSAT 实时车辆，算最近的車距用户站还有几站。
  *  - dest（目标站）提供时，每条线路自行推导方向（from 在 to 之前的 dir），
  *    多段方案各段方向不同也能查对；推导不出时回退 dir 参数
- *  - status='1'（進站中/到达）→ 车就在挂载站，stopsAway = 站差
- *  - status='0'（行驶中）→ 挂载站是车的下一站，stopsAway = 站差 + 1
+ *  - v0.8.4 起站距口径（2026-09-04 实测修正，推翻 9-3 假设）：
+ *    DSAT 挂载站按「到站事件」更新——车离站后仍挂旧站（status=0），直到驶到
+ *    下一站停稳才切换。因此：
+ *      status='1' = 停靠挂载站（到站/上下客中）→ stopsAway = 站差
+ *      status='0' = 已离开挂载站驶向下一站（挂载站=刚离的站）→ stopsAway = 站差
+ *    （s0/s1 同值：车从停 X 到离 X 再到停 X+1，剩余停靠数不变，数字单调递减，
+ *      不再有 s0 的 +1，整段站间的虚高从根上消失）
+ *    实测证据：用户"车驶离 C654/3（紧邻等车站）仍显示还有 2 站"；
+ *    probe-switch.ts 采样 AB5503 s0@C652 连续 40s+ 后才 s1@C655（到站才切）
+ *  - s0 挂用户站 = 车刚离站：环线按绕一圈 N 站计；双方向线跳过（不会再来）
  *  - 总站待发（status=1 + 挂首/末站）→ 不参与站数计算，列入 pending 显示"未发车"
  *    ★ speed 不可靠不参与判定（实测待发车可能残留非空速度）
- *  - 循环线（DB 只有 dir=0 一套站序）取模 wrap；双方向线跳过已过站的车
+ *  - 循环线（DB 只有 dir=0 一套站序）已过站按绕圈计；双方向线跳过已过站的车
  *  - v0.8.1 修复多线截断：最多 6 条（与 fleet-snapshot 上限一致），≤3 条/批并发查询
  *    （修复前 slice(0,3)：横琴 6 线方案的 102/701X/N6 永不返回）
  */
@@ -209,7 +217,15 @@ export async function queryEta(
         if (busIdx < 0) continue;
         for (const b of st.busInfo) {
           busCount++;
-          const arrived = b.status === "1"; // s1=已到挂载站；s0=正在驶向挂载站（挂载站=下一站）
+          // ★ v0.8.4 口径修正（2026-09-04 用户实测 + 切站采样推翻 9-3 假设）：
+          //   DSAT 挂载站更新 =「到站事件」驱动——车离站后仍挂旧站（s0），直到驶到下一站
+          //   停稳才切换。因此 s0 挂 X = 车已离开 X（已过站），不是"正在驶向 X（未到）"。
+          //   ⇒ 站距 = 用户站与挂载站的站差，s0/s1 同值，不再 +1；
+          //     数字从"停 X"到"离 X"到"停 X+1"单调递减，过渡帧虚高从根上消失。
+          //   实测证据（probe-switch.ts，26 路 5 帧 20s 间隔）：AB5503 s0@C652 连续 40s+
+          //     → 直接 s1@C655；MX7866/AC4098 同模式（离站挂旧站→到站才切）。
+          //   用户场景：车驶离 C654/3（紧邻等车站 C653）应显示"即将进站"而非"还有 2 站"。
+          const arrived = b.status === "1"; // s1=停靠挂载站；s0=已离挂载站驶向下一站
           // 总站停靠待发：s1 + 挂首/末站 + 该站不是用户等车站 → 不算站数（发车时间未知）
           // ★ speed 不可靠（实测 2026-09-03：待发车可能残留非空速度），不参与判定
           if (arrived && (busIdx === 0 || busIdx === N - 1) && busIdx !== userIdx) {
@@ -222,12 +238,22 @@ export async function queryEta(
           }
           const diff = userIdx - busIdx; // >0 车在用户站后方；=0 挂用户站；<0 已过用户站
           let stopsAway: number;
-          if (diff >= 0) {
-            stopsAway = arrived ? diff : diff + 1;
+          if (diff > 0) {
+            // 车停 busIdx（s1）或已离 busIdx 驶向 busIdx+1（s0）：到用户站还要停靠
+            // busIdx+1..userIdx 共 diff 次 → 两者同值
+            stopsAway = diff;
+          } else if (diff === 0) {
+            if (arrived) {
+              stopsAway = 0; // 停靠用户站 = 已进站
+            } else if (isLoop) {
+              stopsAway = N; // 环线车刚离用户站：绕一圈才回，显示整环站数
+            } else {
+              continue; // 双方向线车刚离用户站：已过站不会再来，跳过
+            }
           } else {
-            // 车已过用户站：循环线绕一圈；双方向线跳过（不会再来）
+            // 车已过用户站：循环线绕一圈回来；双方向线跳过（不会再来）
             if (!isLoop) continue;
-            stopsAway = diff + N + (arrived ? 0 : 1);
+            stopsAway = N + diff; // 车停或已离 busIdx（均>userIdx）：绕回 userIdx 的停靠数恒 N+diff
           }
           if (stopsAway > N) stopsAway = N;
 

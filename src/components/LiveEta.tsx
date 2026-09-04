@@ -13,9 +13,9 @@
  *      force 直查结果不一致导致界面横跳；现打点后两者同刻直查，口径一致）
  *  - 失败静默保留旧数据（不打断计时流程）
  *
- * v0.8.2（2026-09-04）：同车只降不升平滑（src/lib/eta-smooth.ts）
- *  DSAT 站间过渡帧（车已离站、记录未切下一站）会把停 U−2 的 2 算成 3 → 界面 2→3→1 假倒退。
- *  现按「线路|车牌」记住上一帧：同车回涨沿用旧值；新车/超时（120s）按真实值显示。
+ * v0.8.2/0.8.3（2026-09-04）：同车只降不升平滑（src/lib/eta-smooth.ts，模块级记忆）。
+ * v0.8.4 根因已修（eta.ts 站距口径 s0/s1 同值，不再有 2→3），平滑降级为纯防御层，
+ * 仅兜底 DSAT 数据自身的偶发回跳（换车/换向/毛刺）。
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -26,7 +26,7 @@ interface EtaNearest {
   stopsAway: number; // 0 = 已到站
   atStation: string;
   atStationName: string;
-  status: string | null; // '1' 進站中 / '0' 行驶中
+  status: string | null; // '1' 停靠挂载站 / '0' 已离挂载站驶向下一站（v0.8.4 口径）
   speed: string | number | null;
 }
 
@@ -207,9 +207,10 @@ export default function LiveEta({
             );
           }
           const isNearest = minAway === r.nearest.stopsAway;
-          // 报站档位（2026-09-03 实测定稿的口径）：
-          //   s0 挂用户站（正驶来）→ 即将进站；s1 挂用户站 → 已进站；
-          //   s1 挂前一站 → 还有 1 站；更远 → 还有 N 站
+          // 报站档位（v0.8.4 口径修正，2026-09-04）：
+          //   s1 挂用户站 → 0 = 已进站（车停靠中）
+          //   s0 挂紧邻前站 → 1 = 即将进站（车已离前站驶来，还有 1 次停靠）
+          //   s1 挂前一站 → 还有 1 站（车停着没动）；更远 → 还有 N 站
           const n = r.nearest.stopsAway;
           const stage =
             n === 0

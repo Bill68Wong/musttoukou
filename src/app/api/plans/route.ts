@@ -10,7 +10,9 @@ export async function GET() {
              pf.slug AS from_slug, pf.name AS from_name,
              pt.slug AS to_slug, pt.name AS to_name, pt.kind AS to_kind,
              (SELECT count(*)::int FROM timer_sessions s
-               WHERE s.plan_id = p.id AND s.deleted_at IS NULL) AS samples,
+               WHERE s.plan_id = p.id AND s.deleted_at IS NULL
+                 AND NOT COALESCE(s.is_test, false)
+                 AND s.total_minutes IS NOT NULL) AS samples,
              (SELECT max(s.started_at) FROM timer_sessions s WHERE s.plan_id = p.id) AS last_used,
              -- v0.7.0：各载具段主线路主题色（取 route_options 首项）
              COALESCE(

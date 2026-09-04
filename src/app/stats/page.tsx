@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { getPool } from "@/lib/db";
 import StatsClient, { GroupStat, PlanStat, Summary } from "@/components/StatsClient";
 
@@ -9,15 +10,27 @@ const GROUP_TITLES: { kind: string; title: string }[] = [
   { kind: "border", title: "去横琴口岸" },
 ];
 
+// v0.10.0：默认排除测试会话（is_test=true），「含测试」偏好存 cookie（mtk_include_test=1）
+async function includeTestPref(): Promise<boolean> {
+  try {
+    const store = await cookies();
+    return store.get("mtk_include_test")?.value === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default async function StatsPage() {
   let groups: GroupStat[] = [];
   let summary: Summary | null = null;
   let dbError: string | null = null;
+  const includeTest = await includeTestPref();
+  const testFilter = includeTest ? "" : "AND NOT COALESCE(s.is_test, false)";
 
   try {
     const pool = getPool();
 
-    // 统计口径：非软删 且 已完成（total_minutes 非空）的会话才算 1 个样本
+    // 统计口径：非软删 且 非测试 且 已完成（total_minutes 非空）的会话才算 1 个样本
     const planRes = await pool.query(`
       SELECT cp.id AS plan_id, cp.plan_key, cp.summary,
              pt.kind AS to_kind,
@@ -30,6 +43,7 @@ export default async function StatsPage() {
       JOIN places pf ON cp.from_place = pf.id
       JOIN places pt ON cp.to_place = pt.id
       LEFT JOIN timer_sessions s ON s.plan_id = cp.id AND s.deleted_at IS NULL
+        ${includeTest ? "" : "AND NOT COALESCE(s.is_test, false)"}
       WHERE cp.is_active
       GROUP BY cp.id, cp.plan_key, cp.summary, pf.kind, pt.kind
       ORDER BY cp.id
@@ -41,7 +55,7 @@ export default async function StatsPage() {
              count(DISTINCT travel_date)::int AS days,
              round(avg(total_minutes), 1)::float8 AS avg_min
       FROM timer_sessions
-      WHERE deleted_at IS NULL AND total_minutes IS NOT NULL
+      WHERE deleted_at IS NULL AND total_minutes IS NOT NULL ${testFilter}
     `);
     const s = sumRes.rows[0] as { n: number; days: number; avg_min: number | null };
     summary = {
@@ -63,5 +77,12 @@ export default async function StatsPage() {
     dbError = (err as Error).message;
   }
 
-  return <StatsClient groups={groups} summary={summary} dbError={dbError} />;
+  return (
+    <StatsClient
+      groups={groups}
+      summary={summary}
+      dbError={dbError}
+      includeTest={includeTest}
+    />
+  );
 }

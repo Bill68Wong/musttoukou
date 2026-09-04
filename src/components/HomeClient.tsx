@@ -85,6 +85,8 @@ export default function HomeClient({
 }) {
   const router = useRouter();
   const [starting, setStarting] = useState<number | null>(null);
+  // v0.10.0 测试模式：开 → 新建会话标 is_test=true（不计入统计/记录/导出，跑完不必手动删）
+  const [testMode, setTestMode] = useState(false);
 
   async function start(planId: number) {
     setStarting(planId);
@@ -92,7 +94,7 @@ export default function HomeClient({
       const res = await fetch("/api/timer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, is_test: testMode }),
       });
       if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? "启动失败");
       const body = (await res.json()) as { sessionId?: number };
@@ -130,6 +132,35 @@ export default function HomeClient({
           选一条方案，开始计时
         </p>
       </header>
+
+      {/* v0.10.0 测试模式开关：测试运行标 is_test，不计入统计/记录（默认关） */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 16,
+          padding: "10px 14px",
+          borderRadius: 16,
+          background: "var(--surface-dim, #eef1f4)",
+        }}
+      >
+        <span className="t-label" style={{ fontWeight: 600 }}>
+          🧪 测试模式
+        </span>
+        <button
+          role="switch"
+          aria-checked={testMode}
+          className={`chip${testMode ? " chip--on" : ""}`}
+          onClick={() => setTestMode((v) => !v)}
+          style={{ marginLeft: "auto", minWidth: 76, justifyContent: "center" }}
+        >
+          {testMode ? "开" : "关"}
+        </button>
+        <span className="t-label t-muted" style={{ flexShrink: 0 }}>
+          {testMode ? "· 测试记录" : "· 真实记录"}
+        </span>
+      </div>
 
       {active && (
         <button

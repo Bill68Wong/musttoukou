@@ -85,7 +85,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     // 站名对照表（站点总量小，全量取）；v0.4.0：巴士站值带站号前缀 "T358 偉龍/科大醫院"，轻轨不带
     const stationsRes = await pool.query(`SELECT code, name_tc, kind FROM stations`);
 
-    // 各载具段首选项线路的站序（乘车阶段「下一站/途经站」推进用）
+    // 各载具段候选线路的站序（乘车阶段「下一站/途经站」推进用；v0.10.0 起覆盖整段 route_options
+    // 全部备选，用户乘非首选项时同样可逐站推进）
     // v0.8.0：不再硬编码 kind='bus'——轻轨三线已入 route_stations；
     // 方向按本段 from→to 推导（bus 沿用 DSAT dir 语义；轻轨 dir0=正向编号递增向、dir1=反向），
     // 使「科大→協和」（反向乘坐）取到与行进方向一致的站序，中间站正常逐站显示。
@@ -93,23 +94,24 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     const vehicleLegs = legs.filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
     for (const leg of vehicleLegs) {
       const opts = leg.route_options ?? [];
-      const rc = opts[0];
-      if (!rc || routeStopsByRoute[rc]) continue;
-      const dir =
-        leg.from_station && leg.to_station
-          ? await deriveRouteDir(rc, leg.from_station, leg.to_station, session.dsat_dir ?? "0")
-          : (session.dsat_dir ?? "0");
-      const stopsRes = await pool.query(
-        `SELECT rs.seq, rs.station_code AS code,
-                (CASE WHEN st.kind = 'bus' THEN rs.station_code || ' ' || st.name_tc ELSE st.name_tc END) AS name
-         FROM route_stations rs
-         JOIN routes r ON rs.route_id = r.id
-         JOIN stations st ON rs.station_code = st.code
-         WHERE r.code = $1 AND rs.dsat_dir = $2
-         ORDER BY rs.seq`,
-        [rc, dir],
-      );
-      routeStopsByRoute[rc] = stopsRes.rows as { seq: number; code: string; name: string }[];
+      for (const rc of opts) {
+        if (!rc || routeStopsByRoute[rc]) continue;
+        const dir =
+          leg.from_station && leg.to_station
+            ? await deriveRouteDir(rc, leg.from_station, leg.to_station, session.dsat_dir ?? "0")
+            : (session.dsat_dir ?? "0");
+        const stopsRes = await pool.query(
+          `SELECT rs.seq, rs.station_code AS code,
+                  (CASE WHEN st.kind = 'bus' THEN rs.station_code || ' ' || st.name_tc ELSE st.name_tc END) AS name
+           FROM route_stations rs
+           JOIN routes r ON rs.route_id = r.id
+           JOIN stations st ON rs.station_code = st.code
+           WHERE r.code = $1 AND rs.dsat_dir = $2
+           ORDER BY rs.seq`,
+          [rc, dir],
+        );
+        routeStopsByRoute[rc] = stopsRes.rows as { seq: number; code: string; name: string }[];
+      }
     }
 
     return NextResponse.json({

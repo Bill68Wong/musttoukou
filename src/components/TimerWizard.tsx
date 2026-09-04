@@ -20,6 +20,8 @@ interface SessionData {
     crowd_level: number | null;
     total_minutes: number | null;
     dsat_dir: string | null;
+    route_code: string | null;
+    is_test: boolean;
     from_slug: string | null;
     to_slug: string | null;
     from_zone: string | null;
@@ -103,6 +105,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const [continueFrom, setContinueFrom] = useState<number | null>(null);
   // 打点成功后递增 → LiveEta 卡片事件驱动刷新（需求 7：无自动轮询）
   const [etaTick, setEtaTick] = useState(0);
+  // v0.10.0 A11：多候选线路段「实际乘哪一路」（board 阶段选；乘车推进/车队参照按此线）
+  const [routeChoice, setRouteChoice] = useState<string | null>(null);
+  // v0.10.0 A8：tap_id 幂等——同一次打点（同 type+参数）复用同一 id；成功后清除，失败留作重试
+  const tapIds = useRef(new Map<string, string>());
 
   const load = useCallback(async () => {
     try {
@@ -132,6 +138,17 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     if (!data || busy.current) return;
     busy.current = true;
     const prev = data; // 失败回滚用
+    // v0.10.0 A8：幂等键 = 同一次逻辑打点（type + 参数）生成一次；服务器按 (session_id, tap_id) 去重
+    const sigKey = `${type}|${JSON.stringify(extra ?? {})}`;
+    let tapId = tapIds.current.get(sigKey);
+    if (!tapId) {
+      tapId = `${sessionId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      if (tapIds.current.size >= 12) {
+        const oldest = tapIds.current.keys().next().value;
+        if (oldest) tapIds.current.delete(oldest);
+      }
+      tapIds.current.set(sigKey, tapId);
+    }
     // 当前被打点的步骤（自动记录车距用：depart / wait_start 的巴士段）
     // 注意用覆盖后的步骤，否则选了非默认上车站会以默认站为基准错位
     const curSteps = applyBoardSteps(buildSteps(data.legs), data.legs, data.events, boardStation);
@@ -180,14 +197,16 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
       // 关键打点：轻触觉反馈
       if (HAPTIC_EVENTS.has(type)) tryVibrate();
 
-      // —— 后台同步服务器 ——
+      // —— 后台同步服务器（带 tap_id，服务器幂等：同 id 已存在则不双写） ——
       const res = await fetch(`/api/timer/${sessionId}/events`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, ...extra }),
+        body: JSON.stringify({ type, tap_id: tapId, ...extra }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string; finished?: boolean };
       if (!res.ok) throw new Error(body.error ?? "打点失败");
+      // 打点已入库（成功或幂等命中）→ 释放幂等键，供下一次打点使用
+      tapIds.current.delete(sigKey);
 
       // —— 后台数据采集（全部不阻塞打点；失败静默） ——
       // ① depart/wait_start 巴士段：自动记录当时车距（value 真实站数，force 直查）
@@ -240,8 +259,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         router.replace(`/finish/${sessionId}`);
       }
     } catch (e) {
-      setData(prev); // 回滚本地乐观更新
-      alert((e as Error).message);
+      const msg = (e as Error).message;
+      // arrive 已在服务器收尾但响应丢失/重试撞「会话已结束」→ 直接进结束页（幂等兜底）
+      if (type === "arrive" && /已结束|会话已结束/.test(msg)) {
+        router.replace(`/finish/${sessionId}`);
+        return;
+      }
+      setData(prev); // 回滚本地乐观更新（幂等键保留，重试复用同 tap_id）
+      alert(msg);
     } finally {
       busy.current = false;
     }
@@ -326,6 +351,17 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const showFromZone = step?.eventType === "depart" && data.session.from_slug === "school";
   const showToZone = step?.eventType === "arrive" && data.session.to_slug === "school";
 
+  // v0.10.0 A11：多候选线路段「乘哪一路」（chips 选中 > 会话已修正实乘线 > 首选项）
+  // board 提交带实乘线 → 服务端把 route_code/dsat_dir 修正到实乘线（首个载具段）
+  const isBoardRouteMulti =
+    step?.eventType === "board" && (step.routeOptions?.length ?? 0) > 1 && step.quickKind === "stops";
+  const effRoute =
+    routeChoice && step.routeOptions?.includes(routeChoice)
+      ? routeChoice
+      : data.session.route_code && step.routeOptions?.includes(data.session.route_code)
+        ? data.session.route_code
+        : (step.routeOptions?.[0] ?? null);
+
   /** 分区 chips（单选可取消；不选也不阻塞打点） */
   const renderZones = (question: string, value: string | null, onChange: (v: string | null) => void) => (
     <div className="card" style={{ padding: "12px 14px" }}>
@@ -385,7 +421,12 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   };
   let rideInfo: RideInfo | null = null;
   if (riding && step.routeOptions) {
-    const routeCode = step.routeOptions.find((r) => (data.routeStopsByRoute[r]?.length ?? 0) > 0);
+    // v0.10.0：乘车推进优先「实乘线」（A11 非首选线路也逐站正确）；无站序的选项跳过
+    const fallbackRoute = step.routeOptions.find((r) => (data.routeStopsByRoute[r]?.length ?? 0) > 0);
+    const routeCode =
+      effRoute && (data.routeStopsByRoute[effRoute]?.length ?? 0) > 0
+        ? effRoute
+        : fallbackRoute;
     const stops = routeCode ? data.routeStopsByRoute[routeCode] : undefined;
     if (routeCode && stops && stops.length > 0) {
       const boardIdx = findStopIdx(stops, step.fromStationCode);
@@ -498,6 +539,19 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           {data.session.missed_count > 0 && (
             <span className="t-error"> · 没挤上 ×{data.session.missed_count}</span>
           )}
+          {data.session.is_test && (
+            <span
+              className="t-label"
+              style={{
+                marginLeft: 6,
+                padding: "1px 8px",
+                borderRadius: 999,
+                background: "var(--surface-dim, #eef1f4)",
+              }}
+            >
+              🧪 测试中（不计统计）
+            </span>
+          )}
         </p>
       </header>
 
@@ -598,6 +652,32 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             </div>
           )}
 
+          {/* v0.10.0 A11：多候选线路段——上车前确认「乘哪一路」（实乘线决定记录/乘车推进/车辆抓取） */}
+          {isBoardRouteMulti && step.routeOptions && (
+            <div className="card" style={{ padding: "12px 14px" }}>
+              <p className="t-label" style={{ marginBottom: 8 }}>
+                乘哪一路？
+              </p>
+              <div className="chip-row">
+                {step.routeOptions.map((r) => (
+                  <button
+                    key={r}
+                    className={`chip${effRoute === r ? " chip--on" : ""}`}
+                    aria-pressed={effRoute === r}
+                    onClick={() => setRouteChoice(effRoute === r ? null : r)}
+                  >
+                    {r.startsWith("LRT-") ? lrtLabelOf(r) : `${r} 路`}
+                  </button>
+                ))}
+              </div>
+              <p className="t-label t-muted" style={{ marginTop: 8 }}>
+                {effRoute
+                  ? `按「${effRoute.startsWith("LRT-") ? lrtLabelOf(effRoute) : `${effRoute} 路`}」记录本次乘车`
+                  : `默认「${step.routeOptions[0]} 路」`}
+              </p>
+            </div>
+          )}
+
           {/* 动态下车决策中：主「下车」替换为决策卡的两个按钮，避免误按到总站 */}
           {!ridingDecision && (
             <>
@@ -609,6 +689,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                     station_code: step.stationCode ?? null,
                     ...(step.eventType === "depart" && fromZone ? { from_zone: fromZone } : {}),
                     ...(step.eventType === "arrive" && toZone ? { to_zone: toZone } : {}),
+                    // v0.10.0 A11：多候选段 board 提交实乘线 → 服务端修正 route_code/dsat_dir
+                    ...(step.eventType === "board" && isBoardRouteMulti && effRoute
+                      ? { route: effRoute }
+                      : {}),
                   })
                 }
               >

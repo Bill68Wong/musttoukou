@@ -12,6 +12,7 @@ export interface RecordRow {
   crowd_level: number | null;
   route_code: string | null;
   travel_date: string;
+  is_test?: boolean;
 }
 
 const CROWD_LABELS = ["空", "正常", "挤", "爆满"];
@@ -28,14 +29,22 @@ function fmtDateTime(iso: string) {
 export default function RecordsClient({
   records: initial,
   dbError,
+  includeTest,
 }: {
   records: RecordRow[];
   dbError: string | null;
+  includeTest?: boolean;
 }) {
   const router = useRouter();
   const [records, setRecords] = useState(initial);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // v0.10.0「含测试」偏好：写 cookie 后刷新（服务端按偏好过滤）
+  function toggleIncludeTest() {
+    document.cookie = `mtk_include_test=${includeTest ? "0" : "1"}; path=/; max-age=31536000; samesite=lax`;
+    router.refresh();
+  }
 
   async function remove(id: number) {
     if (!window.confirm("确定删除这条记录？（用于清除测试数据，删除后不参与统计）")) return;
@@ -60,9 +69,19 @@ export default function RecordsClient({
     <main className="page">
       <header style={{ marginBottom: 20, width: "100%", padding: "0 2px" }}>
         <h1 className="h-headline">通勤记录</h1>
-        <p className="t-label t-muted" style={{ marginTop: 4 }}>
-          共 {records.length} 条 · 点「删除」清掉测试数据，删除后不计入统计
+        <p className="t-label t-muted" style={{ marginTop: 4, lineHeight: 1.6 }}>
+          共 {records.length} 条{includeTest ? "（含测试）" : ""} · 点「删除」清掉测试数据，删除后不计入统计
         </p>
+        {/* v0.10.0：测试模式偏好开关（默认排除 is_test=true 的测试运行） */}
+        <button
+          role="switch"
+          aria-checked={!!includeTest}
+          className={`chip${includeTest ? " chip--on" : ""}`}
+          onClick={toggleIncludeTest}
+          style={{ marginTop: 8 }}
+        >
+          🧪 含测试 {includeTest ? "开" : "关"}
+        </button>
       </header>
 
       {dbError && (
@@ -97,6 +116,9 @@ export default function RecordsClient({
                       {" · "}
                       {r.route_code} 路
                     </span>
+                  )}
+                  {r.is_test && (
+                    <span className="t-muted" style={{ fontSize: 12 }}> · 🧪 测试</span>
                   )}
                 </p>
                 <p

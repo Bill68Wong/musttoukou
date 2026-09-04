@@ -135,6 +135,8 @@ CREATE INDEX IF NOT EXISTS idx_sessions_route_date ON timer_sessions (route_code
 -- v0.4.0 学校分区（B/C|N/O|R 三组座）：随 depart/arrive 打点落到会话，做步行分组上下文
 ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS from_zone TEXT;  -- 离校时从哪个座出发
 ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS to_zone TEXT;    -- 到校后到哪个座
+-- v0.10.0 测试模式标记：测试运行 is_test=true；统计/记录/导出默认排除（「含测试」偏好可开）
+ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;
 
 -- 2.10 计时器打点事件
 CREATE TABLE IF NOT EXISTS timer_events (
@@ -144,8 +146,13 @@ CREATE TABLE IF NOT EXISTS timer_events (
     event_type    TEXT NOT NULL,           -- 'depart'|'wait_start'|'missed'|'board'|'station_arrive'|'station_pass'|'alight'|'border_start'|'border_end'|'arrive'
     station_code  TEXT REFERENCES stations(code),
     recorded_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    tap_id        TEXT,                    -- v0.10.0 客户端幂等键（每个关键打点一次生成，重试复用）
     UNIQUE (session_id, seq)
 );
+-- v0.10.0 事件幂等：同 (session_id, tap_id) 只记一次（网络重试/双击不双写；多 NULL 不冲突，兼容旧客户端）
+CREATE UNIQUE INDEX IF NOT EXISTS uq_events_session_tap
+    ON timer_events (session_id, tap_id)
+    WHERE tap_id IS NOT NULL;
 
 -- 2.10a 等车实时信息快照（等车阶段可多次更新）
 CREATE TABLE IF NOT EXISTS wait_snapshots (

@@ -15,6 +15,7 @@ export default async function Home() {
              pt.kind AS to_kind,
              (SELECT count(*)::int FROM timer_sessions s
                WHERE s.plan_id = p.id AND s.deleted_at IS NULL
+                 AND NOT COALESCE(s.is_test, false)
                  AND s.total_minutes IS NOT NULL) AS samples,
              -- v0.7.0：方案各载具段主线路主题色（取 route_options 首项；walk/transfer 不参与）
              COALESCE(
@@ -40,6 +41,7 @@ export default async function Home() {
       SELECT s.id, p.summary FROM timer_sessions s
       JOIN commute_plans p ON s.plan_id = p.id
       WHERE s.ended_at IS NULL AND s.deleted_at IS NULL
+        AND NOT COALESCE(s.is_test, false)
       ORDER BY s.id DESC LIMIT 1
     `);
     active = (activeRes.rows[0] as ActiveSession | undefined) ?? null;

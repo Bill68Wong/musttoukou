@@ -352,38 +352,45 @@ button:disabled {
   background: var(--ok-container);
 }
 
-/* 首页方案卡主题色（v0.7.0）：载具色作卡片背景，多载具段均分左右色块 */
+/* 首页方案卡主题色（v0.7.0+）：载具主题色作卡片背景；v0.8.0 起实色（主人指定原色），文字对比由组件算好内联 */
 .plan-card {
   position: relative;
   overflow: hidden;
+  border-color: transparent;
 }
 
 .pc-veil {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.95;
-  transition: opacity var(--dur-fast) var(--ease-em);
+  transition: filter var(--dur-fast) var(--ease-em);
 }
 
 .press-card:hover:not(:disabled) .pc-veil {
-  opacity: 1;
+  filter: brightness(1.08);
 }
 
 .press-card:active:not(:disabled) .pc-veil {
-  opacity: 1;
+  filter: brightness(0.88);
 }
 
 .pc-inner {
   position: relative;
   z-index: 1;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   width: 100%;
   min-width: 0;
+  align-items: center;
+  justify-content: space-between;
   text-align: left;
+  gap: 12px;
+}
+
+/* 样本数小标签（实色底上以半透同色 pill 呈现，颜色随文字对比色） */
+.pc-count {
+  padding: 1px 9px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, currentColor 14%, transparent);
 }
 
 /* 乘车界面线路徽章（v0.7.0 主题色点缀） */

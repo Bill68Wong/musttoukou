@@ -7,7 +7,7 @@ import { findStopIdx } from "@/lib/station-match";
  * 供多处复用，保证口径唯一、不漂移：
  *   1. GET  /api/dsat/eta           —— 前端 LiveEta 卡片展示
  *   2. POST /api/timer/[id]/auto-snapshot —— 出发/到站时系统自动记录车距
- *   3.     fleet-snapshot / grab    —— 通过 deriveBusDir 共用方向推导
+ *   3.     fleet-snapshot / grab    —— 通过 deriveRouteDir 共用方向推导
  *
  * v0.4.0 刷新规则（2026-09-03 用户定稿）：
  *  - 服务端缓存 30s → 10s（手动刷新 10s 下限由前端守，服务端不做节流）
@@ -79,11 +79,12 @@ const g = globalThis as unknown as {
 if (!g.__etaCache) g.__etaCache = new Map();
 
 /**
- * 方向推导（共享，eta / 创建会话 / fleet-snapshot 同口径）：
+ * 方向推导（共享，eta / 创建会话 / fleet-snapshot / timer 乘车站序 同口径）：
  * dest 提供时找 from 在 to 之前的 dir；推导不出回退 fallbackDir；
  * 循环线兜底：两站同时只出现在唯一一套站序时用该方向。
+ * v0.8.0 起不限 kind：轻轨（LRT-*）也走本推导（route_stations 中 dir0=正向/dir1=反向）。
  */
-export async function deriveBusDir(
+export async function deriveRouteDir(
   route: string,
   fromStation: string | null | undefined,
   toStation: string | null | undefined,
@@ -97,7 +98,7 @@ export async function deriveBusDir(
             max(rs.seq) FILTER (WHERE rs.station_code = $3 OR rs.station_code LIKE $3 || '/%') AS to_seq
      FROM route_stations rs
      JOIN routes r ON rs.route_id = r.id
-     WHERE r.code = $1 AND r.kind = 'bus'
+     WHERE r.code = $1
      GROUP BY rs.dsat_dir`,
     [route, fromStation, toStation],
   );
@@ -152,7 +153,7 @@ export async function queryEta(
       // 方向推导：dest 提供时按 from→to 找方向；推导不出回退 dir 参数
       // （循环线单方向 + from>to 时也回退，因循环线绕圈无所谓先后）
       const queryDir = dest
-        ? await deriveBusDir(route, station, dest, dir)
+        ? await deriveRouteDir(route, station, dest, dir)
         : dir;
 
       // 站序 + 站名（该方向）；v0.4.0 起巴士站名带站号前缀（"T358 偉龍/科大醫院"），轻轨不带

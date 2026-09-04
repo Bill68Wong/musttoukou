@@ -23,8 +23,8 @@ const GROUPS: { kind: string; title: string }[] = [
   { kind: "border", title: "去横琴口岸" },
 ];
 
-/* ---------- v0.7.0 主题色：hex → rgba 淡色，供卡片底色均分渐变 ---------- */
-function hexA(hex: string, alpha: number): string {
+/* ---------- v0.8.0 主题色：卡片背景 = 主人指定的线路原色（实色），文字按亮度自动对比 ---------- */
+function rgbOf(hex: string): { r: number; g: number; b: number } | null {
   const h = hex.replace("#", "");
   const full =
     h.length === 3
@@ -34,21 +34,42 @@ function hexA(hex: string, alpha: number): string {
           .join("")
       : h;
   const n = parseInt(full, 16);
-  if (Number.isNaN(n)) return `rgba(128,128,128,${alpha})`;
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+  if (Number.isNaN(n)) return null;
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+/** 感知亮度 0~255（Rec.601 加权），供文字深/浅决策 */
+function luma(hex: string): number {
+  const c = rgbOf(hex);
+  if (!c) return 128;
+  return (c.r * 299 + c.g * 587 + c.b * 114) / 1000;
+}
+/** 原色压暗/提亮 factor（<1 压暗、>1 提亮），返回 hex */
+function shade(hex: string, factor: number): string {
+  const c = rgbOf(hex);
+  if (!c) return hex;
+  const f = (v: number) => Math.max(0, Math.min(255, Math.round(v * factor)));
+  return `rgb(${f(c.r)},${f(c.g)},${f(c.b)})`;
+}
+/** 文字墨色：任一载具段很浅（亮度>155）→ 深字；全深色 → 白字 */
+function inkOf(colors: (string | null)[]): { color: string; shadow: string } {
+  const segs = colors.filter((c): c is string => !!c);
+  if (segs.length === 0) return { color: "", shadow: "" };
+  const lightest = Math.max(...segs.map(luma));
+  return lightest > 155
+    ? { color: "#101418", shadow: "0 1px 1px rgba(255,255,255,.22)" }
+    : { color: "#ffffff", shadow: "0 1px 2px rgba(0,0,0,.32)" };
 }
 
-/** 卡片底色：1 段=斜向单色淡渐变；多段=按段均分左右色块（换乘几次就几段） */
-function veilGradient(colors: (string | null)[]): string {
+/** 卡片底色：1 段=原色斜向微渐变；多段=按段均分实色块（换乘几次就几段） */
+function solidGradient(colors: (string | null)[]): string {
   const segs = colors.filter((c): c is string => !!c);
   if (segs.length === 0) return "";
-  const A = 0.16;
   if (segs.length === 1) {
-    return `linear-gradient(135deg, ${hexA(segs[0], A)} 0%, ${hexA(segs[0], A * 0.5)} 100%)`;
+    return `linear-gradient(135deg, ${segs[0]} 0%, ${shade(segs[0], 0.9)} 100%)`;
   }
   const w = 100 / segs.length;
   const stops = segs
-    .map((c, i) => `${hexA(c, A)} ${(i * w).toFixed(2)}% ${((i + 1) * w).toFixed(2)}%`)
+    .map((c, i) => `${c} ${(i * w).toFixed(2)}% ${((i + 1) * w).toFixed(2)}%`)
     .join(", ");
   return `linear-gradient(to right, ${stops})`;
 }
@@ -149,7 +170,9 @@ export default function HomeClient({
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {groupPlans.map((p, pi) => {
                 const isStarting = starting === p.id;
-                const veil = p.colors?.some(Boolean) ? veilGradient(p.colors!) : "";
+                const hasColor = p.colors?.some(Boolean) ?? false;
+                const veil = hasColor ? solidGradient(p.colors!) : "";
+                const ink = hasColor ? inkOf(p.colors!) : { color: "", shadow: "" };
                 return (
                   <button
                     key={p.id}
@@ -160,12 +183,19 @@ export default function HomeClient({
                     style={{ animationDelay: `${pi * 30}ms` }}
                   >
                     {veil && <span aria-hidden className="pc-veil" style={{ background: veil }} />}
-                    <span className="pc-inner" style={{ opacity: isStarting ? 0.75 : 1 }}>
+                    <span
+                      className="pc-inner"
+                      style={{
+                        opacity: isStarting ? 0.75 : 1,
+                        color: ink.color,
+                        textShadow: ink.shadow,
+                      }}
+                    >
                       <span style={{ flex: 1, minWidth: 0 }}>
                         {isStarting ? "启动中…" : p.summary}
                       </span>
                       <span
-                        className={p.samples >= 5 ? "t-ok" : "t-muted"}
+                        className="pc-count"
                         style={{ fontSize: 13, flexShrink: 0, fontWeight: 600 }}
                       >
                         {isStarting ? "" : `${p.samples} 份`}

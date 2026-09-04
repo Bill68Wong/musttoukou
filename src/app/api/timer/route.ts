@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
-import { deriveBusDir } from "@/lib/dsat/eta";
+import { deriveRouteDir } from "@/lib/dsat/eta";
 
 /** 就近部署：Supabase 新加坡池化器 → sin1 */
 export const preferredRegion = "sin1";
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
         vehicleLeg.from_station &&
         vehicleLeg.to_station
       ) {
-        dsatDir = await deriveBusDir(
+        dsatDir = await deriveRouteDir(
           routeCode,
           vehicleLeg.from_station,
           vehicleLeg.to_station,

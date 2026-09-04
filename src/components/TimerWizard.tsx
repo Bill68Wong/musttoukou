@@ -84,6 +84,10 @@ const lrtLabelOf = (code: string) =>
     .replace(/横/g, "橫")
     .replace(/线/g, "線");
 
+/** 乘车标题线路显示：轻轨 → 「輕軌·氹仔線」；巴士 → 「51 路」 */
+const rideRouteLabel = (code: string) =>
+  code.startsWith("LRT-") ? lrtLabelOf(code) : `${code} 路`;
+
 export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const router = useRouter();
   const [data, setData] = useState<SessionData | null>(null);
@@ -630,7 +634,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
               {rideInfo.decision ? (
                 <>
                   <p className="t-label t-muted">
-                    乘车中 · {rideInfo.routeCode} 路 · 已到 {rideInfo.decision.name}
+                    乘车中 · {rideRouteLabel(rideInfo.routeCode)} · 已到 {rideInfo.decision.name}
                   </p>
                   <div className="card" style={{ padding: 14 }}>
                     <p className="h-headline" style={{ margin: 0 }}>
@@ -667,7 +671,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
               ) : (
                 <>
                   <p className="t-label t-muted">
-                    乘车中 · {rideInfo.routeCode} 路
+                    乘车中 · {rideRouteLabel(rideInfo.routeCode)}
                     {rideInfo.remaining !== null &&
                       (rideInfo.remaining > 0
                         ? ` · 还剩 ${rideInfo.remaining} 站到「${rideInfo.destName}」`

@@ -67,6 +67,7 @@ const net = JSON.parse(
   places: { id: string; name: string; type: string }[];
   stations: StationSeed[];
   routes: { code: string; kind: string; company?: string; color?: string }[];
+  lrtLineStops: { code: string; dirs: Record<string, string[]> }[];
   plans: PlanSeed[];
 };
 
@@ -138,6 +139,25 @@ async function main() {
       routeIds.set(r.code, (res.rows[0] as { id: number }).id);
     }
     console.log(`✅ routes：${net.routes.length} 条（含主题色）`);
+
+    // 4.5 轻轨站序（route_stations 仅 LRT 静态三线；巴士站序由 DSAT 同步脚本维护）
+    let lrtStopCount = 0;
+    for (const line of net.lrtLineStops ?? []) {
+      const routeId = routeIds.get(line.code);
+      if (!routeId) continue;
+      for (const [dir, stops] of Object.entries(line.dirs)) {
+        let seq = 0;
+        for (const code of stops) {
+          await q(
+            `INSERT INTO route_stations (route_id, dsat_dir, seq, station_code)
+             VALUES ($1,$2,$3,$4)`,
+            [routeId, dir, ++seq, code],
+          );
+          lrtStopCount++;
+        }
+      }
+    }
+    console.log(`✅ route_stations（LRT 站序）：${lrtStopCount} 行`);
 
     // 5. plans + legs
     let legCount = 0;

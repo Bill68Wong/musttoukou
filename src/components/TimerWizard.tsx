@@ -229,17 +229,13 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         }).catch(() => {});
       }
 
-      // ② 反事实车队快照（需求 9）：depart / wait_start / alight 三个时点全量候选车队。
-      //    多段方案必须传当前 step 的 station_code 与 routeOptions，否则第二段会以首段 from_station + session.route_code 为基准错位
+      // ② 反事实车队快照（需求 9 / v0.11.0）：depart / wait_start / alight 三个时点全量候选车队。
+      //    服务端按会话 OD 自动推导候选集（同 from/to 各方案主线路+各自上车站），无需前端传站/线
       if ((type === "depart" || type === "wait_start" || type === "alight") && busContext) {
         void fetch(`/api/timer/${sessionId}/fleet-snapshot`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            stage: type,
-            refStation: curStep.stationCode ?? undefined,
-            routes: curStep.routeOptions ?? undefined,
-          }),
+          body: JSON.stringify({ stage: type }),
         }).catch(() => {});
       }
 

@@ -69,7 +69,6 @@ CREATE TABLE IF NOT EXISTS commute_plans (
     summary      TEXT NOT NULL,            -- '50路 金峰南岸→路氹东/新濠天地'
     is_active    BOOLEAN NOT NULL DEFAULT TRUE,
     note         TEXT,
-    compare_routes JSONB,                  -- v0.5.0+ /stats 排序用：备选线路 JSON 数组
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS timer_events (
     id            BIGSERIAL PRIMARY KEY,
     session_id    INT NOT NULL REFERENCES timer_sessions(id) ON DELETE CASCADE,
     seq           INT NOT NULL,
-    event_type    TEXT NOT NULL,           -- 'depart'|'wait_start'|'missed'|'board'|'station_arrive'|'station_pass'|'alight'|'border_start'|'border_end'|'arrive'
+    event_type    TEXT NOT NULL,           -- 'depart'|'wait_start'|'missed'|'board'|'station_arrive'|'station_pass'|'alight'|'border_start'|'border_end'|'arrive'|'pause'|'resume'（v0.12.0：pause/resume 为瞬态控制事件，不入 steps，arrive 收尾按 seq 配对扣减暂停秒数）
     station_code  TEXT REFERENCES stations(code),
     recorded_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     tap_id        TEXT,                    -- v0.10.0 客户端幂等键（每个关键打点一次生成，重试复用）

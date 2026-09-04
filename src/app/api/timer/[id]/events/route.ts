@@ -17,6 +17,9 @@ const VALID_EVENTS: EventType[] = [
   "border_start",
   "border_end",
   "arrive",
+  // v0.12.0：步行暂停/继续（瞬态状态事件，不入 steps 不推进；撤销时服务端排除）
+  "pause",
+  "resume",
 ];
 
 /** 学校分区：B/C 座、N/O 座、R 座（步行分组上下文，需求 10） */
@@ -56,6 +59,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       route?: string | null;
     };
     const pool = getPool();
+    // 本次插入的真实事件 id（撤销依赖；wait_snapshot/dedup 为 null）
+    let eventId: number | null = null;
 
     // 会话存在且未结束
     const sessRes = await pool.query(
@@ -108,11 +113,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // 查重 + 唯一索引兜底（并发同 id 时靠 uq_events_session_tap 抛 23505 转 dedup）。
     if (body.tap_id) {
       const dup = await pool.query(
-        `SELECT 1 FROM timer_events WHERE session_id = $1 AND tap_id = $2`,
+        `SELECT id FROM timer_events WHERE session_id = $1 AND tap_id = $2`,
         [sessionId, body.tap_id],
       );
       if ((dup.rowCount ?? 0) > 0) {
-        return NextResponse.json({ ok: true, dedup: true, finished: false });
+        // 幂等命中：回传已入库事件 id（客户端把乐观负 id 换成真实 id，撤销标签可用）
+        const existing = dup.rows[0] as { id: number };
+        return NextResponse.json({ ok: true, dedup: true, finished: false, event_id: existing.id });
       }
     }
 
@@ -124,11 +131,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const seq = (seqRes.rows[0] as { next: number }).next;
 
     try {
-      await pool.query(
+      const ins = await pool.query<{ id: number }>(
         `INSERT INTO timer_events (session_id, seq, event_type, station_code, tap_id)
-         VALUES ($1, $2, $3, $4, $5)`,
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
         [sessionId, seq, type, body.station_code ?? null, body.tap_id ?? null],
       );
+      // 真实事件 id 回传 → 前端把乐观负 id 替换为库内 id（撤销依赖真实 id）
+      eventId = ins.rows[0]?.id ?? null;
     } catch (err) {
       // 并发同 tap_id 撞唯一索引 → 视为幂等成功
       if ((err as { code?: string }).code === "23505" && body.tap_id) {
@@ -196,25 +206,43 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (type === "arrive") {
       // 收尾：总时长（v0.10.0 起从 depart 事件起算——建卡后挂后台不再虚高；无 depart 回退 started_at）
       // + 时段分桶（GMT+8，语义统一延至分析阶段，仍按到达时刻）
+      // v0.12.0：总时长再扣除「暂停闭合区间」（pause→resume 成对出现的秒数），
+      // 步行中途买东西/停留等暂停时间不计入总时长
       const now = new Date();
       const macau = new Date(now.getTime() + 8 * 3600 * 1000);
       const bucket = timeBucketOf(macau.getUTCHours());
+      // 暂停总秒数：把本会话 pause/resume 事件按 seq 排列，pause 行的下一行若是 resume → 成对扣减；
+      // 孤立 pause（未闭合，异常态）不扣——UI 暂停态下无 arrive 主按钮，正常流程必先 resume
       await pool.query(
         `UPDATE timer_sessions
          SET ended_at = now(),
              time_bucket = $2,
              total_minutes = round(
-               (extract(epoch from (now() - coalesce(
-                 (SELECT min(recorded_at) FROM timer_events
-                   WHERE session_id = $1 AND event_type = 'depart'),
-                 started_at))) / 60)::numeric, 1)
+               GREATEST(0,
+                 extract(epoch from (now() - coalesce(
+                   (SELECT min(recorded_at) FROM timer_events
+                     WHERE session_id = $1 AND event_type = 'depart'),
+                   started_at)))
+                 - COALESCE((
+                     SELECT sum(extract(epoch from (resume_at - pause_at)))
+                     FROM (
+                       SELECT recorded_at AS pause_at,
+                              lead(recorded_at) OVER w AS resume_at,
+                              lead(event_type) OVER w AS resume_type
+                       FROM timer_events
+                       WHERE session_id = $1 AND event_type IN ('pause', 'resume')
+                       WINDOW w AS (ORDER BY seq, id)
+                     ) pr
+                     WHERE pr.resume_type = 'resume'
+                   ), 0)
+               ) / 60.0, 1)
          WHERE id = $1`,
         [sessionId, bucket],
       );
-      return NextResponse.json({ ok: true, finished: true });
+      return NextResponse.json({ ok: true, finished: true, event_id: eventId });
     }
 
-    return NextResponse.json({ ok: true, finished: false });
+    return NextResponse.json({ ok: true, finished: false, event_id: eventId });
   } catch (err) {
     console.error("[events] 写入失败：", (err as Error).message);
     return NextResponse.json({ error: "事件写入失败" }, { status: 500 });

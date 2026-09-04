@@ -14,7 +14,11 @@ export type EventType =
   | "alight"
   | "border_start"
   | "border_end"
-  | "arrive";
+  | "arrive"
+  // v0.12.0：步行中途暂停/继续——暂停区间不计入步行计时与总时长。
+  // 不入 steps（无独立步骤），currentStepIndex 天然忽略（不匹配任何步骤即不推进）。
+  | "pause"
+  | "resume";
 
 export interface PlanLegLite {
   seq: number;

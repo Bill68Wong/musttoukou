@@ -608,6 +608,57 @@ button:disabled {
   opacity: 0.55;
 }
 
+/* ---------- v0.12.0：撤销小标签 + 确认弹窗 ---------- */
+.btn--undo {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--error);
+  font-size: var(--fs-label);
+  padding: 2px 6px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.btn--undo:active {
+  background: var(--error-container);
+}
+.btn--undo:disabled {
+  opacity: 0.5;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 60;
+  animation: fade-in 150ms var(--ease-em);
+}
+
+.dialog-card {
+  background: var(--surface);
+  color: var(--on-surface);
+  border-radius: 20px;
+  padding: 22px 20px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  animation: dialog-pop 180ms var(--ease-em);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes dialog-pop {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* ---------- 动画 ---------- */
 @keyframes fade-up {
   from {

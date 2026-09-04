@@ -54,7 +54,13 @@ const EVENT_LABELS: Record<string, string> = {
   border_start: "开始通关",
   border_end: "通关完成",
   arrive: "到达",
+  // v0.12.0：步行暂停/继续（瞬态控制事件，不入步骤不推进）
+  pause: "⏸ 暂停",
+  resume: "继续计时",
 };
+
+/** v0.12.0：不可撤销的事件类型（瞬态控制事件；arrive 服务端支持复活撤销，见 undo 路由） */
+const UNDO_EXCLUDED = new Set(["pause", "resume"]);
 
 // 关键打点（出发/上车/下车/到达）触发 10ms 短振感；非每个点击都振。
 const HAPTIC_EVENTS = new Set(["depart", "board", "alight", "arrive"]);
@@ -109,6 +115,24 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const [routeChoice, setRouteChoice] = useState<string | null>(null);
   // v0.10.0 A8：tap_id 幂等——同一次打点（同 type+参数）复用同一 id；成功后清除，失败留作重试
   const tapIds = useRef(new Map<string, string>());
+  // v0.12.0：撤销确认弹窗目标（null=未弹）；弹窗真实，确认后才 POST undo
+  const [undoTarget, setUndoTarget] = useState<{
+    id: number;
+    event_type: string;
+    station_code: string | null;
+  } | null>(null);
+  const [undoing, setUndoing] = useState(false);
+
+  // v0.12.0：暂停态由 events 推导（最后一条是 pause → 暂停中）；暂停时 1s 一跳刷新秒表
+  const evtsForPause = data?.events ?? [];
+  const pausedNow =
+    evtsForPause.length > 0 && evtsForPause[evtsForPause.length - 1].event_type === "pause";
+  const [, setClock] = useState(0);
+  useEffect(() => {
+    if (!pausedNow) return;
+    const t = setInterval(() => setClock((c) => c + 1), 1000);
+    return () => clearInterval(t);
+  }, [pausedNow]);
 
   const load = useCallback(async () => {
     try {
@@ -158,6 +182,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
       // —— 乐观更新本地 state ——
       const nowIso = new Date().toISOString();
       const maxSeq = data.events.reduce((m, e) => Math.max(m, e.seq), 0);
+      // v0.12.0：本次乐观插入的本地负 id（成功收到真实 event_id 后替换，撤销标签需要真实 id）
+      let pendingLocalId: number | null = null;
       if (type === "wait_snapshot") {
         // 等车快照：只追加/覆盖 snapshots（events 列表不显示快照）
         const snap = {
@@ -184,6 +210,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           station_code: (extra?.station_code as string | null) ?? null,
           recorded_at: nowIso,
         };
+        // v0.12.0：记住乐观负 id，POST 成功后替换为服务器真实 event_id
+        pendingLocalId = evt.id;
         setData({
           ...data,
           events: [...data.events, evt],
@@ -203,10 +231,30 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, tap_id: tapId, ...extra }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string; finished?: boolean };
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        finished?: boolean;
+        /** v0.12.0：服务器真实事件 id（撤销依赖） */
+        event_id?: number | null;
+      };
       if (!res.ok) throw new Error(body.error ?? "打点失败");
       // 打点已入库（成功或幂等命中）→ 释放幂等键，供下一次打点使用
       tapIds.current.delete(sigKey);
+
+      // v0.12.0：乐观负 id → 服务器真实 id（撤销标签需要 id>0 的真实事件才能撤）
+      if (pendingLocalId !== null && body.event_id) {
+        const realId = body.event_id;
+        setData((prev) =>
+          prev
+            ? {
+                ...prev,
+                events: prev.events.map((e) =>
+                  e.id === pendingLocalId ? { ...e, id: realId } : e,
+                ),
+              }
+            : prev,
+        );
+      }
 
       // —— 后台数据采集（全部不阻塞打点；失败静默） ——
       // ① depart/wait_start 巴士段：自动记录当时车距（value 真实站数，force 直查）
@@ -323,9 +371,9 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     code ? (data.stationNames[code] ?? code) : "";
   // sub 内嵌的站号替换为「站号 站名」（巴士）/「站名」（轻轨）
   const fullSub = (sub?: string, code?: string | null) => {
-    if (!sub || !step.stationCode) return sub;
-    const full = stationName(code ?? step.stationCode);
-    const raw = code ?? step.stationCode;
+    if (!sub || !step?.stationCode) return sub;
+    const full = stationName(code ?? step?.stationCode);
+    const raw = code ?? step?.stationCode;
     if (!full || full === raw) return sub;
     return sub.split(raw).join(full);
   };
@@ -351,12 +399,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // board 提交带实乘线 → 服务端把 route_code/dsat_dir 修正到实乘线（首个载具段）
   const isBoardRouteMulti =
     step?.eventType === "board" && (step.routeOptions?.length ?? 0) > 1 && step.quickKind === "stops";
+  // v0.12.0：step?. 保护 —— arrive 打点后 idx 越界 step 为 undefined，而 routeChoice/
+  // session.route_code 仍可能非空，此处无条件执行会读 step.routeOptions 崩溃
   const effRoute =
-    routeChoice && step.routeOptions?.includes(routeChoice)
+    routeChoice && step?.routeOptions?.includes(routeChoice)
       ? routeChoice
-      : data.session.route_code && step.routeOptions?.includes(data.session.route_code)
+      : data.session.route_code && step?.routeOptions?.includes(data.session.route_code)
         ? data.session.route_code
-        : (step.routeOptions?.[0] ?? null);
+        : (step?.routeOptions?.[0] ?? null);
 
   /** 分区 chips（单选可取消；不选也不阻塞打点） */
   const renderZones = (question: string, value: string | null, onChange: (v: string | null) => void) => (
@@ -509,6 +559,60 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     return hits.length > 0 ? hits[hits.length - 1].value : null;
   })();
 
+  // ===== v0.12.0：步行暂停 / 最近事件撤销 =====
+  // 暂停态由顶部 pausedNow 派生（events 最后一条是 pause）
+  const lastEvent = data.events[data.events.length - 1];
+  const paused = pausedNow;
+  // 暂停入口：仅步行相关步骤（wait_start=走去车站途中 / arrive=下车走向目的地；含多段换乘步行的第二程 wait_start）
+  // 且当前处于该步骤未打点（canPause 在整步替换暂停卡时不展示）
+  const isWalkingStep =
+    step?.eventType === "wait_start" || step?.eventType === "arrive";
+  const canPause = !finished && !paused && isWalkingStep && !ridingDecision;
+  // 暂停起始时刻（时长展示用；recorded_at 为 ISO）
+  const pauseSince =
+    paused && lastEvent ? new Date(lastEvent.recorded_at).getTime() : 0;
+  // 可撤销：timeline 最新一条、真实入库(id>0)、非瞬态控制事件（pause/resume 服务端拒撤）
+  const undoableLatest =
+    recentEvents[0] &&
+    Number(recentEvents[0].id) > 0 &&
+    !UNDO_EXCLUDED.has(recentEvents[0].event_type)
+      ? { ...recentEvents[0], id: Number(recentEvents[0].id) }
+      : null;
+
+  /** v0.12.0 撤销：真实弹窗确认后调 undo API；本地移除事件并按响应回滚会话级副作用 */
+  async function doUndo(target: { id: number; event_type: string; station_code: string | null }) {
+    if (undoing) return;
+    setUndoing(true);
+    try {
+      const res = await fetch(`/api/timer/${sessionId}/undo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_id: target.id }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        missed_decremented?: boolean;
+        resurrected?: boolean;
+      };
+      if (!res.ok) throw new Error(body.error ?? "撤销失败");
+      setUndoTarget(null);
+      setData((prev) => {
+        if (!prev) return prev;
+        const events = prev.events.filter((e) => Number(e.id) !== Number(target.id));
+        let session = prev.session;
+        if (body.missed_decremented)
+          session = { ...session, missed_count: Math.max(0, session.missed_count - 1) };
+        if (body.resurrected)
+          session = { ...session, ended_at: null, total_minutes: null };
+        return { ...prev, events, session };
+      });
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setUndoing(false);
+    }
+  }
+
   return (
     <main className="page">
       <header style={{ marginBottom: 20 }}>
@@ -567,6 +671,36 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             gap: 14,
           }}
         >
+          {/* v0.12.0：暂停态整步覆盖为「已暂停」卡 + 继续（避免暂停中误触其它打点） */}
+          {paused ? (
+            <div className="card" style={{ padding: 22, textAlign: "center" }}>
+              <p style={{ fontSize: 36, margin: 0 }}>⏸</p>
+              <p className="h-title" style={{ margin: "8px 0 4px" }}>
+                计时已暂停
+              </p>
+              <p className="t-label t-muted" style={{ marginBottom: 12, lineHeight: 1.6 }}>
+                暂停时间不计入总时长
+                {pauseSince > 0 && (
+                  <>
+                    <br />
+                    已暂停{" "}
+                    {(() => {
+                      const s = Math.max(0, Math.floor((Date.now() - pauseSince) / 1000));
+                      const m = Math.floor(s / 60);
+                      return m > 0 ? `${m} 分 ${s % 60} 秒` : `${s} 秒`;
+                    })()}
+                  </>
+                )}
+              </p>
+              <button
+                className="btn btn--primary btn--lg btn--block"
+                onClick={() => postEvent("resume")}
+              >
+                ▶ 继续
+              </button>
+            </div>
+          ) : (
+            <>
           {/* 实时车距：出门/等车阶段（巴士段才显示，轻轨无实时数据；需求 7：无自动轮询，打点后经 refreshKey 刷新） */}
           {(departing || waiting) &&
             step.quickKind === "stops" &&
@@ -697,6 +831,17 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             </>
           )}
 
+          {/* v0.12.0：步行暂停入口（wait_start=走向车站途中 / arrive=下车走向目的地；不抢占主按钮） */}
+          {canPause && (
+            <button
+              className="btn btn--outline"
+              style={{ alignSelf: "center", maxWidth: 260 }}
+              onClick={() => postEvent("pause")}
+            >
+              ⏸ 暂停（临时离开）
+            </button>
+          )}
+
           {/* 等车阶段：没挤上 */}
           {waiting && (
             <button
@@ -805,10 +950,12 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             </div>
           )}
           {riding && !rideInfo && <p className="t-body t-muted">{fullSub(step.sub)}</p>}
+            </>
+          )}
         </div>
       )}
 
-      {/* 最近事件，校验有没有按错 */}
+      {/* 最近事件，校验有没有按错（v0.12.0：最新一条可撤销，真实确认弹窗后删库回撤） */}
       <footer className="timeline">
         {recentEvents.map((e) => (
           <div key={e.id} className="timeline-item">
@@ -818,9 +965,53 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
               {EVENT_LABELS[e.event_type] ?? e.event_type}
               {e.station_code ? `（${stationName(e.station_code)}）` : ""}
             </span>
+            {undoableLatest && Number(undoableLatest.id) === Number(e.id) && (
+              <button
+                className="btn--undo"
+                onClick={() => setUndoTarget(undoableLatest)}
+                disabled={undoing}
+              >
+                撤销
+              </button>
+            )}
           </div>
         ))}
       </footer>
+
+      {/* v0.12.0：撤销确认弹窗（真实确认，不点撤销直接撤） */}
+      {undoTarget && (
+        <div className="dialog-backdrop" onClick={() => !undoing && setUndoTarget(null)}>
+          <div className="dialog-card" role="dialog" aria-modal="true">
+            <p className="h-title" style={{ margin: 0 }}>
+              撤销「{EVENT_LABELS[undoTarget.event_type] ?? undoTarget.event_type}
+              {undoTarget.station_code ? ` · ${stationName(undoTarget.station_code)}` : ""}」？
+            </p>
+            <p className="t-body t-muted" style={{ margin: "10px 0 18px", lineHeight: 1.6 }}>
+              将从记录中删除这一条（仅限最近一次，可连续撤销）。
+              <br />
+              误记了想重打？撤销后按原步骤重新点即可。
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                className="btn btn--tonal"
+                style={{ flex: 1 }}
+                onClick={() => setUndoTarget(null)}
+                disabled={undoing}
+              >
+                取消
+              </button>
+              <button
+                className="btn btn--danger-outline"
+                style={{ flex: 1 }}
+                onClick={() => doUndo(undoTarget)}
+                disabled={undoing}
+              >
+                {undoing ? "撤销中…" : "确认撤销"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

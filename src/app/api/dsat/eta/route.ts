@@ -7,7 +7,7 @@ export const preferredRegion = "sin1";
 /**
  * GET /api/dsat/eta?station=T358&routes=26,51A&dir=0&dest=C688[&force=1]
  * 实时车距（薄封装，核心逻辑在 src/lib/dsat/eta.ts 与自动快照共用）
- * 10s 缓存已内置于 queryEta（按 站|线路|dir|dest 聚合）
+ * 5s 缓存已内置于 queryEta（按 站|线路|dir|dest 聚合；v0.8.1 10s → 5s）
  * force=1：系统打点（depart/wait_start/alight）绕过缓存直查并回写；手动刷新不带
  */
 export async function GET(req: NextRequest) {
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     .split(",")
     .map((r) => r.trim())
     .filter(Boolean)
-    .slice(0, 3); // 最多 3 条
+    .slice(0, 6); // 最多 6 条（与 queryEta/fleet-snapshot 上限一致；横琴 6 线方案不再截断）
   if (routes.length === 0) {
     return NextResponse.json({ error: "routes 参数为空" }, { status: 400 });
   }

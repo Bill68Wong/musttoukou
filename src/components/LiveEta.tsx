@@ -3,12 +3,14 @@
 /**
  * 实时车距卡片（src/components/LiveEta.tsx）
  * 出门/等车阶段显示候选线路最近的車距本站还有几站。
- * 数据链路：/api/dsat/eta → DSAT routestation/bus（10s 服务端缓存）。
+ * 数据链路：/api/dsat/eta → DSAT routestation/bus（5s 服务端缓存，v0.8.1 10s → 5s）。
  *
  * v0.4.0 刷新规则（用户定稿，2026-09-03）：
  *  - ★ 无自动轮询（移除 60s setInterval）
- *  - 手动刷新：最小间隔 10s（本地守卫，不带 force）
- *  - 打点（depart/wait_start 等系统时刻）后经 refreshKey 递增 → 立即取一次最新（force 由后台采集端处理）
+ *  - 手动刷新：最小间隔 10s（本地守卫，不带 force，命中服务端缓存即可）
+ *  - 打点（depart/wait_start 等系统时刻）后经 refreshKey 递增 → force=true 直查最新
+ *    （v0.8.1 修复竞态：此前 GET 不带 force 会命中打点前旧缓存，与 auto-snapshot 的
+ *      force 直查结果不一致导致界面横跳；现打点后两者同刻直查，口径一致）
  *  - 失败静默保留旧数据（不打断计时流程）
  */
 
@@ -62,38 +64,43 @@ export default function LiveEta({
   const lastManualAt = useRef(0);
   const routesKey = routes.join(",");
 
-  const fetchEta = useCallback(async () => {
-    const id = ++reqId.current;
-    setLoading(true);
-    try {
-      const qs = new URLSearchParams({
-        station,
-        routes: routesKey,
-        dir,
-        ...(dest ? { dest } : {}),
-      });
-      const res = await fetch(`/api/dsat/eta?${qs.toString()}`, { cache: "no-store" });
-      if (!res.ok) return;
-      const body = (await res.json()) as EtaData;
-      if (id === reqId.current) setData(body);
-    } catch {
-      // 静默失败，保留旧数据
-    } finally {
-      if (id === reqId.current) setLoading(false);
-    }
-  }, [station, routesKey, dir, dest]);
+  const fetchEta = useCallback(
+    async (force = false) => {
+      const id = ++reqId.current;
+      setLoading(true);
+      try {
+        const qs = new URLSearchParams({
+          station,
+          routes: routesKey,
+          dir,
+          ...(dest ? { dest } : {}),
+          ...(force ? { force: "1" } : {}),
+        });
+        const res = await fetch(`/api/dsat/eta?${qs.toString()}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const body = (await res.json()) as EtaData;
+        if (id === reqId.current) setData(body);
+      } catch {
+        // 静默失败，保留旧数据
+      } finally {
+        if (id === reqId.current) setLoading(false);
+      }
+    },
+    [station, routesKey, dir, dest],
+  );
 
   // 挂载时取一次
   useEffect(() => {
     fetchEta();
   }, [fetchEta]);
 
-  // 系统打点（refreshKey 递增）→ 事件驱动刷新；跳过首帧 0
+  // 系统打点（refreshKey 递增）→ 事件驱动 force 直查最新；跳过首帧 0
+  // v0.8.1：带 force=true，与 auto-snapshot 打点直查同刻一致，避免命中打点前旧缓存横跳
   const prevKey = useRef(refreshKey);
   useEffect(() => {
     if (refreshKey !== prevKey.current && refreshKey > 0) {
       prevKey.current = refreshKey;
-      fetchEta();
+      fetchEta(true);
     }
   }, [refreshKey, fetchEta]);
 

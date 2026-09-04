@@ -47,7 +47,13 @@ async function main() {
   ) as { routes: { code: string; kind: string }[] };
   const busRoutes = net.routes.filter((r) => r.kind === "bus");
 
-  await pool.query(`DELETE FROM route_stations`);
+  // v0.8.1 修复 E：DELETE 仅清巴士线路站序（route_stations 现混存巴士 471 行 + 轻轨 LRT 34 行，
+  // 轻轨无 DSAT 接口、由 db/migrate-v071.ts 幂等补录）。原全表 DELETE 会把轻轨站序一并清掉且不会补回。
+  await pool.query(
+    `DELETE FROM route_stations rs
+     USING routes r
+     WHERE rs.route_id = r.id AND r.kind = 'bus'`,
+  );
 
   let total = 0;
   for (const route of busRoutes) {

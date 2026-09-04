@@ -9,10 +9,10 @@ import { findStopIdx } from "@/lib/station-match";
  *   2. POST /api/timer/[id]/auto-snapshot —— 出发/到站时系统自动记录车距
  *   3.     fleet-snapshot / grab    —— 通过 deriveRouteDir 共用方向推导
  *
- * v0.4.0 刷新规则（2026-09-03 用户定稿）：
- *  - 服务端缓存 30s → 10s（手动刷新 10s 下限由前端守，服务端不做节流）
- *  - 支持 force=true：系统打点（depart/wait_start/board/alight）绕过缓存直查并回写
- *  - 手动刷新不带 force（命 10s 缓存即可）
+ * 刷新规则：
+ *  - v0.4.0（2026-09-03）：服务端缓存 30s → 10s，支持 force=true 直查并回写
+ *  - v0.8.1（2026-09-04）：缓存 TTL 10s → 5s（缩短 Vercel 多实例 globalThis 旧缓存窗口）
+ *  - 手动刷新最小间隔由前端守卫（10s），服务端不做节流；手动刷新不带 force
  *
  * 对每条线路查 DB 站序 + DSAT 实时车辆，算最近的車距用户站还有几站。
  *  - dest（目标站）提供时，每条线路自行推导方向（from 在 to 之前的 dir），
@@ -22,7 +22,8 @@ import { findStopIdx } from "@/lib/station-match";
  *  - 总站待发（status=1 + 挂首/末站）→ 不参与站数计算，列入 pending 显示"未发车"
  *    ★ speed 不可靠不参与判定（实测待发车可能残留非空速度）
  *  - 循环线（DB 只有 dir=0 一套站序）取模 wrap；双方向线跳过已过站的车
- *  - 最多 3 条线路（一次调用 = 最多 3 次 DSAT 请求）
+ *  - v0.8.1 修复多线截断：最多 6 条（与 fleet-snapshot 上限一致），≤3 条/批并发查询
+ *    （修复前 slice(0,3)：横琴 6 线方案的 102/701X/N6 永不返回）
  */
 
 export interface EtaBus {
@@ -70,9 +71,14 @@ export function nearestStopsAway(res: EtaResponse): number | null {
   return best;
 }
 
-// 10s 缓存（dev 热重载下存活；按 站|线路组|dir|dest 聚合，覆盖 51A/51B 共站组合）
-// v0.4.0：30s → 10s；force=true 绕过读取但写回
-const CACHE_TTL_MS = 10_000;
+// 5s 缓存（dev 热重载下存活；按 站|线路组|dir|dest 聚合，覆盖 51A/51B 共站组合）
+// v0.4.0：30s → 10s；v0.8.1：10s → 5s（Vercel 多实例缓存隔离，缩窗口缓解数据横跳）
+// force=true 绕过读取但写回
+const CACHE_TTL_MS = 5_000;
+/** 一次调用最多查询的线路数（修复 A：原 3 → 6，与 fleet-snapshot 上限一致） */
+const MAX_ROUTES = 6;
+/** 并发批大小：批内 Promise.all 同时查，批间串行（对 DSAT 温和，不突刺） */
+const BATCH_CONCURRENCY = 3;
 const g = globalThis as unknown as {
   __etaCache?: Map<string, { ts: number; data: EtaResponse }>;
 };
@@ -126,7 +132,7 @@ export async function deriveRouteDir(
   return dir;
 }
 
-/** 查询多线路实时车距（命中 10s 缓存直接返回；force=true 绕过缓存直查） */
+/** 查询多线路实时车距（命中 5s 缓存直接返回；force=true 绕过缓存直查并回写） */
 export async function queryEta(
   station: string,
   routesIn: string[],
@@ -137,7 +143,7 @@ export async function queryEta(
   const routes = routesIn
     .map((r) => r.trim())
     .filter(Boolean)
-    .slice(0, 3); // 最多 3 条
+    .slice(0, MAX_ROUTES); // 最多 6 条（修复 A：横琴 6 线不再截断）
   const cacheKey = `${station}|${routes.join(",")}|${dirIn}|${dest}`;
   const cached = g.__etaCache!.get(cacheKey);
   if (!force && cached && Date.now() - cached.ts < CACHE_TTL_MS) {
@@ -148,7 +154,8 @@ export async function queryEta(
   const dir = dirIn || "0";
   const results: EtaRouteResult[] = [];
 
-  for (const route of routes) {
+  /** 单线路查询（并发批内调用）：返回自身结果而非 push，保证 Promise.all 顺序 = routes 顺序 */
+  const queryOne = async (route: string): Promise<EtaRouteResult> => {
     try {
       // 方向推导：dest 提供时按 from→to 找方向；推导不出回退 dir 参数
       // （循环线单方向 + from>to 时也回退，因循环线绕圈无所谓先后）
@@ -169,8 +176,7 @@ export async function queryEta(
       );
       const stops = stopsRes.rows as { seq: number; code: string; name: string }[];
       if (stops.length === 0) {
-        results.push({ route, ok: false, error: `线路 ${route} 未同步站序（dir=${queryDir}）` });
-        continue;
+        return { route, ok: false, error: `线路 ${route} 未同步站序（dir=${queryDir}）` };
       }
 
       // 循环线判定：该线路在 DB 只有 dir=0 一套站序（双方向线会有 dir=0/1 两套）
@@ -183,15 +189,13 @@ export async function queryEta(
 
       const userIdx = findStopIdx(stops, station);
       if (userIdx < 0) {
-        results.push({ route, ok: false, error: `站 ${station} 不在 ${route} 的站序中` });
-        continue;
+        return { route, ok: false, error: `站 ${station} 不在 ${route} 的站序中` };
       }
 
       // DSAT 实时车辆
       const res = await getBusPositions(route, queryDir, "poll");
       if (!res.ok || !res.data?.routeInfo) {
-        results.push({ route, ok: false, error: res.error ?? "DSAT 无数据" });
-        continue;
+        return { route, ok: false, error: res.error ?? "DSAT 无数据" };
       }
 
       const N = stops.length;
@@ -240,7 +244,7 @@ export async function queryEta(
         }
       }
 
-      results.push({
+      return {
         route,
         ok: true,
         dir: queryDir,
@@ -248,11 +252,18 @@ export async function queryEta(
         nearest: nearest ?? undefined,
         pending: pending.length > 0 ? pending : undefined,
         busCount,
-      });
+      };
     } catch (err) {
       console.error(`[eta] 线路 ${route} 失败：`, (err as Error).message);
-      results.push({ route, ok: false, error: "查询失败" });
+      return { route, ok: false, error: "查询失败" };
     }
+  };
+
+  // 并发分批：≤3 条/批，批内 Promise.all（顺序 = routes 传入顺序），避免多线路串行拖长耗时
+  for (let i = 0; i < routes.length; i += BATCH_CONCURRENCY) {
+    const batch = routes.slice(i, i + BATCH_CONCURRENCY);
+    const batchResults = await Promise.all(batch.map((route) => queryOne(route)));
+    results.push(...batchResults);
   }
 
   const data: EtaResponse = { fetchedAt: new Date().toISOString(), results };

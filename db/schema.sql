@@ -1,6 +1,9 @@
 -- =============================================================
 -- MUST登校 · 数据库建表脚本（对应《数据库设计》v0.2）
--- 15 张表；幂等：DROP IF EXISTS 后重建（生产慎跑，种子数据需重导）
+-- 15 张表；幂等：全部 CREATE TABLE IF NOT EXISTS + ALTER ADD COLUMN IF NOT EXISTS，
+-- 可安全重复执行（不再 DROP 重建）。本文件是「重建库唯一真相源」：
+--   全新库 = apply-schema 后按需跑 db:migrate-v040→v071→v090…（迁移幂等，重复执行无副作用）
+-- ⚠️ 生产库勿直接跑本脚本，一律走 db/migrate-vXXX.ts（只读数据不动，计时数据绝不触碰）
 -- =============================================================
 
 -- 2.1 地点（家 / 学校 / 口岸）
@@ -102,6 +105,11 @@ CREATE TABLE IF NOT EXISTS bus_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_route_time ON bus_snapshots (route_code, polled_at DESC);
 CREATE INDEX IF NOT EXISTS idx_snapshots_time ON bus_snapshots (polled_at);
+-- v0.4.0 归属列（随会话打点写入；v0.9.0 起补外键 fk_bus_snapshots_session → timer_sessions ON DELETE CASCADE）
+ALTER TABLE bus_snapshots ADD COLUMN IF NOT EXISTS session_id INT;
+ALTER TABLE bus_snapshots ADD COLUMN IF NOT EXISTS stage TEXT;           -- 'depart'|'wait_start'|'alight'|'board'
+ALTER TABLE bus_snapshots ADD COLUMN IF NOT EXISTS ref_station TEXT;     -- 参照站（用户上/下车站），stops_away 以它计
+ALTER TABLE bus_snapshots ADD COLUMN IF NOT EXISTS stops_away SMALLINT;  -- ref_idx − bus_idx
 
 -- 2.9 计时器会话（一次完整通勤 = 一个 session）
 CREATE TABLE IF NOT EXISTS timer_sessions (
@@ -124,13 +132,16 @@ CREATE TABLE IF NOT EXISTS timer_sessions (
     deleted_at    TIMESTAMPTZ              -- 软删除
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_route_date ON timer_sessions (route_code, travel_date);
+-- v0.4.0 学校分区（B/C|N/O|R 三组座）：随 depart/arrive 打点落到会话，做步行分组上下文
+ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS from_zone TEXT;  -- 离校时从哪个座出发
+ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS to_zone TEXT;    -- 到校后到哪个座
 
 -- 2.10 计时器打点事件
 CREATE TABLE IF NOT EXISTS timer_events (
     id            BIGSERIAL PRIMARY KEY,
     session_id    INT NOT NULL REFERENCES timer_sessions(id) ON DELETE CASCADE,
     seq           INT NOT NULL,
-    event_type    TEXT NOT NULL,           -- 'depart'|'wait_start'|'missed'|'board'|'station_arrive'|'alight'|'border_start'|'border_end'|'arrive'
+    event_type    TEXT NOT NULL,           -- 'depart'|'wait_start'|'missed'|'board'|'station_arrive'|'station_pass'|'alight'|'border_start'|'border_end'|'arrive'
     station_code  TEXT REFERENCES stations(code),
     recorded_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (session_id, seq)
@@ -141,7 +152,7 @@ CREATE TABLE IF NOT EXISTS wait_snapshots (
     id            BIGSERIAL PRIMARY KEY,
     session_id    INT NOT NULL REFERENCES timer_sessions(id) ON DELETE CASCADE,
     value_kind    TEXT NOT NULL,           -- 'stops'（车还有几站）| 'minutes'（轻轨还有几分钟）
-    value         SMALLINT NOT NULL,       -- 手动 10 表示 10+；自动记录存真实站数（2026-09-03 起）
+    value         SMALLINT NOT NULL,       -- 手动分钟 0..11 连续档（轻轨，须带 station_code）；自动记录存真实站数
     source        TEXT NOT NULL DEFAULT 'manual',  -- 'manual'|'auto_depart'|'auto_wait_start'
     station_code  TEXT REFERENCES stations(code),  -- 自动记录所在的上车站（多段方案分段键）
     recorded_at   TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -163,6 +174,11 @@ CREATE UNIQUE INDEX uq_wait_snap_auto_once
 CREATE UNIQUE INDEX IF NOT EXISTS uq_wait_snap_manual_min_once
     ON wait_snapshots (session_id, station_code)
     WHERE source = 'manual' AND value_kind = 'minutes' AND station_code IS NOT NULL;
+
+-- 无站手动分钟兜底（v0.9.0）：历史无站垃圾已清；未来 events 接口强制带站，此索引防漏网
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wait_snap_manual_min_nostation
+    ON wait_snapshots (session_id)
+    WHERE source = 'manual' AND value_kind = 'minutes' AND station_code IS NULL;
 
 -- 2.10b 编辑痕迹（人工修正审计：只插入不更新，保留全部原值）
 CREATE TABLE IF NOT EXISTS edit_audit (

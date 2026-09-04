@@ -46,6 +46,7 @@ export async function GET() {
              s.crowd_level,
              s.missed_count,
              s.vehicle_plate,
+             s.vehicle_code,
              s.is_edited,
              ev.depart_t, ev.wait_t, ev.board_t, ev.alight_t,
              ev.border_start_t, ev.border_end_t, ev.arrive_t
@@ -71,7 +72,7 @@ export async function GET() {
     const header = [
       "编号", "日期", "方案", "线路", "方向", "出发区", "到达区",
       "开始时间", "结束时间", "总耗时(分钟)", "星期", "时段", "拥挤度", "没挤上",
-      "车辆牌号", "已编辑",
+      "车辆牌号", "车辆编号", "已编辑",
       "出发", "等车开始", "上车", "下车", "通关开始", "通关完成", "到达",
     ];
 
@@ -91,6 +92,7 @@ export async function GET() {
       CROWD_LABEL[(r.crowd_level as number) ?? -1] ?? "",
       (r.missed_count as number) ?? 0,
       r.vehicle_plate ?? "",
+      r.vehicle_code ?? "",
       r.is_edited ? "是" : "否",
       r.depart_t, r.wait_t, r.board_t, r.alight_t,
       r.border_start_t, r.border_end_t, r.arrive_t,

@@ -66,6 +66,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       if (body.value_kind === "stops") {
         return NextResponse.json({ error: "巴士段车距由系统自动记录" }, { status: 400 });
       }
+      // 轻轨分钟（v0.9）：必须带上车站——无站行无法去重、无法归属分段，历史已清并建索引防再犯
+      if (body.value_kind === "minutes" && !body.station_code) {
+        return NextResponse.json({ error: "轻轨分钟快照必须带上车站 station_code" }, { status: 400 });
+      }
       // 轻轨分钟：带上车站（多段轻轨各站独立）；部分唯一索引 (session_id, station_code)
       // WHERE source='manual' AND value_kind='minutes' AND station_code IS NOT NULL
       await pool.query(

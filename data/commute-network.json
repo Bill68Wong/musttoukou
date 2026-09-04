@@ -7,7 +7,7 @@
   },
   "places": [
     { "id": "home", "name": "擎天匯 T8", "type": "dorm", "area": "路環石排灣" },
-    { "id": "school", "name": "澳科大 N座（圖書館大樓）", "type": "school", "area": "氹仔偉龍馬路" },
+    { "id": "school", "name": "澳科大", "type": "school", "area": "氹仔偉龍馬路" },
     { "id": "hengqin", "name": "橫琴口岸（澳方口岸 / 橫琴站）", "type": "border", "area": "橫琴" }
   ],
   "stations": [

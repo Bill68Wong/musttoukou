@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { smoothStopsAway } from "@/lib/eta-smooth";
+import { smoothStopsAway, getSmoothMem } from "@/lib/eta-smooth";
 
 interface EtaNearest {
   plate: string | null;
@@ -67,8 +67,12 @@ export default function LiveEta({
   const [manualHint, setManualHint] = useState<string | null>(null);
   const reqId = useRef(0);
   const lastManualAt = useRef(0);
-  /** 同车单调记忆（v0.8.2 修复 C 抖动 2→3→1）：跨帧持有，只降不升 */
-  const prevByBus = useRef(new Map<string, { stopsAway: number; ts: number }>());
+  /**
+   * 同车单调记忆（v0.8.2 修复 C 抖动 2→3→1）——必须模块级单例：
+   * TimerWizard 步骤容器 <div key={idx}> 每次打点推进都会卸载重建 LiveEta，
+   * useRef 会随之清零导致平滑失效；getSmoothMem() 跨 remount 存活。
+   */
+  const prevByBus = useRef(getSmoothMem());
   const routesKey = routes.join(",");
 
   const fetchEta = useCallback(
@@ -87,8 +91,8 @@ export default function LiveEta({
         if (!res.ok) return;
         const body = (await res.json()) as EtaData;
         if (id === reqId.current) {
-          // v0.8.2：同车只降不升，消除 DSAT 过渡帧导致的 2→3→1 假倒退
-          smoothStopsAway(prevByBus.current, body.results);
+          // v0.8.2：同车只降不升（记忆含等车站，跨步骤 remount 存活），消除 2→3→1 假倒退
+          smoothStopsAway(prevByBus.current, body.results, station);
           setData(body);
         }
       } catch {

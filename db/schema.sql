@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS plan_legs (
     to_station    TEXT REFERENCES stations(code),
     minutes       NUMERIC(5,1),            -- 已知耗时（步行实测值）；乘车段NULL走估算
     note          TEXT,
+    border_label  TEXT,                    -- v0.13.0 cross_border 段口岸显示名：'橫琴口岸' / '關閘（拱北口岸）'
     board_candidates TEXT[],               -- bus 段可选上车站（v0.6.0 去学校 51 系：首项=默认展示）
     alight_candidates TEXT[],              -- bus 段可选下车点（v0.6.0 回宿舍动态下车：末位=强制终点）
     UNIQUE (plan_id, seq)
@@ -136,6 +137,8 @@ ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS from_zone TEXT;  -- 离校�
 ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS to_zone TEXT;    -- 到校后到哪个座
 -- v0.10.0 测试模式标记：测试运行 is_test=true；统计/记录/导出默认排除（「含测试」偏好可开）
 ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;
+-- v0.13.0 通关耗时（border_start→border_end 配对闭合区间合计，独立于行程计时）
+ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS border_minutes NUMERIC(5,1);
 
 -- 2.10 计时器打点事件
 CREATE TABLE IF NOT EXISTS timer_events (

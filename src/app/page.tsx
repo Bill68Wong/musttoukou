@@ -13,6 +13,8 @@ export default async function Home() {
     const plansRes = await pool.query(`
       SELECT p.id, p.summary,
              pt.kind AS to_kind,
+             -- v0.13.0：border 组按目的地 slug 拆组（横琴 vs 關閘）
+             pt.slug AS to_slug,
              (SELECT count(*)::int FROM timer_sessions s
                WHERE s.plan_id = p.id AND s.deleted_at IS NULL
                  AND NOT COALESCE(s.is_test, false)

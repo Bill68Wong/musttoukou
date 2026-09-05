@@ -8,6 +8,8 @@ export interface RecordRow {
   started_at: string;
   ended_at: string | null;
   total_minutes: number | null;
+  /** v0.13.0：口岸通关耗时（独立于行程，展示「行程 + 通关」） */
+  border_minutes?: number | null;
   missed_count: number;
   crowd_level: number | null;
   route_code: string | null;
@@ -127,7 +129,13 @@ export default function RecordsClient({
                 >
                   {r.ended_at ? (
                     <>
-                      {r.total_minutes !== null ? `${r.total_minutes} 分钟` : "已结束"}
+                      {/* v0.13.0：含通关的会话显示「行程 xx 分钟 + 通关 xx 分钟」，通关不计入行程
+                          （pg NUMERIC 返回字符串 → Number 转换；0 视为无通关） */}
+                      {r.total_minutes !== null
+                        ? r.border_minutes != null && Number(r.border_minutes) > 0
+                          ? `${r.total_minutes} 分钟 + 通关 ${Number(r.border_minutes)} 分钟`
+                          : `${r.total_minutes} 分钟`
+                        : "已结束"}
                       {r.missed_count > 0 && (
                         <span className="t-error"> · 没挤上 ×{r.missed_count}</span>
                       )}

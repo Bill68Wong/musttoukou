@@ -32,6 +32,8 @@ interface LegSeed {
   at?: string; // transfer/cross_border 的位置
   minutes: number | null;
   note?: string;
+  /** v0.13.0 cross_border 段口岸显示名（'橫琴口岸' / '關閘（拱北口岸）'） */
+  label?: string;
   /** 动态下车候选（bus 回宿舍），末位 = 强制终点 */
   alight_candidates?: string[];
 }
@@ -207,8 +209,8 @@ async function main() {
         await q(
           `INSERT INTO plan_legs (plan_id, seq, leg_kind, route_id, route_options,
                                   from_station, to_station, minutes, note,
-                                  board_candidates, alight_candidates)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+                                  border_label, board_candidates, alight_candidates)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
           [
             planId,
             leg.seq,
@@ -223,6 +225,7 @@ async function main() {
               : resolveStation(leg.to),
             leg.minutes,
             leg.note ?? null,
+            leg.kind === "cross_border" ? (leg.label ?? null) : null,
             boardCands.length ? boardCands : null,
             alightCands.length ? alightCands : null,
           ],

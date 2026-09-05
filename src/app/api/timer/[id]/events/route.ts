@@ -208,11 +208,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       // + 时段分桶（GMT+8，语义统一延至分析阶段，仍按到达时刻）
       // v0.12.0：总时长再扣除「暂停闭合区间」（pause→resume 成对出现的秒数），
       // 步行中途买东西/停留等暂停时间不计入总时长
+      // v0.13.0：总时长同样扣除「通关闭合区间」（border_start→border_end 成对秒数），
+      // 通关耗时独立写入 border_minutes（展示为「行程 xx + 通关 xx」），不计入行程时间
       const now = new Date();
       const macau = new Date(now.getTime() + 8 * 3600 * 1000);
       const bucket = timeBucketOf(macau.getUTCHours());
-      // 暂停总秒数：把本会话 pause/resume 事件按 seq 排列，pause 行的下一行若是 resume → 成对扣减；
-      // 孤立 pause（未闭合，异常态）不扣——UI 暂停态下无 arrive 主按钮，正常流程必先 resume
+      // 区间闭合子查询模板：把本会话 start/end 事件按 seq 排列，
+      // start 行的下一行若是对应 end 事件 → 成对闭合区间扣减秒数；
+      // 孤立 start（未闭合，异常态）不扣——UI 流程正常必先 end
       await pool.query(
         `UPDATE timer_sessions
          SET ended_at = now(),
@@ -235,7 +238,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
                      ) pr
                      WHERE pr.resume_type = 'resume'
                    ), 0)
-               ) / 60.0, 1)
+                 - COALESCE((
+                     SELECT sum(extract(epoch from (border_end_at - border_start_at)))
+                     FROM (
+                       SELECT recorded_at AS border_start_at,
+                              lead(recorded_at) OVER w AS border_end_at,
+                              lead(event_type) OVER w AS border_end_type
+                       FROM timer_events
+                       WHERE session_id = $1 AND event_type IN ('border_start', 'border_end')
+                       WINDOW w AS (ORDER BY seq, id)
+                     ) bb
+                     WHERE bb.border_end_type = 'border_end'
+                   ), 0)
+               ) / 60.0, 1),
+             border_minutes = round(
+               GREATEST(0, COALESCE((
+                 SELECT sum(extract(epoch from (border_end_at - border_start_at)))
+                 FROM (
+                   SELECT recorded_at AS border_start_at,
+                          lead(recorded_at) OVER w AS border_end_at,
+                          lead(event_type) OVER w AS border_end_type
+                   FROM timer_events
+                   WHERE session_id = $1 AND event_type IN ('border_start', 'border_end')
+                   WINDOW w AS (ORDER BY seq, id)
+                 ) bb
+                 WHERE bb.border_end_type = 'border_end'
+               ), 0)) / 60.0, 1)
          WHERE id = $1`,
         [sessionId, bucket],
       );

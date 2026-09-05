@@ -43,6 +43,8 @@ export async function GET(req: NextRequest) {
              to_char(s.started_at AT TIME ZONE 'Asia/Macau', 'YYYY-MM-DD HH24:MI') AS start_t,
              to_char(s.ended_at AT TIME ZONE 'Asia/Macau', 'YYYY-MM-DD HH24:MI') AS end_t,
              round(s.total_minutes, 1) AS total,
+             -- v0.13.0：通关耗时（border_start→border_end 闭合区间，不计入 total）
+             round(s.border_minutes, 1) AS border_total,
              s.weekday,
              s.time_bucket,
              s.crowd_level,
@@ -74,7 +76,7 @@ export async function GET(req: NextRequest) {
     const rows = res.rows as Record<string, unknown>[];
     const header = [
       "编号", "日期", "方案", "线路", "方向", "出发区", "到达区",
-      "开始时间", "结束时间", "总耗时(分钟)", "星期", "时段", "拥挤度", "没挤上",
+      "开始时间", "结束时间", "总耗时(分钟)", "通关耗时(分钟)", "星期", "时段", "拥挤度", "没挤上",
       "车辆牌号", "车辆编号", "已编辑",
       "出发", "等车开始", "上车", "下车", "通关开始", "通关完成", "到达",
     ];
@@ -90,6 +92,7 @@ export async function GET(req: NextRequest) {
       r.start_t,
       r.end_t,
       r.total,
+      r.border_total,
       WEEKDAY_TC[(r.weekday as number) ?? -1] ?? "",
       BUCKET_LABEL[(r.time_bucket as string) ?? ""] ?? (r.time_bucket ?? ""),
       CROWD_LABEL[(r.crowd_level as number) ?? -1] ?? "",

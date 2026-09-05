@@ -22,7 +22,7 @@ export default async function RecordsPage() {
   try {
     const pool = getPool();
     const res = await pool.query(`
-      SELECT s.id, s.started_at, s.ended_at, s.total_minutes,
+      SELECT s.id, s.started_at, s.ended_at, s.total_minutes, s.border_minutes,
              s.missed_count, s.crowd_level, s.route_code, s.travel_date, s.is_test
       FROM timer_sessions s
       JOIN commute_plans p ON s.plan_id = p.id

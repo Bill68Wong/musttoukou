@@ -84,9 +84,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       missedDecremented = true;
     } else if (latest.event_type === "arrive") {
       // arrive 触发过收尾 → 会话复活为计时中（ended_at 清空后向导继续停留在原步骤）
+      // v0.13.0：border_minutes（通关耗时）一并清空，等待重新 arrive 收尾
       await pool.query(
         `UPDATE timer_sessions
-         SET ended_at = NULL, total_minutes = NULL, time_bucket = NULL
+         SET ended_at = NULL, total_minutes = NULL, time_bucket = NULL, border_minutes = NULL
          WHERE id = $1`,
         [sessionId],
       );

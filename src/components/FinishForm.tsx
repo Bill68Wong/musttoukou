@@ -9,6 +9,8 @@ interface SessionData {
     summary: string;
     ended_at: string | null;
     total_minutes: number | null;
+    /** v0.13.0：口岸通关耗时（border_start→border_end 闭合区间），独立于行程 */
+    border_minutes: number | null;
     missed_count: number;
     crowd_level: number | null;
     vehicle_plate: string | null;
@@ -43,6 +45,9 @@ export default function FinishForm({ sessionId }: { sessionId: number }) {
   }
 
   const s = data.session;
+  // pg NUMERIC 列返回字符串 → 统一转数字；0（不足 30 秒舍入为 0.0）视为未通关不展示
+  const borderMin = s.border_minutes != null ? Number(s.border_minutes) : null;
+  const hasBorder = borderMin !== null && borderMin > 0;
 
   async function submit(crowdLevel: number) {
     setSaving(true);
@@ -74,8 +79,9 @@ export default function FinishForm({ sessionId }: { sessionId: number }) {
         style={{ padding: 18, marginBottom: 24, textAlign: "center" }}
       >
         <p className="t-label t-muted" style={{ marginBottom: 4 }}>
-          总耗时
+          总耗时{hasBorder ? "（行程 + 通关）" : ""}
         </p>
+        {/* v0.13.0：行程分钟 + 通关分钟（通关不计入行程；有 border 时并列显示并标注） */}
         <p
           className="h-display"
           style={{
@@ -85,6 +91,12 @@ export default function FinishForm({ sessionId }: { sessionId: number }) {
           }}
         >
           {s.total_minutes ?? "—"}
+          {hasBorder && (
+            <>
+              <span style={{ opacity: 0.55 }}>+</span>
+              <span style={{ fontSize: "0.82em" }}>{borderMin}</span>
+            </>
+          )}
           <span
             className="t-body t-muted"
             style={{ marginLeft: 6, fontWeight: 500 }}
@@ -92,6 +104,11 @@ export default function FinishForm({ sessionId }: { sessionId: number }) {
             分钟
           </span>
         </p>
+        {hasBorder && (
+          <p className="t-label t-muted" style={{ marginTop: 6 }}>
+            前项为行程时间，后项 {borderMin} 分钟为口岸通关（不计入行程）
+          </p>
+        )}
         {s.missed_count > 0 && (
           <p className="t-label t-error" style={{ marginTop: 8 }}>
             没挤上 {s.missed_count} 次

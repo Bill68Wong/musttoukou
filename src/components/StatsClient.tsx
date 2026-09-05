@@ -7,6 +7,8 @@ export interface PlanStat {
   plan_key: string;
   summary: string;
   to_kind: string;
+  /** v0.13.0：目的地 slug（border 组按它拆分横琴/關閘） */
+  to_slug: string;
   n: number;
   avg_min: number | null;
   min_min: number | null;

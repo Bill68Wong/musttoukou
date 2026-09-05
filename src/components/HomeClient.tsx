@@ -7,6 +7,7 @@ export interface PlanRow {
   id: number;
   summary: string;
   to_kind: string;
+  to_slug: string;
   samples: number;
   /** v0.7.0：各载具段主线路主题色（按乘坐顺序，walk 段不参与） */
   colors?: (string | null)[];
@@ -17,10 +18,12 @@ export interface ActiveSession {
   summary: string;
 }
 
-const GROUPS: { kind: string; title: string }[] = [
+// v0.13.0：border（口岸）按目的地 slug 拆组——横琴 与 關閘（拱北）各自成组
+const GROUPS: { kind: string; title: string; slug?: string }[] = [
   { kind: "dorm", title: "回宿舍" },
   { kind: "school", title: "去学校" },
-  { kind: "border", title: "去横琴口岸" },
+  { kind: "border", slug: "hengqin", title: "去横琴口岸" },
+  { kind: "border", slug: "guanqin", title: "去關閘（拱北）" },
 ];
 
 /* ---------- v0.8.0 主题色：卡片背景 = 主人指定的线路原色（实色），文字按亮度自动对比 ---------- */
@@ -193,10 +196,15 @@ export default function HomeClient({
       )}
 
       {GROUPS.map((g, gi) => {
-        const groupPlans = plans.filter((p) => p.to_kind === g.kind);
+        const groupPlans = plans.filter(
+          (p) => p.to_kind === g.kind && (!g.slug || p.to_slug === g.slug),
+        );
         if (groupPlans.length === 0) return null;
         return (
-          <section key={g.kind} style={{ marginBottom: gi === GROUPS.length - 1 ? 28 : 24 }}>
+          <section
+            key={g.slug ? `${g.kind}:${g.slug}` : g.kind}
+            style={{ marginBottom: gi === GROUPS.length - 1 ? 28 : 24 }}
+          >
             <h2 className="group-title">{g.title}</h2>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {groupPlans.map((p, pi) => {

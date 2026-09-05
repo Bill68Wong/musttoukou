@@ -26,6 +26,8 @@ export interface PlanLegLite {
   route_options: string[] | null;
   from_station: string | null;
   to_station: string | null;
+  /** v0.13.0 cross_border 段口岸显示名（'橫琴口岸' / '關閘（拱北口岸）'），通关按钮副标题用 */
+  border_label?: string | null;
   /** v0.7.0：本段主线路主题色（bus=公司色 / lrt=线路官方色），由服务端按 route_options[0] 填好 */
   color?: string | null;
   /** bus 段可选上车站（去学校 51 系：首项=默认展示） */
@@ -126,8 +128,13 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
         });
         break;
       case "cross_border":
-        steps.push({ eventType: "border_start", label: "开始通关", sub: "横琴口岸" });
-        steps.push({ eventType: "border_end", label: "通关完成" });
+        // v0.13.0：副标题按目的口岸（border_label）显示，不再写死「横琴口岸」
+        steps.push({
+          eventType: "border_start",
+          label: "开始通关",
+          sub: leg.border_label ?? "口岸",
+        });
+        steps.push({ eventType: "border_end", label: "通关完成", sub: leg.border_label ?? "口岸" });
         break;
       case "transfer":
         // 换乘等待并入下一程的「到站，开始等车」，不单独成步

@@ -10,6 +10,8 @@ import {
   type PlanLegLite,
 } from "@/lib/timer-flow";
 import LiveEta from "./LiveEta";
+import JourneyProgress from "./JourneyProgress";
+import { buildProgress, computeFilled } from "@/lib/trip-progress";
 
 interface SessionData {
   session: {
@@ -371,6 +373,12 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         ? lastBoardEvt.station_code
         : null)
     : null;
+  // v0.12.2（需求 6）：行程进度条模型——按项目等分（上车步行 / 乘车各站 / 下车步行），
+  // 由方案 legs + 站序表生成；events 回放实时推进（撤销/刷新恢复天然一致）
+  const progressUnits = buildProgress(data.legs, data.routeStopsByRoute, {
+    boardStation: chosenBoard,
+  });
+  const progressFilled = computeFilled(progressUnits, data.events);
   const stationName = (code?: string | null) =>
     code ? (data.stationNames[code] ?? code) : "";
   // sub 内嵌的站号替换为「站号 站名」（巴士）/「站名」（轻轨）
@@ -618,9 +626,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   }
 
   return (
-    <main className="page">
-      <header style={{ marginBottom: 20 }}>
-        {curLine && <div className="phase-band" style={{ background: curLine }} />}
+    <main className="page page--lock">
+      <header style={{ marginBottom: 16 }}>
+        {/* v0.12.2（需求 6）：主题色横条 → 行程进度条（按项目等分 + 载具主题色渐变） */}
+        <JourneyProgress units={progressUnits} filled={progressFilled} />
         <p
           className="t-label t-muted"
           style={{
@@ -659,6 +668,9 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         </p>
       </header>
 
+      {/* v0.12.2（需求 7）：行程区独立滚动容器——页面整体锁定防误点；
+          内容适配时不滚动，超高时才允许在容器内主动滚动 */}
+      <div className="tmr-scroll">
       {finished ? (
         <p className="t-body t-muted t-center" style={{ margin: "auto 0" }}>
           已完成，正在进入结束页…
@@ -981,6 +993,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           </div>
         ))}
       </footer>
+      </div>
 
       {/* v0.12.0：撤销确认弹窗（真实确认，不点撤销直接撤） */}
       {undoTarget && (

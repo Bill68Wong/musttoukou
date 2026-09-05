@@ -20,6 +20,12 @@
  *  - 自动刷新无视冷却照发（force 直查）；手动点击被冷却禁用（自动刷新 5s 后手动点不动）
  *  - 原「手动刷新 ≥10s 间隔」小字提示删除，改为按钮内读秒
  *
+ * v0.12.2（2026-09-05）卡片重构（主人定稿 7 条之二/三/四/五）：
+ *  - 线路名并入标题行（「🚌 实时车距 · 26 路」）；卡片单线路（数据收集阶段）
+ *  - 最近车站数大字突出显示；「再下一班车」（第二辆在途车）副行小字展示
+ *  - 删除「另有 N 辆总站待发」展示（服务端已不再返回）
+ *  - 脚注文案：数据来自澳门交通事务局，仅供参考（不再写「DSAT 仅供参考」）
+ *
  * v0.8.2/0.8.3（2026-09-04）：同车只降不升平滑（src/lib/eta-smooth.ts，模块级记忆）。
  * v0.8.4 根因已修（eta.ts 站距口径 s0/s1 同值，不再有 2→3），平滑降级为纯防御层，
  * 仅兜底 DSAT 数据自身的偶发回跳（换车/换向/毛刺）。
@@ -42,7 +48,8 @@ interface EtaResult {
   ok: boolean;
   isLoop?: boolean;
   nearest?: EtaNearest;
-  pending?: { plate: string | null; atStation: string; atStationName: string }[];
+  /** v0.12.2：再下一班在途车（第二近；副行小字展示，站数不突出） */
+  second?: EtaNearest;
   busCount?: number;
   error?: string;
 }
@@ -51,6 +58,10 @@ interface EtaData {
   fetchedAt: string;
   results: EtaResult[];
 }
+
+/** 巴士线路展示名（title/多线路 fallback 用）：26 → "26 路" */
+const busLabel = (code: string) =>
+  code.startsWith("LRT-") ? code.replace("LRT-", "輕軌·") : `${code} 路`;
 
 /** 手动刷新最小间隔（毫秒） */
 const MANUAL_MIN_MS = 10_000;
@@ -150,10 +161,13 @@ export default function LiveEta({
     fetchEta();
   };
 
-  // 所有线路里最近的站数（高亮"坐哪辆先来"）
-  const okWithBus = data?.results.filter((r) => r.ok && r.nearest) ?? [];
-  const minAway =
-    okWithBus.length > 0 ? Math.min(...okWithBus.map((r) => r.nearest!.stopsAway)) : null;
+  // v0.12.2：单线路卡片——线路名并入标题行（数据收集阶段一张卡对应一趟车）
+  const titleRoute =
+    routes.length === 1
+      ? busLabel(routes[0])
+      : data?.results.length === 1 && data.results[0].ok
+        ? busLabel(data.results[0].route)
+        : null;
 
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString("zh-CN", {
@@ -173,7 +187,17 @@ export default function LiveEta({
           marginBottom: 8,
         }}
       >
-        <p className="h-title">🚌 实时车距</p>
+        <p
+          className="h-title"
+          style={{
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          🚌 实时车距{titleRoute ? ` · ${titleRoute}` : ""}
+        </p>
         <button
           className="btn btn--text btn--sm"
           onClick={manualRefresh}
@@ -195,65 +219,77 @@ export default function LiveEta({
           if (!r.ok) {
             return (
               <p key={r.route} className="t-body t-muted" style={{ lineHeight: 1.7 }}>
-                {r.route} 路 · {r.error ?? "暂无数据"}
+                {busLabel(r.route)} · {r.error ?? "暂无数据"}
               </p>
             );
           }
+          // v0.12.2：单线路卡片（线路名已并入标题）；多线路兜底时每线一个独立小节
+          const blockHead =
+            data.results.length > 1 ? (
+              <p className="t-label t-strong" style={{ margin: "2px 0 0" }}>
+                {busLabel(r.route)}
+              </p>
+            ) : null;
           if (!r.nearest) {
-            // 没有在途车：总站有待发车 → 未发车；否则按有无在线车辆区分
-            if ((r.pending?.length ?? 0) > 0) {
-              const p = r.pending![0];
-              return (
-                <p key={r.route} className="t-body t-muted" style={{ lineHeight: 1.7 }}>
-                  {r.route} 路 · 未发车
-                  <span style={{ fontSize: 12 }}>
-                    {" "}
-                    ({p.plate ?? ""}
-                    {p.atStationName ? `在${p.atStationName}` : ""}
-                    {(r.pending?.length ?? 0) > 1 ? ` 等${r.pending!.length}辆` : ""})
-                  </span>
-                </p>
-              );
-            }
+            // v0.12.2：总站待发不再单列展示；仅区分「有在线车辆但都不在途」/「无线车辆」
             return (
-              <p key={r.route} className="t-body t-muted" style={{ lineHeight: 1.7 }}>
-                {r.route} 路 · {(r.busCount ?? 0) > 0 ? "本方向暂无来车" : "暂无在线车辆"}
-              </p>
+              <div key={r.route}>
+                {blockHead}
+                <p className="t-body t-muted" style={{ lineHeight: 1.7 }}>
+                  {(r.busCount ?? 0) > 0 ? "暂无车辆在途" : "暂无在线车辆"}
+                </p>
+              </div>
             );
           }
-          const isNearest = minAway === r.nearest.stopsAway;
+          const n = r.nearest.stopsAway;
           // 报站档位（v0.8.4 口径修正，2026-09-04）：
           //   s1 挂用户站 → 0 = 已进站（车停靠中）
           //   s0 挂紧邻前站 → 1 = 即将进站（车已离前站驶来，还有 1 次停靠）
           //   s1 挂前一站 → 还有 1 站（车停着没动）；更远 → 还有 N 站
-          const n = r.nearest.stopsAway;
           const stage =
             n === 0
               ? { text: "已进站！", flash: true }
               : n === 1 && r.nearest.status === "0"
                 ? { text: "即将进站", flash: true }
                 : { text: `还有 ${n} 站`, flash: false };
+          const bus = r.nearest;
+          const second = r.second;
           return (
-            <p key={r.route} className="t-body" style={{ lineHeight: 1.7 }}>
-              <span
-                className={stage.flash || isNearest ? "t-accent t-strong" : undefined}
+            <div key={r.route} style={{ marginTop: 2 }}>
+              {blockHead}
+              {/* 需求 3：站数突出显示（最近车大字） */}
+              <p
+                className={`t-accent eta-big${stage.flash ? " eta-big--flash" : ""}`}
+                style={{ textAlign: "center", margin: "4px 0 0" }}
               >
-                {r.route} 路 · {stage.text}
-              </span>
-              <span className="t-muted" style={{ fontSize: 13 }}>
-                {" "}
-                {r.nearest.plate ?? ""}
-                {r.nearest.atStationName ? ` · 在${r.nearest.atStationName}` : ""}
-                {(r.pending?.length ?? 0) > 0 && ` · 另有 ${r.pending!.length} 辆总站待发`}
-              </span>
-            </p>
+                {stage.text}
+              </p>
+              <p
+                className="t-label t-muted"
+                style={{ textAlign: "center", lineHeight: 1.5, marginTop: 2 }}
+              >
+                {bus.plate ?? ""}
+                {bus.atStationName ? ` · 在${bus.atStationName}` : ""}
+              </p>
+              {/* 需求 4：再下一班车（第二辆在途车）—— 站数不突出显示 */}
+              {second && (
+                <p
+                  className="t-label t-muted"
+                  style={{ textAlign: "center", lineHeight: 1.5, marginTop: 4 }}
+                >
+                  再下一班：还有 {second.stopsAway} 站
+                  {second.plate ? ` · ${second.plate}` : ""}
+                  {second.atStationName ? ` · 在${second.atStationName}` : ""}
+                </p>
+              )}
+            </div>
           );
         })
       )}
 
       {data && (
-        <p className="t-label t-muted" style={{ marginTop: 6 }}>
-          更新于 {fmtTime(data.fetchedAt)} · DSAT 仅供参考
+        <p className="t-label t-muted" style={{ marginTop: 8 }}>
+          更新于 {fmtTime(data.fetchedAt)} · 数据来自澳门交通事务局，仅供参考
         </p>
       )}
     </div>

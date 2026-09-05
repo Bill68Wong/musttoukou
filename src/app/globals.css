@@ -408,12 +408,48 @@ button:disabled {
   white-space: nowrap;
 }
 
-/* 乘车界面顶部阶段色带（当前载具主题色） */
-.phase-band {
-  height: 4px;
-  border-radius: 2px;
-  margin-bottom: 10px;
-  opacity: 0.9;
+/* 乘车界面顶部行程进度条（v0.12.2 需求 6：按项目等分 + 载具主题色渐变，替代 phase-band） */
+.jp {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-dim);
+  box-shadow: inset 0 0 0 1px var(--stroke);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.jp-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background-repeat: no-repeat;
+  transition: width var(--dur-med) var(--ease-em);
+}
+
+/* 行程页整页锁定（v0.12.2 需求 7：手机端固定防误点）：
+   页面高度钉死 100dvh 不随内容滚动；行程区独立滚动容器，
+   内容适配时不产生滚动、超高时才允许在容器内主动滚动 */
+.page--lock {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0; /* 由行程区内部收尾留安全区 */
+}
+.tmr-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.tmr-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -561,6 +597,26 @@ button:disabled {
 
 .t-strong {
   font-weight: 700;
+}
+
+/* 实时车距最近车站数大字（v0.12.2 需求 3：站数突出显示） */
+.eta-big {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0.5px;
+}
+@keyframes eta-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+.eta-big--flash {
+  animation: eta-pulse 1.2s ease-in-out infinite;
 }
 
 .t-center {

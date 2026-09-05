@@ -27,8 +27,10 @@ import { findStopIdx } from "@/lib/station-match";
  *    实测证据：用户"车驶离 C654/3（紧邻等车站）仍显示还有 2 站"；
  *    probe-switch.ts 采样 AB5503 s0@C652 连续 40s+ 后才 s1@C655（到站才切）
  *  - s0 挂用户站 = 车刚离站：环线按绕一圈 N 站计；双方向线跳过（不会再来）
- *  - 总站待发（status=1 + 挂首/末站）→ 不参与站数计算，列入 pending 显示"未发车"
- *    ★ speed 不可靠不参与判定（实测待发车可能残留非空速度）
+ *  - 总站停靠（status=1 + 挂首/末站，且非用户等车站）= 未发车，不在途——
+ *    直接排除，不参与站数计算（★ speed 不可靠不参与判定：实测待发车可能残留非空速度）
+ *  - v0.12.2（2026-09-05）返回「最近车 nearest + 再下一班车 second」两辆在途车，
+ *    不再收集/展示"另有 N 辆总站待发"（该信息不可靠，主人定稿删除）
  *  - 循环线（DB 只有 dir=0 一套站序）已过站按绕圈计；双方向线跳过已过站的车
  *  - v0.8.1 修复多线截断：最多 6 条（与 fleet-snapshot 上限一致），≤3 条/批并发查询
  *    （修复前 slice(0,3)：横琴 6 线方案的 102/701X/N6 永不返回）
@@ -43,22 +45,16 @@ export interface EtaBus {
   speed: string | number | null;
 }
 
-/** 总站停靠待发的车（status=1 + 挂首/末站）：不算站数，显示"未发车" */
-export interface EtaPendingBus {
-  plate: string | null;
-  atStation: string;
-  atStationName: string;
-}
-
 export interface EtaRouteResult {
   route: string;
   ok: boolean;
   /** 本线路实际查询的方向（按 dest 推导，可能不同于 dir 参数） */
   dir?: string;
   isLoop?: boolean;
+  /** 最近一辆在途车 */
   nearest?: EtaBus;
-  /** 停在首/末总站尚未发车的车辆（不参与站数计算） */
-  pending?: EtaPendingBus[];
+  /** v0.12.2：再下一班在途车（第二近；站数不突出显示，副行展示） */
+  second?: EtaBus;
   busCount?: number;
   error?: string;
 }
@@ -207,9 +203,12 @@ export async function queryEta(
       }
 
       const N = stops.length;
-      let nearest: EtaBus | null = null;
       let busCount = 0;
-      const pending: EtaPendingBus[] = [];
+      // v0.12.2：收集在途候选车，按站距排序取前二（最近车 + 再下一班车）。
+      // 总站停靠（status=1 + 挂首/末站，非用户等车站）= 未发车，不在途，直接排除——
+      // 不再收集展示（原 v0.6.0「另有 N 辆总站待发」信息不可靠，主人定稿删除）。
+      const inTransit: EtaBus[] = [];
+      const seenPlates = new Set<string>();
 
       for (const st of res.data.routeInfo) {
         if (!st.busInfo?.length) continue;
@@ -226,15 +225,15 @@ export async function queryEta(
           //     → 直接 s1@C655；MX7866/AC4098 同模式（离站挂旧站→到站才切）。
           //   用户场景：车驶离 C654/3（紧邻等车站 C653）应显示"即将进站"而非"还有 2 站"。
           const arrived = b.status === "1"; // s1=停靠挂载站；s0=已离挂载站驶向下一站
-          // 总站停靠待发：s1 + 挂首/末站 + 该站不是用户等车站 → 不算站数（发车时间未知）
+          // 总站停靠待发（s1 + 挂首/末站 + 该站不是用户等车站）→ 不在途，跳过
           // ★ speed 不可靠（实测 2026-09-03：待发车可能残留非空速度），不参与判定
           if (arrived && (busIdx === 0 || busIdx === N - 1) && busIdx !== userIdx) {
-            pending.push({
-              plate: b.busPlate ?? null,
-              atStation: st.staCode,
-              atStationName: stops[busIdx]?.name ?? st.staCode,
-            });
             continue;
+          }
+          // 同牌去重：DSAT 极少把同一辆车挂多站，防同一辆车占掉最近+下一班两个名额
+          if (b.busPlate) {
+            if (seenPlates.has(b.busPlate)) continue;
+            seenPlates.add(b.busPlate);
           }
           const diff = userIdx - busIdx; // >0 车在用户站后方；=0 挂用户站；<0 已过用户站
           let stopsAway: number;
@@ -257,26 +256,33 @@ export async function queryEta(
           }
           if (stopsAway > N) stopsAway = N;
 
-          if (!nearest || stopsAway < nearest.stopsAway) {
-            nearest = {
-              plate: b.busPlate ?? null,
-              stopsAway,
-              atStation: st.staCode,
-              atStationName: stops[busIdx]?.name ?? st.staCode,
-              status: b.status ?? null,
-              speed: b.speed ?? null,
-            };
-          }
+          inTransit.push({
+            plate: b.busPlate ?? null,
+            stopsAway,
+            atStation: st.staCode,
+            atStationName: stops[busIdx]?.name ?? st.staCode,
+            status: b.status ?? null,
+            speed: b.speed ?? null,
+          });
         }
       }
+
+      // 按站距升序取前二：nearest = 最近车，second = 再下一班车
+      inTransit.sort(
+        (a, b) =>
+          a.stopsAway - b.stopsAway ||
+          (a.atStation === b.atStation ? (a.plate ?? "").localeCompare(b.plate ?? "") : a.atStation.localeCompare(b.atStation)),
+      );
+      const nearest = inTransit[0];
+      const second = inTransit[1];
 
       return {
         route,
         ok: true,
         dir: queryDir,
         isLoop,
-        nearest: nearest ?? undefined,
-        pending: pending.length > 0 ? pending : undefined,
+        nearest,
+        second,
         busCount,
       };
     } catch (err) {

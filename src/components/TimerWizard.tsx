@@ -64,6 +64,10 @@ const UNDO_EXCLUDED = new Set(["pause", "resume"]);
 
 // 关键打点（出发/上车/下车/到达）触发 10ms 短振感；非每个点击都振。
 const HAPTIC_EVENTS = new Set(["depart", "board", "alight", "arrive"]);
+// v0.12.1：自动刷新（LiveEta refreshKey force 直查）仅在关键动作触发——
+// 出发 depart / 人到站 wait_start / 上车 board / 下车 alight；
+// 进入路线页由 LiveEta 挂载自动取一次；pause/继续/记站(missed/pass/arrive)等不再刷（省 DSAT 调用）
+const AUTO_REFRESH_TYPES = new Set(["depart", "wait_start", "board", "alight"]);
 function tryVibrate() {
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {
     try {
@@ -296,8 +300,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         }).catch(() => {});
       }
 
-      // ④ 打点成功后实时车距卡片事件驱动刷新（无自动轮询）
-      setEtaTick((t) => t + 1);
+      // ④ 自动刷新仅限关键打点（v0.12.1，见 AUTO_REFRESH_TYPES）→ LiveEta refreshKey 递增 force 直查
+      if (AUTO_REFRESH_TYPES.has(type)) setEtaTick((t) => t + 1);
 
       if (type === "arrive") {
         router.replace(`/finish/${sessionId}`);

@@ -13,6 +13,13 @@
  *      force 直查结果不一致导致界面横跳；现打点后两者同刻直查，口径一致）
  *  - 失败静默保留旧数据（不打断计时流程）
  *
+ * v0.12.1（2026-09-05）刷新机制修正（主人定稿）：
+ *  - 自动刷新仅限关键动作：进入路线页（挂载）/ 出发 / 人到站 / 上车 / 下车
+ *    （TimerWizard 收紧 AUTO_REFRESH_TYPES，pause/继续/记站不再触发）
+ *  - 10s 冷却对「任何刷新」生效：点击刷新或自动刷新后按钮进入不可点读秒（↻ 9s → 0）
+ *  - 自动刷新无视冷却照发（force 直查）；手动点击被冷却禁用（自动刷新 5s 后手动点不动）
+ *  - 原「手动刷新 ≥10s 间隔」小字提示删除，改为按钮内读秒
+ *
  * v0.8.2/0.8.3（2026-09-04）：同车只降不升平滑（src/lib/eta-smooth.ts，模块级记忆）。
  * v0.8.4 根因已修（eta.ts 站距口径 s0/s1 同值，不再有 2→3），平滑降级为纯防御层，
  * 仅兜底 DSAT 数据自身的偶发回跳（换车/换向/毛刺）。
@@ -64,9 +71,10 @@ export default function LiveEta({
 }) {
   const [data, setData] = useState<EtaData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [manualHint, setManualHint] = useState<string | null>(null);
+  /** v0.12.1：刷新冷却剩余秒数（0=可点）；任何刷新（挂载/自动/手动）都会重置 10s */
+  const [cooldownSec, setCooldownSec] = useState(0);
   const reqId = useRef(0);
-  const lastManualAt = useRef(0);
+  const cooldownUntil = useRef(0);
   /**
    * 同车单调记忆（v0.8.2 修复 C 抖动 2→3→1）——必须模块级单例：
    * TimerWizard 步骤容器 <div key={idx}> 每次打点推进都会卸载重建 LiveEta，
@@ -75,10 +83,27 @@ export default function LiveEta({
   const prevByBus = useRef(getSmoothMem());
   const routesKey = routes.join(",");
 
+  // v0.12.1：冷却 10s（手动点击与自动刷新共用；自动 force 不受限，仅禁手动按钮）
+  const startCooldown = useCallback(() => {
+    cooldownUntil.current = Date.now() + MANUAL_MIN_MS;
+    setCooldownSec(Math.ceil(MANUAL_MIN_MS / 1000));
+  }, []);
+  // 冷却期每秒读秒递减（结束归 0 恢复可点）
+  useEffect(() => {
+    if (cooldownSec <= 0) return;
+    const id = setInterval(() => {
+      const left = Math.ceil((cooldownUntil.current - Date.now()) / 1000);
+      if (left <= 0) setCooldownSec(0);
+      else setCooldownSec(left);
+    }, 500);
+    return () => clearInterval(id);
+  }, [cooldownSec]);
+
   const fetchEta = useCallback(
     async (force = false) => {
       const id = ++reqId.current;
       setLoading(true);
+      startCooldown(); // v0.12.1：任何刷新都启动/重置 10s 冷却（按钮进入读秒）
       try {
         const qs = new URLSearchParams({
           station,
@@ -101,7 +126,7 @@ export default function LiveEta({
         if (id === reqId.current) setLoading(false);
       }
     },
-    [station, routesKey, dir, dest],
+    [station, routesKey, dir, dest, startCooldown],
   );
 
   // 挂载时取一次
@@ -119,15 +144,9 @@ export default function LiveEta({
     }
   }, [refreshKey, fetchEta]);
 
-  // 手动刷新：10s 最小间隔（本地守卫；不带 force，命中服务端 10s 缓存）
+  // 手动刷新：冷却中按钮 disabled（读秒），此处仅兜底；点击后由 fetchEta 启动新 10s 冷却
   const manualRefresh = () => {
-    const now = Date.now();
-    if (now - lastManualAt.current < MANUAL_MIN_MS) {
-      setManualHint("10 秒后可再次手动刷新");
-      return;
-    }
-    lastManualAt.current = now;
-    setManualHint(null);
+    if (Date.now() < cooldownUntil.current) return;
     fetchEta();
   };
 
@@ -158,20 +177,16 @@ export default function LiveEta({
         <button
           className="btn btn--text btn--sm"
           onClick={manualRefresh}
-          disabled={loading}
+          disabled={loading || cooldownSec > 0}
           aria-label="刷新车距"
         >
           <span className={loading ? "anim-spin" : ""} style={{ display: "inline-block" }}>
             ↻
           </span>{" "}
-          {loading ? "刷新中…" : "刷新"}
+          {/* v0.12.1：冷却期按钮不可点并读秒（点击刷新或自动刷新后都会进入 10s 冷却） */}
+          {loading ? "刷新中…" : cooldownSec > 0 ? `${cooldownSec}s` : "刷新"}
         </button>
       </div>
-      {manualHint && (
-        <p className="t-label t-muted" style={{ marginBottom: 6 }}>
-          {manualHint}
-        </p>
-      )}
 
       {!data ? (
         <p className="t-body t-muted">获取中…</p>
@@ -238,7 +253,7 @@ export default function LiveEta({
 
       {data && (
         <p className="t-label t-muted" style={{ marginTop: 6 }}>
-          更新于 {fmtTime(data.fetchedAt)} · 手动刷新 ≥10s 间隔 · DSAT 仅供参考
+          更新于 {fmtTime(data.fetchedAt)} · DSAT 仅供参考
         </p>
       )}
     </div>

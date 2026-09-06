@@ -57,11 +57,16 @@ export interface Step {
   alightCandidates?: string[] | null;
   /** v0.7.0：当前阶段载具主题色（出门=首段载具色；乘车=本段线路色；步行/到达无） */
   lineColor?: string | null;
+  /** v0.14.2：载具段序号（0-based，仅 bus/lrt 段 wait_start/board/alight 步有值）。
+   *  多段方案区分「乘哪一路」的段槽位——chips 选择按段独立记忆，换乘后回默认 */
+  vehIndex?: number;
 }
 
 /** 由方案分段生成打点步骤序列 */
 export function buildSteps(legs: PlanLegLite[]): Step[] {
   const steps: Step[] = [];
+  // v0.14.2：载具段计数（仅 bus/lrt 递增）——routeChoice 按段独立记忆的槽位
+  let vehIdx = -1;
   for (let i = 0; i < legs.length; i++) {
     const leg = legs[i];
     switch (leg.leg_kind) {
@@ -93,6 +98,7 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
         break;
       case "bus":
       case "lrt":
+        vehIdx++;
         steps.push({
           eventType: "wait_start",
           label: "到站，开始等车",
@@ -102,6 +108,7 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
           routeOptions: leg.route_options,
           destStationCode: leg.to_station ?? null,
           lineColor: leg.color ?? null,
+          vehIndex: vehIdx,
         });
         steps.push({
           eventType: "board",
@@ -111,6 +118,7 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
           routeOptions: leg.route_options,
           destStationCode: leg.to_station ?? null,
           lineColor: leg.color ?? null,
+          vehIndex: vehIdx,
         });
         steps.push({
           eventType: "alight",
@@ -125,6 +133,7 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
               ? leg.alight_candidates
               : null,
           lineColor: leg.color ?? null,
+          vehIndex: vehIdx,
         });
         break;
       case "cross_border":

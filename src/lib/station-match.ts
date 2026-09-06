@@ -59,13 +59,11 @@ export function resolveRideDestIdx(
   // 站名归一化：UI 全链路站名格式为「站码 + 空格 + 官方站名」（如 "T355/2 蓮花路停車場"），
   // 同场分台 T355/1 与 T355/2 前缀不同 → 比对前必须先剥掉码前缀，否则同名聚合永不命中
   // （2026-09-06 实测 50 路显示「还剩 34 站」的根因）。纯名（库 name_tc）传入时不受影响。
-  const codeSet = new Set(stops.map((s) => codeOf(s)));
+  // ⚠️ 剥码用「DSAT 站码正则」而非「本线站序码集」：换乘第二程的目标台常属其它线路
+  //    （如 25B 的目标 T560/4 是 50 的台，25B 自身停 T560/2），码不在本线集合时同样要能剥。
   const stripCode = (raw: string | null | undefined): string => {
     if (!raw) return "";
-    for (const c of codeSet) {
-      if (c && (raw === c || raw.startsWith(c + " "))) return raw.slice(c.length).trim();
-    }
-    return raw;
+    return raw.replace(/^[A-Za-z]+\d+(?:\/\d+)?\s+/, "");
   };
 
   // ① 优先按同场站名聚合（分台都叫同一站名）

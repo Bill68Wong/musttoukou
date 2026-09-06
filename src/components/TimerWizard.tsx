@@ -119,7 +119,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // 打点成功后递增 → LiveEta 卡片事件驱动刷新（需求 7：无自动轮询）
   const [etaTick, setEtaTick] = useState(0);
   // v0.10.0 A11：多候选线路段「实际乘哪一路」（board 阶段选；乘车推进/车队参照按此线）
-  const [routeChoice, setRouteChoice] = useState<string | null>(null);
+  // v0.14.2：按载具段（vehIndex）独立记忆——换乘到下一段回默认，不再跨段沿用上一程选择
+  const [routeChoices, setRouteChoices] = useState<Record<string, string | null>>({});
   // v0.10.0 A8：tap_id 幂等——同一次打点（同 type+参数）复用同一 id；成功后清除，失败留作重试
   const tapIds = useRef(new Map<string, string>());
   // v0.12.0：撤销确认弹窗目标（null=未弹）；弹窗真实，确认后才 POST undo
@@ -296,9 +297,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
       // ③ 抓实际乘坐车辆（v0.4.0 board 起；v0.14.1 每段上/下车都抓，多线候选段按所选
       //    实乘线 route 抓取，换乘点操作与单线一致、不打断流程）
+      //    v0.14.2：按当前打点所属载具段的槽位取选择，跨段不沿用
+      const segChoice = (() => {
+        if (curStep?.vehIndex == null) return null;
+        return routeChoices[String(curStep.vehIndex)] ?? null;
+      })();
       const grabRoute = curStep?.routeOptions?.length
-        ? routeChoice && curStep.routeOptions.includes(routeChoice)
-          ? routeChoice
+        ? segChoice && curStep.routeOptions.includes(segChoice)
+          ? segChoice
           : curStep.routeOptions[0]
         : null;
       if ((type === "board" || type === "alight") && busContext && grabRoute) {
@@ -431,11 +437,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // board 提交带实乘线 → 服务端把 route_code/dsat_dir 修正到实乘线（首个载具段）
   const isBoardRouteMulti =
     step?.eventType === "board" && (step.routeOptions?.length ?? 0) > 1 && step.quickKind === "stops";
-  // v0.12.0：step?. 保护 —— arrive 打点后 idx 越界 step 为 undefined，而 routeChoice/
+  // v0.12.0：step?. 保护 —— arrive 打点后 idx 越界 step 为 undefined，而 routeChoices/
   // session.route_code 仍可能非空，此处无条件执行会读 step.routeOptions 崩溃
+  // v0.14.2：只读当前载具段的槽位（无则 null → 走默认），换段后自动回默认
+  const segChoice =
+    step?.vehIndex != null ? (routeChoices[String(step.vehIndex)] ?? null) : null;
   const effRoute =
-    routeChoice && step?.routeOptions?.includes(routeChoice)
-      ? routeChoice
+    segChoice && step?.routeOptions?.includes(segChoice)
+      ? segChoice
       : data.session.route_code && step?.routeOptions?.includes(data.session.route_code)
         ? data.session.route_code
         : (step?.routeOptions?.[0] ?? null);
@@ -833,7 +842,11 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                     key={r}
                     className={`chip${effRoute === r ? " chip--on" : ""}`}
                     aria-pressed={effRoute === r}
-                    onClick={() => setRouteChoice(effRoute === r ? null : r)}
+                    onClick={() => {
+                      if (step.vehIndex == null) return;
+                      const k = String(step.vehIndex);
+                      setRouteChoices((prev) => ({ ...prev, [k]: effRoute === r ? null : r }));
+                    }}
                   >
                     {r.startsWith("LRT-") ? lrtLabelOf(r) : `${r} 路`}
                   </button>

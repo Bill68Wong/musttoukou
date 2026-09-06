@@ -31,9 +31,10 @@
   --ok-container: #a8efb4;
   --on-ok-container: #00210b;
 
-  /* 状态层等效（brightness 模拟 M3 状态层） */
+  /* 状态层等效（brightness 模拟 M3 状态层）
+     v0.13.x：按压明显加深（0.93 → 0.90），配合 Spring 回弹动效 */
   --state-hover: brightness(0.965);
-  --state-active: brightness(0.93);
+  --state-active: brightness(0.9);
 
   /* 字体层级（M3 Type Scale 简化） */
   --fs-display: 32px;
@@ -51,6 +52,16 @@
   --ease-em: cubic-bezier(0.2, 0, 0, 1);
   --dur-fast: 150ms;
   --dur-med: 250ms;
+
+  /* v0.13.x Spring 回弹（YouTube 式按压，主人定稿）：
+     按下 = 快速下沉（--dur-press，短）+ 明显变深；
+     松开 = 带 overshoot 的回弹（--spring-release back-out，稍长）。
+     CSS 机制：transition 声明在默认态用「释放曲线」，:active 态覆写为「按压曲线」——
+     按下走 90ms 快沉，手指一松 :active 移除，改走默认 240ms back-out 回弹（>1 超调再落回）。 */
+  --spring-press: cubic-bezier(0.2, 0, 0, 1);
+  --spring-release: cubic-bezier(0.22, 1.9, 0.36, 1);
+  --dur-press: 90ms;
+  --dur-release: 240ms;
 
   /* 兼容别名（迁移过渡期/内联引用） */
   --card: var(--surface);
@@ -88,7 +99,7 @@
     --on-ok-container: #8fdcac;
 
     --state-hover: brightness(1.07);
-    --state-active: brightness(1.13);
+    --state-active: brightness(1.16);
   }
 }
 
@@ -154,14 +165,16 @@ button {
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
+  /* v0.13.x Spring 回弹：transform 走「释放曲线」（松手回弹 overshoot、时长略长）；
+     其余属性走快速按压曲线 */
   transition:
-    transform var(--dur-fast) var(--ease-em),
-    filter var(--dur-fast) var(--ease-em),
-    background-color var(--dur-fast) var(--ease-em),
-    color var(--dur-fast) var(--ease-em),
-    border-color var(--dur-fast) var(--ease-em),
-    box-shadow var(--dur-fast) var(--ease-em),
-    opacity var(--dur-fast) var(--ease-em);
+    transform var(--dur-release) var(--spring-release),
+    filter var(--dur-press) var(--spring-press),
+    background-color var(--dur-press) var(--spring-press),
+    color var(--dur-press) var(--spring-press),
+    border-color var(--dur-press) var(--spring-press),
+    box-shadow var(--dur-press) var(--spring-press),
+    opacity var(--dur-press) var(--spring-press);
 }
 
 button:focus-visible {
@@ -174,8 +187,18 @@ button:hover:not(:disabled) {
   filter: var(--state-hover);
 }
 
+/* v0.13.x：按下态覆写 transition 为「快速按压曲线」（90ms 快沉，不弹），
+   手指松开 :active 移除 → 自动切回默认「释放曲线」（240ms back-out 超调回弹） */
 button:active:not(:disabled) {
-  transform: scale(0.97);
+  transition:
+    transform var(--dur-press) var(--spring-press),
+    filter var(--dur-press) var(--spring-press),
+    background-color var(--dur-press) var(--spring-press),
+    color var(--dur-press) var(--spring-press),
+    border-color var(--dur-press) var(--spring-press),
+    box-shadow var(--dur-press) var(--spring-press),
+    opacity var(--dur-press) var(--spring-press);
+  transform: scale(0.96);
   filter: var(--state-active);
 }
 
@@ -323,13 +346,14 @@ button:disabled {
 .press-card:hover:not(:disabled) {
   filter: none;
   background: var(--surface-dim);
+  /* v0.13.x：hover 态不再覆写 transform 的 transition，回弹曲线交给 button 基元（松手 overshoot） */
   transition:
-    background-color var(--dur-fast) var(--ease-em),
-    transform var(--dur-fast) var(--ease-em);
+    background-color var(--dur-press) var(--spring-press),
+    box-shadow var(--dur-press) var(--spring-press);
 }
 
 .press-card:active:not(:disabled) {
-  transform: scale(0.975);
+  transform: scale(0.96);
   background: var(--surface-dim);
 }
 
@@ -348,7 +372,7 @@ button:disabled {
 
 .press-card--ok:active:not(:disabled) {
   filter: none;
-  transform: scale(0.975);
+  transform: scale(0.96);
   background: var(--ok-container);
 }
 
@@ -751,15 +775,17 @@ button:disabled {
 }
 
 .anim-fade-up {
-  animation: fade-up var(--dur-med) var(--ease-em) both;
+  /* v0.13.x：fill-mode 用 backwards 而非 both —— both 会把 to 帧的 transform 声明
+     残留到动画结束后，压住 :active 的按压缩放（卡片/按钮按下无回馈的元凶之一） */
+  animation: fade-up var(--dur-med) var(--ease-em) backwards;
 }
 
 .anim-fade-in {
-  animation: fade-in var(--dur-med) var(--ease-em) both;
+  animation: fade-in var(--dur-med) var(--ease-em) backwards;
 }
 
 .anim-pop {
-  animation: pop-in var(--dur-med) var(--ease-em) both;
+  animation: pop-in var(--dur-med) var(--ease-em) backwards;
 }
 
 /* 刷新图标旋转（LiveEta） */

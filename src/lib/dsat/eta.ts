@@ -56,6 +56,8 @@ export interface EtaRouteResult {
   /** v0.12.2：再下一班在途车（第二近；站数不突出显示，副行展示） */
   second?: EtaBus;
   busCount?: number;
+  /** v0.13.x：等车站 = 本方向站序首站（总站/起点）——前端据此区分「暂未发车」文案 */
+  headTerminal?: boolean;
   error?: string;
 }
 
@@ -235,6 +237,28 @@ export async function queryEta(
             if (seenPlates.has(b.busPlate)) continue;
             seenPlates.add(b.busPlate);
           }
+          // ★ v0.13.x（2026-09-05 主人实测 51 路蝴蝶谷总站）总站等车统一规则：
+          //   等车站 = 本方向站序首站（总站/起点，userIdx===0）时，乘客能上的只有
+          //   「正停在首站待发」的车（arrived@首站 → 0 站 = 已进站）；
+          //   其余车辆一律不计站数——
+          //     · 已从首站开出的车（s0@首站 或途中的车）= 这一趟已错过，上不了；
+          //     · 绕回总站段的车（循环线回程，如 51 路 seq12~18）= 到站下客 ≠ 立刻折返再发，
+          //       不能按绕一圈折算站数（旧逻辑 N+diff 折算成 1~9 站误导）。
+          //   实测铁证（probe-51.ts）：51 路 11 辆车中 4 辆挂回总站段（T354 seq12 / T418 seq14
+          //   / T433 seq15 / T385 seq18）。
+          if (userIdx === 0) {
+            if (arrived && busIdx === 0) {
+              inTransit.push({
+                plate: b.busPlate ?? null,
+                stopsAway: 0,
+                atStation: st.staCode,
+                atStationName: stops[0]?.name ?? st.staCode,
+                status: b.status ?? null,
+                speed: b.speed ?? null,
+              });
+            }
+            continue;
+          }
           const diff = userIdx - busIdx; // >0 车在用户站后方；=0 挂用户站；<0 已过用户站
           let stopsAway: number;
           if (diff > 0) {
@@ -284,6 +308,7 @@ export async function queryEta(
         nearest,
         second,
         busCount,
+        headTerminal: userIdx === 0,
       };
     } catch (err) {
       console.error(`[eta] 线路 ${route} 失败：`, (err as Error).message);

@@ -51,6 +51,8 @@ interface EtaResult {
   /** v0.12.2：再下一班在途车（第二近；副行小字展示，站数不突出） */
   second?: EtaNearest;
   busCount?: number;
+  /** v0.13.x：等车站 = 本方向首站（总站/起点）——无车时显示「暂未发车」 */
+  headTerminal?: boolean;
   error?: string;
 }
 
@@ -232,11 +234,18 @@ export default function LiveEta({
             ) : null;
           if (!r.nearest) {
             // v0.12.2：总站待发不再单列展示；仅区分「有在线车辆但都不在途」/「无线车辆」
+            // v0.13.x：等车站=首站总站时，回站段/已开出的车一律不计（总站无待发车 = 暂未发车）
             return (
               <div key={r.route}>
                 {blockHead}
                 <p className="t-body t-muted" style={{ lineHeight: 1.7 }}>
-                  {(r.busCount ?? 0) > 0 ? "暂无车辆在途" : "暂无在线车辆"}
+                  {r.headTerminal
+                    ? (r.busCount ?? 0) > 0
+                      ? "暫未發車 · 总站暂无待发车"
+                      : "暂未发车"
+                    : (r.busCount ?? 0) > 0
+                      ? "暂无车辆在途"
+                      : "暂无在线车辆"}
                 </p>
               </div>
             );

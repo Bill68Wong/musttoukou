@@ -47,6 +47,34 @@ export function findStopIdx(stops: StopRow[], target?: string | null): number {
   return i;
 }
 
+/**
+ * 沿行驶方向取最近命中（v0.13.x）：候选站码在站序中多次出现时（循环线首尾同站码，
+ * 如 25 路 M1/13 關閘總站 = seq1 起点 & seq50 终点），findStopIdx 恒取首个命中会把
+ * 「要下的终点」误判成折返起点，导致进度条按站等分时 rideN 严重少算。
+ * anchor = 上车站下标，返回「自 anchor 沿方向环距最近」的该站命中（乘客上车后第一次遇到）。
+ */
+function bestStopAhead(stops: StopRow[], target: string | null | undefined, anchor: number): number {
+  if (!target || stops.length === 0 || anchor < 0) return findStopIdx(stops, target);
+  const n = stops.length;
+  const hits: number[] = [];
+  stops.forEach((s, i) => {
+    if (s.code === target) hits.push(i);
+    else if (s.code.startsWith(target + "/")) hits.push(i);
+    else if (target.startsWith(s.code + "/")) hits.push(i);
+  });
+  if (hits.length === 0) return -1;
+  let best = hits[0];
+  let bestD = (best - anchor + n) % n;
+  for (const h of hits) {
+    const d = (h - anchor + n) % n;
+    if (d < bestD) {
+      best = h;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
 /** 该载具段的实际上车站（选了上车站候选则覆盖默认 from_station） */
 function effBoardOf(leg: PlanLegLite, boardStation?: string | null): string | null {
   if (
@@ -92,9 +120,13 @@ export function buildProgress(
     const routeCode = (leg.route_options ?? []).find((r) => (stopsMap[r]?.length ?? 0) > 0);
     const stops = routeCode ? stopsMap[routeCode] : undefined;
     const boardIdx = stops ? findStopIdx(stops, effBoardOf(leg, opts.boardStation)) : -1;
-    const destIdx = stops ? findStopIdx(stops, leg.to_station) : -1;
-    let rideN =
-      boardIdx >= 0 && destIdx > boardIdx ? destIdx - boardIdx : NaN;
+    // v0.13.x：目标站沿行驶方向取最近命中（循环线首尾同站码不误判成折返起点）
+    const destIdx = stops ? bestStopAhead(stops, leg.to_station, boardIdx) : -1;
+    const rideN0 =
+      stops && boardIdx >= 0 && destIdx >= 0
+        ? (destIdx - boardIdx + stops.length) % stops.length || NaN
+        : NaN;
+    let rideN = rideN0;
     if (!Number.isFinite(rideN) || rideN < 1) rideN = 1; // 数据缺站序/异常 → 兜底 1 站
     for (let j = 0; j < rideN; j++) units.push({ kind: "ride", color, group });
   }

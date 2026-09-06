@@ -456,6 +456,38 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     if (i < 0) i = stops.findIndex((s) => target.startsWith(s.code + "/"));
     return i;
   };
+  // v0.13.x（2026-09-05 主人实测 25 路）循环线首尾同站码修正：
+  //   25 路 M1/13 關閘總站同时是 seq1 起点与 seq50 终点（折返段首尾同点同码）。
+  //   findStopIdx 恒取首个命中（seq1）→ 乘车推进把「要下的终点关闸」算成起点关闸，
+  //   接近终点时 remaining wrap 成 2、到站后仍显示「还有 1 站」、upcoming 连出两个
+  //   「關閘總站」——主人乘车实见「下一站就是关闸，再下一站还是关闸，还说有 2 站才下车」。
+  //   修法：候选站码多次出现时，取「自 anchor（上车站）沿行驶方向环距最近」的那次命中，
+  //   即乘客上车后第一次遇见的该站（25 例：anchor=idx29 → 命中 idx49=seq50 终点）。
+  const bestStopAhead = (
+    stops: { seq: number; code: string; name: string }[],
+    target: string | null | undefined,
+    anchor: number,
+  ) => {
+    if (!target || stops.length === 0 || anchor < 0) return findStopIdx(stops, target);
+    const n = stops.length;
+    const hits: number[] = [];
+    stops.forEach((s, i) => {
+      if (s.code === target) hits.push(i);
+      else if (s.code.startsWith(target + "/")) hits.push(i);
+      else if (target.startsWith(s.code + "/")) hits.push(i);
+    });
+    if (hits.length === 0) return -1;
+    let best = hits[0];
+    let bestD = (best - anchor + n) % n;
+    for (const h of hits) {
+      const d = (h - anchor + n) % n;
+      if (d < bestD) {
+        best = h;
+        bestD = d;
+      }
+    }
+    return best;
+  };
 
   type RideInfo = {
     routeCode: string;
@@ -502,10 +534,18 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         : step.stationCode
           ? [step.stationCode]
           : [];
-      const candPos = cands
-        .map((c) => ({ code: c, idx: findStopIdx(stops, c) }))
-        .filter((c) => c.idx >= 0)
-        .sort((a, b) => a.idx - b.idx);
+      // 候选下车点解析（v0.13.x）：沿行驶方向（自上车站 boardIdx 起）取最近命中，
+      // 修复循环线首尾同站码（25 路 M1/13）把终点误判成折返起点
+      const candPos =
+        boardIdx >= 0
+          ? cands
+              .map((c) => ({ code: c, idx: bestStopAhead(stops, c, boardIdx) }))
+              .filter((c) => c.idx >= 0)
+              .sort((a, b) => a.idx - b.idx)
+          : cands
+              .map((c) => ({ code: c, idx: findStopIdx(stops, c) }))
+              .filter((c) => c.idx >= 0)
+              .sort((a, b) => a.idx - b.idx);
       if (boardIdx >= 0 && candPos.length > 0) {
         const n = stops.length;
         const cur = (boardIdx + passed) % n; // 当前逻辑位置（循环线自动 wrap）

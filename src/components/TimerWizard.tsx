@@ -12,6 +12,7 @@ import {
 import LiveEta from "./LiveEta";
 import JourneyProgress from "./JourneyProgress";
 import { buildProgress, computeFilled } from "@/lib/trip-progress";
+import { findStopIdx, resolveRideDestIdx } from "@/lib/station-match";
 
 interface SessionData {
   session: {
@@ -293,12 +294,29 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         }).catch(() => {});
       }
 
-      // ③ board（上车）：抓实际乘坐车辆（v0.4.0 从 wait_start 挪到上车时点）
-      if (type === "board" && busContext) {
+      // ③ 抓实际乘坐车辆（v0.4.0 board 起；v0.14.1 每段上/下车都抓，多线候选段按所选
+      //    实乘线 route 抓取，换乘点操作与单线一致、不打断流程）
+      const grabRoute = curStep?.routeOptions?.length
+        ? routeChoice && curStep.routeOptions.includes(routeChoice)
+          ? routeChoice
+          : curStep.routeOptions[0]
+        : null;
+      if ((type === "board" || type === "alight") && busContext && grabRoute) {
+        // 抓取候选站：上车 = 上车站；下车 = 实际停靠台（rideInfo.destCode，乘 50 落 T355/1）
+        const atStation =
+          type === "board"
+            ? (curStep.stationCode ?? null)
+            : rideInfo?.destCode ?? curStep.stationCode ?? null;
         void fetch("/api/dsat/grab", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, station: curStep.stationCode }),
+          body: JSON.stringify({
+            sessionId,
+            route: grabRoute,
+            stage: type, // 'board' | 'alight'
+            station: curStep.stationCode ?? null, // 该段上车站（服务端定位方案分段、推方向）
+            atStation,
+          }),
         }).catch(() => {});
       }
 
@@ -377,6 +395,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // 由方案 legs + 站序表生成；events 回放实时推进（撤销/刷新恢复天然一致）
   const progressUnits = buildProgress(data.legs, data.routeStopsByRoute, {
     boardStation: chosenBoard,
+    // v0.14.1：进度条按站等分同样按同场站名解析目标（26/50 分台各自正确）
+    stationNames: data.stationNames,
   });
   const progressFilled = computeFilled(progressUnits, data.events);
   const stationName = (code?: string | null) =>
@@ -445,49 +465,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   );
 
   // ===== 乘车进度推算（下一站 / 剩余站数）=====
-  // 站区码兼容匹配：T560 匹配 T560、T560/4；T560/2 也匹配 T560（取首个命中）
-  const findStopIdx = (
-    stops: { seq: number; code: string; name: string }[],
-    target: string | null | undefined,
-  ) => {
-    if (!target) return -1;
-    let i = stops.findIndex((s) => s.code === target);
-    if (i < 0) i = stops.findIndex((s) => s.code.startsWith(target + "/"));
-    if (i < 0) i = stops.findIndex((s) => target.startsWith(s.code + "/"));
-    return i;
-  };
-  // v0.13.x（2026-09-05 主人实测 25 路）循环线首尾同站码修正：
-  //   25 路 M1/13 關閘總站同时是 seq1 起点与 seq50 终点（折返段首尾同点同码）。
-  //   findStopIdx 恒取首个命中（seq1）→ 乘车推进把「要下的终点关闸」算成起点关闸，
-  //   接近终点时 remaining wrap 成 2、到站后仍显示「还有 1 站」、upcoming 连出两个
-  //   「關閘總站」——主人乘车实见「下一站就是关闸，再下一站还是关闸，还说有 2 站才下车」。
-  //   修法：候选站码多次出现时，取「自 anchor（上车站）沿行驶方向环距最近」的那次命中，
-  //   即乘客上车后第一次遇见的该站（25 例：anchor=idx29 → 命中 idx49=seq50 终点）。
-  const bestStopAhead = (
-    stops: { seq: number; code: string; name: string }[],
-    target: string | null | undefined,
-    anchor: number,
-  ) => {
-    if (!target || stops.length === 0 || anchor < 0) return findStopIdx(stops, target);
-    const n = stops.length;
-    const hits: number[] = [];
-    stops.forEach((s, i) => {
-      if (s.code === target) hits.push(i);
-      else if (s.code.startsWith(target + "/")) hits.push(i);
-      else if (target.startsWith(s.code + "/")) hits.push(i);
-    });
-    if (hits.length === 0) return -1;
-    let best = hits[0];
-    let bestD = (best - anchor + n) % n;
-    for (const h of hits) {
-      const d = (h - anchor + n) % n;
-      if (d < bestD) {
-        best = h;
-        bestD = d;
-      }
-    }
-    return best;
-  };
+  // 目标站解析（v0.14.1 起统一走 station-match.resolveRideDestIdx）：
+  //   ① 循环线首尾同站码（25 路 M1/13 = seq1 起点 & seq50 终点）→ 沿行驶方向环距最近命中，
+  //      避免「要下的终点关闸」被认成起点关闸（主人 2026-09-05 实测：接近终点显示还有 2 站）；
+  //   ② 同场分台（26/50 分停莲花路停车场 T355/2 / T355/1，站名同为「蓮花路停車場」）→ 按站名
+  //      聚合，取沿方向第一次到达该场站的那次停靠 —— 乘 50 时下车站自动落 T355/1、乘 26 落
+  //      T355/2（主人 2026-09-06 确认按实际站台记录）。
+  // 候选码的站名取自 timer 接口 stationNames（查不到时退回站码匹配）
+  const destNameOf = (code: string) => data.stationNames[code] ?? null;
 
   type RideInfo = {
     routeCode: string;
@@ -534,18 +519,16 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         : step.stationCode
           ? [step.stationCode]
           : [];
-      // 候选下车点解析（v0.13.x）：沿行驶方向（自上车站 boardIdx 起）取最近命中，
-      // 修复循环线首尾同站码（25 路 M1/13）把终点误判成折返起点
-      const candPos =
-        boardIdx >= 0
-          ? cands
-              .map((c) => ({ code: c, idx: bestStopAhead(stops, c, boardIdx) }))
-              .filter((c) => c.idx >= 0)
-              .sort((a, b) => a.idx - b.idx)
-          : cands
-              .map((c) => ({ code: c, idx: findStopIdx(stops, c) }))
-              .filter((c) => c.idx >= 0)
-              .sort((a, b) => a.idx - b.idx);
+      // 候选下车点解析（v0.14.1）：resolveRideDestIdx 同时覆盖「循环线首尾同码折返」
+      // 与「同场分台同名」（26/50 乘哪路下哪台）；anchor<0 时自动退回首命中语义
+      // ⚠️ code 必须改写为「实际停靠台码」（stops[idx].code）：同场分台场景目标 T355/2
+      //    经站名聚合命中 T355/1 停靠位时，若保留原始候选码 T355/2，会出现显示
+      //    「T355/1 蓮花路停車場」而入库/决策却记 T355/2 的错位（2026-09-06 实测抓到）
+      const candPos = cands
+        .map((c) => ({ code: c, idx: resolveRideDestIdx(stops, c, boardIdx, destNameOf) }))
+        .filter((c) => c.idx >= 0)
+        .map((c) => ({ code: stops[c.idx]?.code ?? c.code, idx: c.idx }))
+        .sort((a, b) => a.idx - b.idx);
       if (boardIdx >= 0 && candPos.length > 0) {
         const n = stops.length;
         const cur = (boardIdx + passed) % n; // 当前逻辑位置（循环线自动 wrap）
@@ -867,12 +850,21 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           {/* 动态下车决策中：主「下车」替换为决策卡的两个按钮，避免误按到总站 */}
           {!ridingDecision && (
             <>
-              {step.sub && <p className="t-body" style={{ margin: 0 }}>{fullSub(step.sub)}</p>}
+              {/* v0.14.1：乘车中已按实乘线算出动态目标台（乘 50 落 T355/1）时隐藏静态 sub，
+                  避免步骤文案「目標站：T355/2…」（卡片默认台）与动态下车站并陈误导 */}
+              {!(riding && rideInfo) && step.sub && (
+                <p className="t-body" style={{ margin: 0 }}>{fullSub(step.sub)}</p>
+              )}
               <button
                 className="btn btn--primary btn--lg btn--block"
                 onClick={() =>
                   postEvent(step.eventType, {
-                    station_code: step.stationCode ?? null,
+                    // v0.14.1：下车按实际停靠台（乘 50 落 T355/1、乘 26 落 T355/2）记录，
+                    // 而非卡片默认台码；非乘车步骤仍用步骤站码
+                    station_code:
+                      (step.eventType === "alight" && rideInfo
+                        ? rideInfo.destCode
+                        : step.stationCode) ?? null,
                     ...(step.eventType === "depart" && fromZone ? { from_zone: fromZone } : {}),
                     ...(step.eventType === "arrive" && toZone ? { to_zone: toZone } : {}),
                     // v0.10.0 A11：多候选段 board 提交实乘线 → 服务端修正 route_code/dsat_dir

@@ -16,6 +16,7 @@
  */
 
 import type { PlanLegLite } from "@/lib/timer-flow";
+import { resolveRideDestIdx } from "@/lib/station-match";
 
 export type ProgressUnitKind = "walk" | "ride";
 
@@ -30,6 +31,8 @@ export interface ProgressUnit {
 export interface ProgressOptions {
   /** 用户选择的上车站（覆盖首个载具段默认 from_station，与 applyBoardSteps 同口径） */
   boardStation?: string | null;
+  /** v0.14.1：站码→站名表（timer 接口已返回）；供同场分台聚合（T355/1↔T355/2 同场） */
+  stationNames?: Record<string, string>;
 }
 
 /** 无载具/未知时的兜底色：主题蓝，随明暗主题自适应 */
@@ -45,34 +48,6 @@ export function findStopIdx(stops: StopRow[], target?: string | null): number {
   if (i < 0) i = stops.findIndex((s) => s.code.startsWith(target + "/"));
   if (i < 0) i = stops.findIndex((s) => target.startsWith(s.code + "/"));
   return i;
-}
-
-/**
- * 沿行驶方向取最近命中（v0.13.x）：候选站码在站序中多次出现时（循环线首尾同站码，
- * 如 25 路 M1/13 關閘總站 = seq1 起点 & seq50 终点），findStopIdx 恒取首个命中会把
- * 「要下的终点」误判成折返起点，导致进度条按站等分时 rideN 严重少算。
- * anchor = 上车站下标，返回「自 anchor 沿方向环距最近」的该站命中（乘客上车后第一次遇到）。
- */
-function bestStopAhead(stops: StopRow[], target: string | null | undefined, anchor: number): number {
-  if (!target || stops.length === 0 || anchor < 0) return findStopIdx(stops, target);
-  const n = stops.length;
-  const hits: number[] = [];
-  stops.forEach((s, i) => {
-    if (s.code === target) hits.push(i);
-    else if (s.code.startsWith(target + "/")) hits.push(i);
-    else if (target.startsWith(s.code + "/")) hits.push(i);
-  });
-  if (hits.length === 0) return -1;
-  let best = hits[0];
-  let bestD = (best - anchor + n) % n;
-  for (const h of hits) {
-    const d = (h - anchor + n) % n;
-    if (d < bestD) {
-      best = h;
-      bestD = d;
-    }
-  }
-  return best;
 }
 
 /** 该载具段的实际上车站（选了上车站候选则覆盖默认 from_station） */
@@ -120,8 +95,16 @@ export function buildProgress(
     const routeCode = (leg.route_options ?? []).find((r) => (stopsMap[r]?.length ?? 0) > 0);
     const stops = routeCode ? stopsMap[routeCode] : undefined;
     const boardIdx = stops ? findStopIdx(stops, effBoardOf(leg, opts.boardStation)) : -1;
-    // v0.13.x：目标站沿行驶方向取最近命中（循环线首尾同站码不误判成折返起点）
-    const destIdx = stops ? bestStopAhead(stops, leg.to_station, boardIdx) : -1;
+    // v0.14.1：目标站按「同场站名」聚合沿方向最近命中（26/50 分台 T355/2、T355/1 都能算对）；
+    //         无 stationNames（纯函数兜底）时按站区码沿方向最近命中（25 路 M1/13 折返段不误判）
+    const destIdx = stops
+      ? resolveRideDestIdx(
+          stops,
+          leg.to_station,
+          boardIdx,
+          opts.stationNames ? (c) => opts.stationNames![c] ?? null : undefined,
+        )
+      : -1;
     const rideN0 =
       stops && boardIdx >= 0 && destIdx >= 0
         ? (destIdx - boardIdx + stops.length) % stops.length || NaN

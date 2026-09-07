@@ -23,7 +23,8 @@
     "db:migrate-v100": "tsx db/migrate-v100.ts",
     "db:migrate-v110": "tsx db/migrate-v110.ts",
     "db:migrate-v130": "tsx db/migrate-v130.ts",
-    "db:migrate-v141": "tsx db/migrate-v141.ts"
+    "db:migrate-v141": "tsx db/migrate-v141.ts",
+    "db:migrate-v150": "tsx db/migrate-v150.ts"
   },
   "dependencies": {
     "next": "^15.1.6",

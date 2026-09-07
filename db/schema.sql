@@ -228,13 +228,43 @@ CREATE TABLE IF NOT EXISTS segment_stats (
     UNIQUE (route_code, from_station, to_station, weekday, time_bucket)
 );
 
--- 2.12 轻轨班次（若仅拿到静态间隔，改存 headway）
-CREATE TABLE IF NOT EXISTS lrt_schedules (
-    id            SERIAL PRIMARY KEY,
-    line_code     TEXT NOT NULL,           -- 'LRT-石排湾线'
-    station_code  TEXT NOT NULL,
-    direction     TEXT NOT NULL,
-    depart_time   TIME,                    -- 具体班次时刻（若公布）
-    headway_min   NUMERIC(4,1),            -- 或班次间隔（分钟）
-    valid_days    TEXT NOT NULL DEFAULT 'all'
+-- 2.12 轻轨 API 站点映射（motransportinfo getLrtStations 站 id ↔ DB 站码）
+--     时刻表按 api_id 抓取；UI/业务一律用 DB 码（LRT-xxx），两层不可混淆
+CREATE TABLE IF NOT EXISTS lrt_api_stations (
+    api_id      TEXT PRIMARY KEY,                  -- 'MUS'（motransportinfo 站 id）
+    db_code     TEXT NOT NULL UNIQUE REFERENCES stations(code),  -- 'LRT-MUST'
+    name_tc     TEXT NOT NULL,                     -- 官方中文站名
+    lat         DOUBLE PRECISION,
+    lng         DOUBLE PRECISION,
+    note        TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- 2.13 轻轨时刻表整表（motransportinfo getMlmTimetable?all=1 全量入库 → 本地算报站）
+--     每 站×线路×方向×班别 一行；minutes 原样存 [{hour, minutes[]}]
+--     ⚠️ 首末班为「当日 00:00 起分钟偏移」，可 >1440（周五/假期跨午夜收车 25:xx），勿用 TIME
+CREATE TABLE IF NOT EXISTS lrt_timetables (
+    id          SERIAL PRIMARY KEY,
+    api_station TEXT NOT NULL REFERENCES lrt_api_stations(api_id),
+    route_no    TEXT NOT NULL,                     -- 'TPL' | 'HQL' | 'SPVL'
+    direction   TEXT NOT NULL,                     -- 列车前往终点站代码 'BAR'/'TFT'/'HQ'/'LOT'/'SPV'/'UH'
+    day_type    TEXT NOT NULL CHECK (day_type IN ('mon_thurs', 'fri', 'sat_sun_holiday')),
+    first_min   SMALLINT NOT NULL,                 -- 首班分钟偏移
+    last_min    SMALLINT NOT NULL,                 -- 末班分钟偏移（可 >1440 = 次日凌晨收车）
+    minutes     JSONB NOT NULL,                    -- [{hour, minutes[]}] 原样
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (api_station, route_no, direction, day_type)
+);
+CREATE INDEX IF NOT EXISTS idx_lrt_timetables_lookup
+    ON lrt_timetables (api_station, route_no, direction, day_type);
+
+-- 2.14 澳门公众假期（班别判定：命中该日 → sat_sun_holiday 班表）
+CREATE TABLE IF NOT EXISTS lrt_holidays (
+    id            SERIAL PRIMARY KEY,
+    holiday_date  DATE NOT NULL,                   -- 假期日
+    holiday_code  TEXT NOT NULL,                   -- 'national_day' …
+    name_tc       TEXT NOT NULL,                   -- '中華人民共和國國慶日'
+    name_pt       TEXT,
+    source        TEXT NOT NULL DEFAULT 'macau_gov'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_lrt_holidays_date ON lrt_holidays (holiday_date);

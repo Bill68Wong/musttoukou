@@ -57,6 +57,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       to_zone?: string | null;
       tap_id?: string | null;
       route?: string | null;
+      /** v0.15.0：wait_snapshot 来源 —— manual（手动）/ auto_wait_start（轻轨时刻表自动） */
+      source?: string | null;
     };
     const pool = getPool();
     // 本次插入的真实事件 id（撤销依赖；wait_snapshot/dedup 为 null）
@@ -91,16 +93,30 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       if (body.value_kind === "minutes" && !body.station_code) {
         return NextResponse.json({ error: "轻轨分钟快照必须带上车站 station_code" }, { status: 400 });
       }
-      // 轻轨分钟：带上车站（多段轻轨各站独立）；部分唯一索引 (session_id, station_code)
-      // WHERE source='manual' AND value_kind='minutes' AND station_code IS NOT NULL
-      await pool.query(
-        `INSERT INTO wait_snapshots (session_id, value_kind, value, source, station_code)
-         VALUES ($1, 'minutes', $2, 'manual', $3)
-         ON CONFLICT (session_id, station_code)
-           WHERE source = 'manual' AND value_kind = 'minutes' AND station_code IS NOT NULL
-         DO UPDATE SET value = EXCLUDED.value, recorded_at = now()`,
-        [sessionId, body.value, body.station_code ?? null],
-      );
+      // 来源分流：
+      //  - manual（历史手动 chips）：部分唯一索引 (session_id, station_code) WHERE source='manual'…，改选覆盖
+      //  - auto_wait_start（v0.15.0 轻轨时刻表自动）：uq_wait_snap_auto_once (session_id, source, station_code)
+      //    WHERE source IN ('auto_depart','auto_wait_start') —— 与巴士 auto 同索引幂等，重复 wait_start 覆盖
+      const snapSource = body.source === "auto_wait_start" ? "auto_wait_start" : "manual";
+      if (snapSource === "auto_wait_start") {
+        await pool.query(
+          `INSERT INTO wait_snapshots (session_id, value_kind, value, source, station_code)
+           VALUES ($1, 'minutes', $2, 'auto_wait_start', $3)
+           ON CONFLICT (session_id, source, station_code)
+             WHERE source IN ('auto_depart', 'auto_wait_start')
+           DO UPDATE SET value = EXCLUDED.value, recorded_at = now()`,
+          [sessionId, body.value, body.station_code ?? null],
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO wait_snapshots (session_id, value_kind, value, source, station_code)
+           VALUES ($1, 'minutes', $2, 'manual', $3)
+           ON CONFLICT (session_id, station_code)
+             WHERE source = 'manual' AND value_kind = 'minutes' AND station_code IS NOT NULL
+           DO UPDATE SET value = EXCLUDED.value, recorded_at = now()`,
+          [sessionId, body.value, body.station_code ?? null],
+        );
+      }
       return NextResponse.json({ ok: true });
     }
 

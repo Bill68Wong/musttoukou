@@ -10,6 +10,7 @@ import {
   type PlanLegLite,
 } from "@/lib/timer-flow";
 import LiveEta from "./LiveEta";
+import LrtEta from "./LrtEta";
 import JourneyProgress from "./JourneyProgress";
 import { buildProgress, computeFilled } from "@/lib/trip-progress";
 import { findStopIdx, resolveRideDestIdx } from "@/lib/station-match";
@@ -37,7 +38,8 @@ interface SessionData {
   routeStopsByRoute: Record<string, { seq: number; code: string; name: string }[]>;
 }
 
-const QUICK_VALUES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+/** 轻轨码判定（LRT-* 线路/站点；v0.15.0 轻轨报站卡分派用） */
+const isLrtCode = (c?: string | null): boolean => !!c && c.startsWith("LRT-");
 
 /** 学校分区（B/C、N/O、R 座）—— 步行分组上下文，需求 10 */
 const SCHOOL_ZONES = [
@@ -123,6 +125,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const [routeChoices, setRouteChoices] = useState<Record<string, string | null>>({});
   // v0.10.0 A8：tap_id 幂等——同一次打点（同 type+参数）复用同一 id；成功后清除，失败留作重试
   const tapIds = useRef(new Map<string, string>());
+  // v0.15.0：LrtEta 上报的「下一班剩余毫秒」（轻轨 wait_start 自动写快照用；null=无下一班）
+  const lrtRemainMs = useRef<number | null>(null);
   // v0.12.0：撤销确认弹窗目标（null=未弹）；弹窗真实，确认后才 POST undo
   const [undoTarget, setUndoTarget] = useState<{
     id: number;
@@ -329,6 +333,26 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
       // ④ 自动刷新仅限关键打点（v0.12.1，见 AUTO_REFRESH_TYPES）→ LiveEta refreshKey 递增 force 直查
       if (AUTO_REFRESH_TYPES.has(type)) setEtaTick((t) => t + 1);
 
+      // v0.15.0：轻轨 wait_start —— 按时刻表自动记「当时距下一班分钟」快照（手动 chips 已移除）。
+      // 口径：value = floor(剩余毫秒/60000)，<60s 记 0（即将）；无下一班数据则跳过。
+      // 落库走 events wait_snapshot + source=auto_wait_start（与巴士 auto 快照同表幂等）。
+      if (type === "wait_start" && curStep?.quickKind === "minutes" && curStep.stationCode) {
+        const remainMs = lrtRemainMs.current;
+        if (remainMs != null && remainMs >= 0) {
+          void fetch(`/api/timer/${sessionId}/events`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "wait_snapshot",
+              value_kind: "minutes",
+              value: Math.floor(remainMs / 60_000),
+              station_code: curStep.stationCode,
+              source: "auto_wait_start",
+            }),
+          }).catch(() => {});
+        }
+      }
+
       if (type === "arrive") {
         router.replace(`/finish/${sessionId}`);
       }
@@ -421,10 +445,6 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // 出门/走路阶段（出发前 或 已出门未到站）
   const departing =
     step?.eventType === "depart" || step?.eventType === "wait_start";
-  // 手动分钟条：仅轻轨「到站，开始等车」时询问一次——出门与上车不再打断
-  //（巴士段 stops 由系统自动记录，不出手动条）
-  const showManualMinutes =
-    step?.eventType === "wait_start" && step.quickKind === "minutes";
   // 巴士段出门/到站：打点后系统自动记录（提示文案，非操作项）
   const autoRecordStops = departing && step.quickKind === "stops";
   // 乘车阶段（已上车、待下车）
@@ -432,6 +452,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // 学校分区（需求 10）：离校 → 从哪个座走；抵校 → 到了哪个座
   const showFromZone = step?.eventType === "depart" && data.session.from_slug === "school";
   const showToZone = step?.eventType === "arrive" && data.session.to_slug === "school";
+
+  // v0.15.0：轻轨段（站码与线路均为 LRT-*）→ 等车/出门显示时刻表报站卡（LrtEta）
+  // 与巴士 LiveEta 同位置；换乘站多线只取本次将乘线路（决策 6），首项即本段主线路
+  const isLrtStep =
+    isLrtCode(step?.stationCode) &&
+    !!step?.routeOptions?.length &&
+    step.routeOptions!.some(isLrtCode);
+  const effLrtRoute = step?.routeOptions?.find(isLrtCode) ?? null;
 
   // v0.10.0 A11：多候选线路段「乘哪一路」（chips 选中 > 会话已修正实乘线 > 首选项）
   // board 提交带实乘线 → 服务端把 route_code/dsat_dir 修正到实乘线（首个载具段）
@@ -594,14 +622,6 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const recentEvents = [...data.events].reverse().slice(0, 4);
   // 动态下车决策中（已到非末位候选站）：主按钮替换为「下车 / 途经」决策卡
   const ridingDecision = riding && !!rideInfo?.decision;
-  // 轻轨手动分钟：本步骤站点「已选」值（同一站单次只记一条；再点其它数字=改选覆盖）
-  const minuteSelected = (() => {
-    if (!step?.stationCode) return null;
-    const hits = data.snapshots.filter(
-      (s) => s.value_kind === "minutes" && stationCodesEq(s.station_code, step.stationCode),
-    );
-    return hits.length > 0 ? hits[hits.length - 1].value : null;
-  })();
 
   // ===== v0.12.0：步行暂停 / 最近事件撤销 =====
   // 暂停态由顶部 pausedNow 派生（events 最后一条是 pause）
@@ -749,51 +769,33 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             </div>
           ) : (
             <>
-          {/* 实时车距：出门/等车阶段（巴士段才显示，轻轨无实时数据；需求 7：无自动轮询，打点后经 refreshKey 刷新） */}
+          {/* 报站卡（同一卡槽）：巴士 = LiveEta（DSAT 实时车距）；轻轨 = LrtEta（时刻表本地算，v0.15.0）。
+              需求 7：无自动轮询，打点后经 refreshKey 刷新 */}
           {(departing || waiting) &&
-            step.quickKind === "stops" &&
-            (step.routeOptions?.length ?? 0) > 0 &&
-            step.stationCode && (
-              <LiveEta
-                station={step.stationCode}
-                routes={step.routeOptions!}
-                dir={data.session.dsat_dir ?? "0"}
-                dest={step.destStationCode}
-                refreshKey={etaTick}
-              />
-            )}
-
-          {/* 轻轨手动车距条（巴士段无手动条，见下方自动记录提示；单次只记一条，再点其它数字=改选） */}
-          {showManualMinutes && (
-            <div>
-              <p className="t-label t-muted" style={{ marginBottom: 10 }}>
-                轻轨还有几分钟？
-              </p>
-              <div className="chip-row">
-                {QUICK_VALUES.map((v) => (
-                  <button
-                    key={v}
-                    className={`chip${minuteSelected === v ? " chip--on" : ""}`}
-                    aria-pressed={minuteSelected === v}
-                    onClick={() =>
-                      postEvent("wait_snapshot", {
-                        value: v,
-                        value_kind: "minutes",
-                        station_code: step.stationCode ?? null,
-                      })
-                    }
-                  >
-                    {v}
-                  </button>
+            (isLrtStep
+              ? step.stationCode &&
+                effLrtRoute && (
+                  <LrtEta
+                    station={step.stationCode}
+                    route={effLrtRoute}
+                    dest={step.destStationCode}
+                    refreshKey={etaTick}
+                    onRemainChange={(ms) => {
+                      lrtRemainMs.current = ms;
+                    }}
+                  />
+                )
+              : step.quickKind === "stops" &&
+                (step.routeOptions?.length ?? 0) > 0 &&
+                step.stationCode && (
+                  <LiveEta
+                    station={step.stationCode}
+                    routes={step.routeOptions!}
+                    dir={data.session.dsat_dir ?? "0"}
+                    dest={step.destStationCode}
+                    refreshKey={etaTick}
+                  />
                 ))}
-              </div>
-              {minuteSelected !== null && (
-                <p className="t-label t-muted" style={{ marginTop: 10 }}>
-                  已选 {minuteSelected} 分钟（点其它数字可修改）
-                </p>
-              )}
-            </div>
-          )}
 
           {/* 巴士段：打点后系统自动记录车距（无需手动选择） */}
           {autoRecordStops && (

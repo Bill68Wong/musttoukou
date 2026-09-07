@@ -355,11 +355,19 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
       if (type === "arrive") {
         router.replace(`/finish/${sessionId}`);
+      } else if (type === "border_end" && curIdx >= curSteps.length - 1) {
+        // v0.16.1：去程口岸卡（border 为最后一步，无兜底 arrive）→「通关完成」即服务端自动结算
+        // → 直接进结束页（主人 2026-09-07 口径：通关完即结束行程并结算）
+        router.replace(`/finish/${sessionId}`);
       }
     } catch (e) {
       const msg = (e as Error).message;
-      // arrive 已在服务器收尾但响应丢失/重试撞「会话已结束」→ 直接进结束页（幂等兜底）
-      if (type === "arrive" && /已结束|会话已结束/.test(msg)) {
+      // arrive / 去程 border_end（收尾型打点）已在服务器收尾但响应丢失/重试撞「会话已结束」→ 直接进结束页（幂等兜底）
+      if (
+        (type === "arrive" ||
+          (type === "border_end" && curIdx >= curSteps.length - 1)) &&
+        /已结束|会话已结束/.test(msg)
+      ) {
         router.replace(`/finish/${sessionId}`);
         return;
       }

@@ -92,6 +92,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         [sessionId],
       );
       resurrected = true;
+    } else if (latest.event_type === "border_end") {
+      // v0.16.1：去程口岸卡的 border_end 触发过自动结算收尾 → 同样复活（清结算字段，
+      // 向导停留回 border_end 步，可重按「通关完成」再次收尾）
+      await pool.query(
+        `UPDATE timer_sessions
+         SET ended_at = NULL, total_minutes = NULL, time_bucket = NULL, border_minutes = NULL
+         WHERE id = $1`,
+        [sessionId],
+      );
+      resurrected = true;
     }
 
     return NextResponse.json({

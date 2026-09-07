@@ -155,8 +155,10 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
         break;
     }
   }
-  // 方案末尾不是步行（如横琴方案以通关结尾）时补「到达」
-  if (!steps.some((s) => s.eventType === "arrive")) {
+  // 方案末尾不是步行时补「到达」——v0.16.1 例外：以 cross_border 结尾的去程口岸卡
+  // （border_end 打点即自动结算收尾，通关完即结束行程，不再补多余的「到达」步）
+  const lastLegKind = legs[legs.length - 1]?.leg_kind;
+  if (!steps.some((s) => s.eventType === "arrive") && lastLegKind !== "cross_border") {
     steps.push({ eventType: "arrive", label: "到达", sub: "到达目的地" });
   }
   return steps;

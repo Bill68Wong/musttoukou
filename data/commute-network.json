@@ -312,7 +312,7 @@
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
         { "seq": 2, "kind": "bus", "routes": ["26", "50"], "from": "station:C653", "to": "station:T355/2", "minutes": null, "note": "26 三站直達蓮花路停車場 T355/2 台；50 循環線自 C653 起 3 站先抵對側 T355/1 台（同屬蓮花路停車場，跨台幾步、無步行計時），乘 50 請在 T355/1 台下車；優先 26" },
-        { "seq": 3, "kind": "transfer", "at": "station:T355/2", "minutes": null, "note": "v0.14.x 换乘点站台同场（T355/1↔T355/2 相邻），跨台不计步行" },
+        { "seq": 3, "kind": "transfer", "at": "station:T355/2", "minutes": 0, "note": "v0.14.x 换乘点站台同场（T355/1↔T355/2 相邻），跨台不计步行；v0.16.1 显式 minutes=0 固化（实测 155：50 在 T355/1 台下车 6 秒内 T355/2 台续等 25BS）" },
         { "seq": 4, "kind": "bus", "routes": ["50", "25B", "25BS", "102", "701X", "N6"], "from": "station:T355/2", "to": "station:T560/4", "minutes": null, "note": "各線在橫琴口岸停不同站台，50 停 T560/4" },
         { "seq": 5, "kind": "walk", "from": "station:T560/4", "to": "place:hengqin", "minutes": null, "note": "v0.13.0 显式口岸步行段：巴士站→口岸通關大廳，步行與其它段一致計入行程；分鐘待實測" },
         { "seq": 6, "kind": "cross_border", "at": "橫琴口岸", "label": "橫琴口岸", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }

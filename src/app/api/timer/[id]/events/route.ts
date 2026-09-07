@@ -32,6 +32,69 @@ function sameStation(a?: string | null, b?: string | null): boolean {
 }
 
 /**
+ * v0.16.1：会话收尾结算（arrive 与「以通关结尾方案的 border_end」共用）。
+ * ended_at/total_minutes/time_bucket/border_minutes 一次落定：
+ *   总时长 = now(收尾时刻) - 首个 depart（无则 started_at）
+ *          - 暂停闭合区间 - 通关闭合区间（通关耗时独立入 border_minutes，不计行程）
+ */
+async function settleSession(sessionId: number, pool: ReturnType<typeof getPool>): Promise<void> {
+  const now = new Date();
+  const macau = new Date(now.getTime() + 8 * 3600 * 1000);
+  const bucket = timeBucketOf(macau.getUTCHours());
+  await pool.query(
+    `UPDATE timer_sessions
+     SET ended_at = now(),
+         time_bucket = $2,
+         total_minutes = round(
+           GREATEST(0,
+             extract(epoch from (now() - coalesce(
+               (SELECT min(recorded_at) FROM timer_events
+                 WHERE session_id = $1 AND event_type = 'depart'),
+               started_at)))
+             - COALESCE((
+                 SELECT sum(extract(epoch from (resume_at - pause_at)))
+                 FROM (
+                   SELECT recorded_at AS pause_at,
+                          lead(recorded_at) OVER w AS resume_at,
+                          lead(event_type) OVER w AS resume_type
+                   FROM timer_events
+                   WHERE session_id = $1 AND event_type IN ('pause', 'resume')
+                   WINDOW w AS (ORDER BY seq, id)
+                 ) pr
+                 WHERE pr.resume_type = 'resume'
+               ), 0)
+             - COALESCE((
+                 SELECT sum(extract(epoch from (border_end_at - border_start_at)))
+                 FROM (
+                   SELECT recorded_at AS border_start_at,
+                          lead(recorded_at) OVER w AS border_end_at,
+                          lead(event_type) OVER w AS border_end_type
+                   FROM timer_events
+                   WHERE session_id = $1 AND event_type IN ('border_start', 'border_end')
+                   WINDOW w AS (ORDER BY seq, id)
+                 ) bb
+                 WHERE bb.border_end_type = 'border_end'
+               ), 0)
+           ) / 60.0, 1),
+         border_minutes = round(
+           GREATEST(0, COALESCE((
+             SELECT sum(extract(epoch from (border_end_at - border_start_at)))
+             FROM (
+               SELECT recorded_at AS border_start_at,
+                      lead(recorded_at) OVER w AS border_end_at,
+                      lead(event_type) OVER w AS border_end_type
+               FROM timer_events
+               WHERE session_id = $1 AND event_type IN ('border_start', 'border_end')
+               WINDOW w AS (ORDER BY seq, id)
+             ) bb
+             WHERE bb.border_end_type = 'border_end'
+           ), 0)) / 60.0, 1)
+     WHERE id = $1`,
+    [sessionId, bucket],
+  );
+}
+
+/**
  * POST /api/timer/[id]/events
  * body: { type: EventType, station_code?, from_zone?, to_zone?, tap_id?, route? }
  *       { type: "wait_snapshot", value: number, value_kind: "stops"|"minutes", station_code? } → 写 wait_snapshots
@@ -219,6 +282,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }
     }
 
+    if (type === "border_end") {
+      // v0.16.1：方案以 cross_border 结尾（去程口岸卡，border 即最后一步）→ 通关完成即结束行程并结算
+      // （主人 2026-09-07 实测口径：通关完即结束，无「到达」收尾步；回程口岸卡 border 在中段不收尾）
+      const lastLeg = await pool.query(
+        `SELECT leg_kind FROM plan_legs WHERE plan_id = $1 ORDER BY seq DESC LIMIT 1`,
+        [session.plan_id],
+      );
+      const lastKind = (lastLeg.rows[0] as { leg_kind?: string } | undefined)?.leg_kind;
+      if (lastKind === "cross_border") {
+        await settleSession(sessionId, pool);
+        return NextResponse.json({ ok: true, finished: true, event_id: eventId });
+      }
+    }
+
     if (type === "arrive") {
       // 收尾：总时长（v0.10.0 起从 depart 事件起算——建卡后挂后台不再虚高；无 depart 回退 started_at）
       // + 时段分桶（GMT+8，语义统一延至分析阶段，仍按到达时刻）
@@ -226,63 +303,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       // 步行中途买东西/停留等暂停时间不计入总时长
       // v0.13.0：总时长同样扣除「通关闭合区间」（border_start→border_end 成对秒数），
       // 通关耗时独立写入 border_minutes（展示为「行程 xx + 通关 xx」），不计入行程时间
-      const now = new Date();
-      const macau = new Date(now.getTime() + 8 * 3600 * 1000);
-      const bucket = timeBucketOf(macau.getUTCHours());
-      // 区间闭合子查询模板：把本会话 start/end 事件按 seq 排列，
-      // start 行的下一行若是对应 end 事件 → 成对闭合区间扣减秒数；
-      // 孤立 start（未闭合，异常态）不扣——UI 流程正常必先 end
-      await pool.query(
-        `UPDATE timer_sessions
-         SET ended_at = now(),
-             time_bucket = $2,
-             total_minutes = round(
-               GREATEST(0,
-                 extract(epoch from (now() - coalesce(
-                   (SELECT min(recorded_at) FROM timer_events
-                     WHERE session_id = $1 AND event_type = 'depart'),
-                   started_at)))
-                 - COALESCE((
-                     SELECT sum(extract(epoch from (resume_at - pause_at)))
-                     FROM (
-                       SELECT recorded_at AS pause_at,
-                              lead(recorded_at) OVER w AS resume_at,
-                              lead(event_type) OVER w AS resume_type
-                       FROM timer_events
-                       WHERE session_id = $1 AND event_type IN ('pause', 'resume')
-                       WINDOW w AS (ORDER BY seq, id)
-                     ) pr
-                     WHERE pr.resume_type = 'resume'
-                   ), 0)
-                 - COALESCE((
-                     SELECT sum(extract(epoch from (border_end_at - border_start_at)))
-                     FROM (
-                       SELECT recorded_at AS border_start_at,
-                              lead(recorded_at) OVER w AS border_end_at,
-                              lead(event_type) OVER w AS border_end_type
-                       FROM timer_events
-                       WHERE session_id = $1 AND event_type IN ('border_start', 'border_end')
-                       WINDOW w AS (ORDER BY seq, id)
-                     ) bb
-                     WHERE bb.border_end_type = 'border_end'
-                   ), 0)
-               ) / 60.0, 1),
-             border_minutes = round(
-               GREATEST(0, COALESCE((
-                 SELECT sum(extract(epoch from (border_end_at - border_start_at)))
-                 FROM (
-                   SELECT recorded_at AS border_start_at,
-                          lead(recorded_at) OVER w AS border_end_at,
-                          lead(event_type) OVER w AS border_end_type
-                   FROM timer_events
-                   WHERE session_id = $1 AND event_type IN ('border_start', 'border_end')
-                   WINDOW w AS (ORDER BY seq, id)
-                 ) bb
-                 WHERE bb.border_end_type = 'border_end'
-               ), 0)) / 60.0, 1)
-         WHERE id = $1`,
-        [sessionId, bucket],
-      );
+      await settleSession(sessionId, pool);
       return NextResponse.json({ ok: true, finished: true, event_id: eventId });
     }
 

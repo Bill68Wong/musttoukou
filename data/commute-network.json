@@ -30,6 +30,7 @@
     { "code": "T429", "kind": "bus", "name_tc": "機場大馬路/科大醫院", "walk": { "school": null }, "note": "DSAT 已核对；P座側門方向" },
     { "code": "T400", "kind": "bus", "name_tc": "路氹東/新濠天地", "walk": { "school": null }, "note": "DSAT 已核对" },
     { "code": "T363/1", "kind": "bus", "name_tc": "連貫公路/威尼斯人", "walk": { "school": null }, "note": "51B 分台码（51B 停靠）；去学校下车步行分钟待实测" },
+    { "code": "T363/2", "kind": "bus", "name_tc": "連貫公路/威尼斯人", "walk": { "school": null }, "note": "25/25AX 分台码（同 T363/1 对面站台）；去学校下车步行分钟待实测；v0.16.0 新增" },
     { "code": "T367", "kind": "bus", "name_tc": "望德聖母灣馬路/連貫公路", "walk": { "school": null }, "note": "DSAT 已核对；威尼斯人方向" },
     { "code": "T355/2", "kind": "bus", "name_tc": "蓮花路停車場", "walk": {}, "note": "換乘站（往橫琴）；六條過境線共用的站台（T355/2），對面 T355/1 為 26/50 往澳門方向" },
     { "code": "T560/4", "kind": "bus", "name_tc": "橫琴澳方口岸", "walk": { "hengqin": 0 }, "note": "DSAT 已核对；50 路站台 T560/4，25B 停 T560/2、102 停 T560/6、701X/N6 停 T560/5 與 T560/7（同站區不同台）" },
@@ -117,10 +118,11 @@
       ]
     },
     {
-      "id": "home-school-3", "from": "home", "to": "school", "summary": "26A路 C653 金峰南岸/金譽峰→T367 望德聖母灣馬路/連貫公路",
+      "id": "home-school-3", "from": "home", "to": "school", "summary": "26A路 C653 金峰南岸/金譽峰→T363/1 連貫公路/威尼斯人 或 T367 望德聖母灣馬路/連貫公路（動態下車）",
+      "note": "v0.16.0：26A 去学校方向先到 T363/1 威尼斯人（可提前下）再 T367 望德聖母灣（末位强制下）；末位与 bus to 一致",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
-        { "seq": 2, "kind": "bus", "routes": ["26A"], "from": "station:C653", "to": "station:T367", "minutes": null },
+        { "seq": 2, "kind": "bus", "routes": ["26A"], "from": "station:C653", "to": "station:T367", "alight_candidates": ["T363/1", "T367"], "minutes": null },
         { "seq": 3, "kind": "walk", "from": "station:T367", "to": "place:school", "minutes": null }
       ]
     },
@@ -169,7 +171,26 @@
       ]
     },
     {
-      "id": "home-school-8", "from": "home", "to": "school", "summary": "輕軌 石排灣→協和醫院(換)→路氹東",
+      "id": "home-school-25", "from": "home", "to": "school", "summary": "25路 C653 金峰南岸/金譽峰→T363/2 連貫公路/威尼斯人",
+      "note": "v0.16.0 新增去学校方案：25 循环线 C653 金峰南岸上車（家步行 3 分钟）→ T363/2 連貫公路/威尼斯人下（回程繞行方向，去学校近路）；下车步行到校，分钟数待实测",
+      "legs": [
+        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
+        { "seq": 2, "kind": "bus", "routes": ["25"], "from": "station:C653", "to": "station:T363/2", "minutes": null },
+        { "seq": 3, "kind": "walk", "from": "station:T363/2", "to": "place:school", "minutes": null }
+      ]
+    },
+    {
+      "id": "home-school-25ax", "from": "home", "to": "school", "summary": "25AX路 C690/2 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T363/2 連貫公路/威尼斯人",
+      "board_candidates": ["C690/2", "C689/2"],
+      "note": "v0.16.0 新增去学校方案：25AX 高峰快線 C690/2 或 C689/2 上車 → T363/2 連貫公路/威尼斯人下；下车步行到校，分钟数待实测",
+      "legs": [
+        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/2", "minutes": 7 },
+        { "seq": 2, "kind": "bus", "routes": ["25AX"], "from": "station:C690/2", "to": "station:T363/2", "minutes": null },
+        { "seq": 3, "kind": "walk", "from": "station:T363/2", "to": "place:school", "minutes": null }
+      ]
+    },
+    {
+      "id": "home-school-8", "from": "home", "to": "school", "summary": "輕軌 石排灣→協和醫院(換)→路氹東（已併入 home-school-9，路氹東/科大站 動態下車）", "is_active": false,
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:LRT-SPW", "minutes": 4 },
         { "seq": 2, "kind": "lrt", "routes": ["LRT-石排湾线"], "from": "station:LRT-SPW", "to": "station:LRT-UH", "minutes": null },
@@ -179,12 +200,13 @@
       ]
     },
     {
-      "id": "home-school-9", "from": "home", "to": "school", "summary": "輕軌 石排灣→協和醫院(換)→科大站",
+      "id": "home-school-9", "from": "home", "to": "school", "summary": "輕軌 石排灣→協和醫院(換)→科大站 或 路氹東（動態下車）",
+      "note": "v0.16.0：并入原 home-school-8（路氹東）/home-school-9（科大站）；TPL 氹仔线 UH→LDE(路氹東,先)→MUST(科大,末位)，末位与 bus to 一致；LRT-LDE 步行待实测",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:LRT-SPW", "minutes": 4 },
         { "seq": 2, "kind": "lrt", "routes": ["LRT-石排湾线"], "from": "station:LRT-SPW", "to": "station:LRT-UH", "minutes": null },
         { "seq": 3, "kind": "transfer", "at": "station:LRT-UH", "minutes": null },
-        { "seq": 4, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-UH", "to": "station:LRT-MUST", "minutes": null },
+        { "seq": 4, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-UH", "to": "station:LRT-MUST", "alight_candidates": ["LRT-LDE", "LRT-MUST"], "minutes": null },
         { "seq": 5, "kind": "walk", "from": "station:LRT-MUST", "to": "place:school", "minutes": 8 }
       ]
     },
@@ -264,7 +286,7 @@
       ]
     },
     {
-      "id": "school-home-6", "from": "school", "to": "home", "summary": "輕軌 路氹東→協和醫院(換)→石排灣",
+      "id": "school-home-6", "from": "school", "to": "home", "summary": "輕軌 路氹東→協和醫院(換)→石排灣（已併入 school-home-7，科大站/路氹東 上車）", "is_active": false,
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:LRT-LDE", "minutes": null },
         { "seq": 2, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-LDE", "to": "station:LRT-UH", "minutes": null },
@@ -274,7 +296,9 @@
       ]
     },
     {
-      "id": "school-home-7", "from": "school", "to": "home", "summary": "輕軌 科大站→協和醫院(換)→石排灣",
+      "id": "school-home-7", "from": "school", "to": "home", "summary": "輕軌 科大站 或 路氹東→協和醫院(換)→石排灣",
+      "board_candidates": ["LRT-MUST", "LRT-LDE"],
+      "note": "v0.16.0：并入原 school-home-6（路氹東）/school-home-7（科大站）；氹仔线 MUST(科大,近校正门)→LDE(路氹東) 回程可上兩站，首項=默认（MUST 步行 8min 已测）；LDE 步行待实测",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:LRT-MUST", "minutes": 8 },
         { "seq": 2, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-MUST", "to": "station:LRT-UH", "minutes": null },

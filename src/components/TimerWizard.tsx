@@ -118,8 +118,6 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const [toZone, setToZone] = useState<string | null>(null);
   // 去学校 51 系：上车点选择（board_candidates；首项=默认无需选）
   const [boardStation, setBoardStation] = useState<string | null>(null);
-  // 动态下车「途经」后：抑制同一候选站的再次询问（cur 前进后自动失效）
-  const [continueFrom, setContinueFrom] = useState<number | null>(null);
   // 打点成功后递增 → LiveEta 卡片事件驱动刷新（需求 7：无自动轮询）
   const [etaTick, setEtaTick] = useState(0);
   // v0.10.0 A11：多候选线路段「实际乘哪一路」（board 阶段选；乘车推进/车队参照按此线）
@@ -513,24 +511,25 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // 候选码的站名取自 timer 接口 stationNames（查不到时退回站码匹配）
   const destNameOf = (code: string) => data.stationNames[code] ?? null;
 
+  /** v0.16.0 逐站按钮阶段（主人拍板三段式）：
+   *   plain（普通中间站）→ 只有 记站/甩站；
+   *   candidate（非末位可选下车站）→ 下车 / 记站 / 甩站 三钮；
+   *   final（终点/末位候选）→ 只有 下车 */
+  type RideStage = "plain" | "candidate" | "final";
   type RideInfo = {
     routeCode: string;
+    stage: RideStage;
     nextName: string;
     nextCode: string | null;
+    /** 距当前目标候选站剩余站数（plain 显示用；final 为 0） */
     remaining: number | null;
     upcoming: { name: string; isDest: boolean }[];
-    /** 当前动态目标站（候选下车点推进：C688/2 → C690/x 收尾） */
     destName: string;
     destCode: string;
-    /** 当前车逻辑位置（「途经」抑制决策卡用） */
+    /** 末位候选（终点）站名：candidate 阶段提示「继续坐往」用 */
+    terminalName: string;
+    /** 当前车逻辑位置（下一处理站 = cur+1） */
     cur: number;
-    /** 已停靠到非末位候选站 → 渲染「下车 / 途经」决策卡（途经=继续坐到末位总站） */
-    decision: {
-      code: string;
-      name: string;
-      continueCode: string;
-      continueName: string;
-    } | null;
     passedCount: number;
   };
   let rideInfo: RideInfo | null = null;
@@ -571,28 +570,27 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
       if (boardIdx >= 0 && candPos.length > 0) {
         const n = stops.length;
         const cur = (boardIdx + passed) % n; // 当前逻辑位置（循环线自动 wrap）
-        const nextIdx = (cur + 1) % n;
-        const k = candPos.findIndex((c) => c.idx === cur); // 是否正站在某候选站
-        const candHere = k >= 0 ? candPos[k] : undefined;
-        const isTerminal = k >= 0 && k === candPos.length - 1;
-        // 到站决策：仅当「实际停靠」(station_arrive) 于非末位候选站时询问下车/途经；
-        // 甩站(station_pass)经过候选 = 隐含途经，不打断；途经后同站不再重复问（continueFrom）
-        const lastStopEvt = posEvts[posEvts.length - 1];
-        const showDecision =
-          !!candHere &&
-          !isTerminal &&
-          lastStopEvt?.event_type === "station_arrive" &&
-          stationCodesEq(lastStopEvt.station_code, candHere.code) &&
-          continueFrom !== cur;
-        // 目标：决策态 = 已到的候选；否则 = 站序上第一个在 cur 之后的候选；无则末位收尾
+        const xIdx = (cur + 1) % n; // 即将到站/处理的车站 X
+        const xCandK = candPos.findIndex((c) => c.idx === xIdx);
         const lastCand = candPos[candPos.length - 1];
-        const nextCand = candPos.find((c) => c.idx > cur);
-        const dest = showDecision && candHere ? candHere : nextCand ?? lastCand;
-        const destIdx = dest.idx;
-        const remaining = showDecision ? 0 : (destIdx - cur + n) % n;
+        // 三段式判定：X 是末位候选（含唯一终点）→ final；X 是非末位候选 → candidate；否则 plain
+        const stage: RideStage =
+          xCandK >= 0 && xCandK === candPos.length - 1
+            ? "final"
+            : xCandK >= 0
+              ? "candidate"
+              : "plain";
+        // 目标候选：candidate/final 时即 X；plain 时取 X 及其后最近候选，无则末位收尾
+        const destCand =
+          stage === "plain"
+            ? candPos.find((c) => c.idx >= xIdx) ?? lastCand
+            : candPos[xCandK];
+        const destIdx = destCand.idx;
+        const remaining = stage === "final" ? 0 : (destIdx - xIdx + n) % n;
         const destName = stops[destIdx].name;
-        // 接下来最多 4 站（含目标站高亮）
-        const upcomingCount = Math.min(remaining > 0 ? remaining : 4, 4);
+        // 接下来最多 4 站（含目标站高亮；final 只需 1）
+        const upcomingCount =
+          stage === "final" ? 1 : Math.min(remaining > 0 ? remaining : 4, 4);
         const upcoming: { name: string; isDest: boolean }[] = [];
         for (let j = 1; j <= upcomingCount; j++) {
           const s = stops[(cur + j) % n];
@@ -600,21 +598,15 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         }
         rideInfo = {
           routeCode,
-          nextName: stops[nextIdx].name,
-          nextCode: stops[nextIdx].code,
+          stage,
+          nextName: stops[xIdx].name,
+          nextCode: stops[xIdx].code,
           remaining,
           upcoming,
           destName,
-          destCode: dest.code,
+          destCode: destCand.code,
+          terminalName: stops[lastCand.idx].name,
           cur,
-          decision: showDecision && candHere
-            ? {
-                code: candHere.code,
-                name: destName,
-                continueCode: lastCand.code,
-                continueName: stops[lastCand.idx].name,
-              }
-            : null,
           passedCount: passed,
         };
       }
@@ -622,8 +614,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   }
 
   const recentEvents = [...data.events].reverse().slice(0, 4);
-  // 动态下车决策中（已到非末位候选站）：主按钮替换为「下车 / 途经」决策卡
-  const ridingDecision = riding && !!rideInfo?.decision;
+  // v0.16.0：乘车中且能算出逐站进度 → 三段式逐站按钮接管（普通=记/甩；候选=三钮；终点=下车）
+  const ridingUi = riding && !!rideInfo;
 
   // ===== v0.12.0：步行暂停 / 最近事件撤销 =====
   // 暂停态由顶部 pausedNow 派生（events 最后一条是 pause）
@@ -633,7 +625,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // 且当前处于该步骤未打点（canPause 在整步替换暂停卡时不展示）
   const isWalkingStep =
     step?.eventType === "wait_start" || step?.eventType === "arrive";
-  const canPause = !finished && !paused && isWalkingStep && !ridingDecision;
+  const canPause = !finished && !paused && isWalkingStep;
   // 暂停起始时刻（时长展示用；recorded_at 为 ISO）
   const pauseSince =
     paused && lastEvent ? new Date(lastEvent.recorded_at).getTime() : 0;
@@ -864,12 +856,13 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             </div>
           )}
 
-          {/* 动态下车决策中：主「下车」替换为决策卡的两个按钮，避免误按到总站 */}
-          {!ridingDecision && (
+          {/* v0.16.0：乘车逐站 UI 接管时隐藏步骤主按钮——普通中间站没有「下车」；
+              终点/候选站的「下车」由逐站卡提供（避免「明明该下车了却还看到三个键」） */}
+          {!ridingUi && (
             <>
               {/* v0.14.1：乘车中已按实乘线算出动态目标台（乘 50 落 T355/1）时隐藏静态 sub，
                   避免步骤文案「目標站：T355/2…」（卡片默认台）与动态下车站并陈误导 */}
-              {!(riding && rideInfo) && step.sub && (
+              {!ridingUi && step.sub && (
                 <p className="t-body" style={{ margin: 0 }}>{fullSub(step.sub)}</p>
               )}
               <button
@@ -918,99 +911,126 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             </button>
           )}
 
-          {/* 乘车阶段：下一站提示 + 途经站打点；动态下车到候选站出「下车 / 途经」决策卡 */}
+          {/* 乘车阶段（v0.16.0 三段式逐站）：下一处理站 X 决定按钮集——
+              plain(普通) → 停靠/甩站；candidate(非末位可选下车) → 下车/停靠/甩站；final(终点/末位) → 下车 */}
           {riding && rideInfo && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {rideInfo.decision ? (
+              <p className="t-label t-muted">
+                乘车中 · {rideRouteLabel(rideInfo.routeCode)}
+                {rideInfo.stage === "plain" &&
+                  rideInfo.remaining !== null &&
+                  ` · 再过 ${rideInfo.remaining} 站到「${rideInfo.destName}」`}
+                {rideInfo.stage === "candidate" &&
+                  ` · 可下车，或继续坐到「${rideInfo.terminalName}」`}
+              </p>
+
+              {rideInfo.stage === "plain" && (
                 <>
-                  <p className="t-label t-muted">
-                    乘车中 · {rideRouteLabel(rideInfo.routeCode)} · 已到 {rideInfo.decision.name}
+                  <p className="h-headline" style={{ margin: 0 }}>
+                    下一站：{rideInfo.nextName}
                   </p>
-                  <div className="card" style={{ padding: 14 }}>
-                    <p className="h-headline" style={{ margin: 0 }}>
-                      🚏 到 {rideInfo.decision.name} 了
-                    </p>
-                    <p className="t-body t-muted" style={{ marginTop: 6 }}>
-                      要在这里下车，还是继续坐到总站？
-                    </p>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 10,
-                        marginTop: 12,
-                      }}
-                    >
-                      <button
-                        className="btn btn--primary btn--lg btn--block"
-                        onClick={() =>
-                          postEvent("alight", { station_code: rideInfo!.decision!.code })
-                        }
-                      >
-                        就在此下车
-                      </button>
-                      <button
-                        className="btn btn--outline btn--block"
-                        onClick={() => setContinueFrom(rideInfo!.cur)}
-                      >
-                        途经 · 坐到 {rideInfo.decision.continueName}
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="t-label t-muted">
-                    乘车中 · {rideRouteLabel(rideInfo.routeCode)}
-                    {rideInfo.remaining !== null &&
-                      (rideInfo.remaining > 0
-                        ? ` · 还剩 ${rideInfo.remaining} 站到「${rideInfo.destName}」`
-                        : " · 已到站")}
-                  </p>
-                  {rideInfo.remaining !== null && rideInfo.remaining > 0 ? (
-                    <>
-                      <p className="h-headline" style={{ margin: 0 }}>
-                        下一站：{rideInfo.nextName}
-                      </p>
-                      {rideInfo.upcoming.length > 1 && (
-                        <p className="t-label t-muted" style={{ lineHeight: 1.7 }}>
-                          之后：
-                          {rideInfo.upcoming.slice(1).map((u, i) => (
-                            <span key={i} className={u.isDest ? "t-accent t-strong" : undefined}>
-                              {u.name}
-                              {i < rideInfo.upcoming.length - 2 ? " → " : ""}
-                            </span>
-                          ))}
-                        </p>
-                      )}
-                      {/* 两按钮：停靠到站 / 甩站未停（都入库并推进剩余站数） */}
-                      <button
-                        className="btn btn--tonal btn--block"
-                        onClick={() =>
-                          postEvent("station_arrive", {
-                            station_code: rideInfo?.nextCode ?? step.stationCode ?? null,
-                          })
-                        }
-                      >
-                        ✓ 停靠 · 记一站
-                      </button>
-                      <button
-                        className="btn btn--outline btn--block"
-                        onClick={() =>
-                          postEvent("station_pass", {
-                            station_code: rideInfo?.nextCode ?? step.stationCode ?? null,
-                          })
-                        }
-                      >
-                        ↷ 甩站没停 · 也记一站
-                      </button>
-                    </>
-                  ) : (
+                  {rideInfo.upcoming.length > 1 && (
                     <p className="t-label t-muted" style={{ lineHeight: 1.7 }}>
-                      已到站：{rideInfo.destName} —— 点「下车」结束乘车
+                      之后：
+                      {rideInfo.upcoming.slice(1).map((u, i) => (
+                        <span key={i} className={u.isDest ? "t-accent t-strong" : undefined}>
+                          {u.name}
+                          {i < rideInfo.upcoming.length - 2 ? " → " : ""}
+                        </span>
+                      ))}
                     </p>
                   )}
+                  <button
+                    className="btn btn--tonal btn--block"
+                    onClick={() =>
+                      postEvent("station_arrive", {
+                        station_code: rideInfo?.nextCode ?? step.stationCode ?? null,
+                      })
+                    }
+                  >
+                    ✓ 停靠 · 记一站
+                  </button>
+                  <button
+                    className="btn btn--outline btn--block"
+                    onClick={() =>
+                      postEvent("station_pass", {
+                        station_code: rideInfo?.nextCode ?? step.stationCode ?? null,
+                      })
+                    }
+                  >
+                    ↷ 甩站没停 · 也记一站
+                  </button>
                 </>
+              )}
+
+              {rideInfo.stage === "candidate" && (
+                <div className="card" style={{ padding: 14 }}>
+                  <p className="h-headline" style={{ margin: 0 }}>
+                    🚏 到 {rideInfo.nextName} 了
+                  </p>
+                  <p className="t-body t-muted" style={{ marginTop: 6 }}>
+                    可在此下车；若不下车，会继续坐到「{rideInfo.terminalName}」（到站直接下车）
+                  </p>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                      marginTop: 12,
+                    }}
+                  >
+                    <button
+                      className="btn btn--primary btn--lg btn--block"
+                      onClick={() =>
+                        postEvent("alight", { station_code: rideInfo?.nextCode ?? null })
+                      }
+                    >
+                      在此下车
+                    </button>
+                    <button
+                      className="btn btn--tonal btn--block"
+                      onClick={() =>
+                        postEvent("station_arrive", {
+                          station_code: rideInfo?.nextCode ?? null,
+                        })
+                      }
+                    >
+                      ✓ 停靠 · 记一站（继续坐）
+                    </button>
+                    <button
+                      className="btn btn--outline btn--block"
+                      onClick={() =>
+                        postEvent("station_pass", {
+                          station_code: rideInfo?.nextCode ?? null,
+                        })
+                      }
+                    >
+                      ↷ 甩站没停（继续坐）
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {rideInfo.stage === "final" && (
+                <div className="card" style={{ padding: 14 }}>
+                  <p className="h-headline" style={{ margin: 0 }}>
+                    🚏 到 {rideInfo.nextName} 了
+                  </p>
+                  <p className="t-body t-muted" style={{ marginTop: 6 }}>
+                    本站下车 · 结束本次乘车
+                  </p>
+                  <button
+                    className="btn btn--primary btn--lg btn--block"
+                    style={{ marginTop: 12 }}
+                    onClick={() =>
+                      postEvent("alight", {
+                        station_code: rideInfo?.nextCode ?? rideInfo?.destCode ?? null,
+                      })
+                    }
+                  >
+                    下车
+                  </button>
+                </div>
               )}
             </div>
           )}

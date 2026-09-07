@@ -1,6 +1,6 @@
 {
   "name": "must-dengxiao",
-  "version": "0.15.2",
+  "version": "0.16.0",
   "private": true,
   "description": "MUST登校 · 擎天汇↔澳科大↔横琴 通勤计时与数据采集系统",
   "scripts": {
@@ -26,6 +26,7 @@
     "db:migrate-v141": "tsx db/migrate-v141.ts",
     "db:migrate-v150": "tsx db/migrate-v150.ts",
     "db:migrate-v151": "tsx db/migrate-v151.ts",
+    "db:migrate-v160": "tsx db/migrate-v160.ts",
     "lrt:fetch": "tsx scripts/fetch-lrt-timetable.ts"
   },
   "dependencies": {

@@ -87,9 +87,11 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
             routeOptions: nextVehicle?.route_options ?? null,
             destStationCode: nextVehicle?.to_station ?? null,
             lineColor: nextVehicle?.color ?? null,
-            // 出门前可选上车站（去学校 51 系卡）：候选来自首载具段，选后覆盖 depart/wait/board 站
+            // 出门前可选上车站（去学校 51 系卡 / 轻轨合并卡）：候选来自首载具段，选后覆盖 depart/wait/board 站
             boardCandidates:
-              nextVehicle?.leg_kind === "bus" ? nextVehicle.board_candidates ?? null : null,
+              nextVehicle && (nextVehicle.leg_kind === "bus" || nextVehicle.leg_kind === "lrt")
+                ? nextVehicle.board_candidates ?? null
+                : null,
           });
         } else if (i === legs.length - 1) {
           // 末段步行 = 抵达目的地
@@ -128,9 +130,12 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
           quickKind: leg.leg_kind === "bus" ? "stops" : "minutes",
           routeOptions: leg.route_options,
           fromStationCode: leg.from_station,
+          /** 可选下车点（bus/lrt 段：v0.16.0 起轻轨合并卡也用；末位=强制终点） */
           alightCandidates:
-            leg.leg_kind === "bus" && leg.alight_candidates?.length
-              ? leg.alight_candidates
+            leg.leg_kind === "bus" || leg.leg_kind === "lrt"
+              ? leg.alight_candidates?.length
+                ? leg.alight_candidates
+                : null
               : null,
           lineColor: leg.color ?? null,
           vehIndex: vehIdx,

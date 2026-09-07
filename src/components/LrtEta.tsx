@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * 轻轨时刻表报站卡（src/components/LrtEta.tsx）v0.15.1
+ * 轻轨时刻表报站卡（src/components/LrtEta.tsx）v0.15.2
  * 与巴士 LiveEta 同位置同视觉：只显示「下一班 / 再下一班」，无整日时刻表。
  * 数据链路：/api/lrt/eta（本地算）→ 一次拉取当日该站该线该方向时刻，
  *   之后客户端按绝对发车时刻（depMs）本地每秒重算倒计时——秒级不依赖网络。
  *
- * 口径（与方案一致；v0.15.1 文案/读秒优化）：
- *   - 氹仔线：剩余 ≥60s → 「下一班 X 分钟」（floor）；<60s 且未过 → 「现正到达」（flash）
- *   - 石排湾线/横琴线：秒级读秒 —— 剩余 ≥60s → 「还有 X 分 Y 秒」（每秒重渲染）；<60s → 「现正到达」
+ * 口径（与方案一致；v0.15.2 定稿）：
+ *   - 氹仔线（整分精度）：剩余 ≥60s → 「下一班 X 分钟」（floor）；<60s → 大字切换「现正到达」flash
+ *   - 石排湾线/横琴线（秒级精度）：始终显示「还有 X 分 Y 秒」逐秒读秒（含 <60s 的 0 分 XX 秒）；
+ *     <60s 大字上方叠加闪烁「现正到达」徽章 —— 秒数不被替换
  *   - 轻轨一律用「现正到达」；「即将进站」是巴士（DSAT 实时车距）专属文案
  *   - 滚动：超过下一班发车时刻后自动落到再下一班（同数据，无请求）
  *   - 空态：首班前/已收车/无数据 文案与 LiveEta 空态同风格
@@ -205,7 +206,8 @@ export default function LrtEta({
   const remainMs = nxtDep ? nxtDep.depMs - nowMs : null;
   // v0.15.1：石排湾/横琴线秒级读秒（氹仔线维持整分显示）
   const tickSec = !!data && tickSecLine(data.lineCode);
-  const totalSec = remainMs != null ? Math.ceil(remainMs / 1000) : null;
+  // floor：60_000ms 整恰好 60s（1 分 0 秒）；<60s 时不会出现「0 分 60 秒」（ceil 陷阱）
+  const totalSec = remainMs != null ? Math.max(0, Math.floor(remainMs / 1000)) : null;
 
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString("zh-CN", {
@@ -269,18 +271,34 @@ export default function LrtEta({
         </p>
       ) : (
         <div style={{ marginTop: 2 }}>
+          {/* v0.15.2：秒级线路（石排湾/横琴）<60s → 大字仍是秒数，上方叠加闪烁「现正到达」徽章；
+              氹仔线无秒精度 → 大字仍由「下一班 X 分钟」切换为「现正到达」flash */}
+          {tickSec && remainMs !== null && remainMs < 60_000 && (
+            <p
+              className="t-accent t-strong"
+              style={{
+                textAlign: "center",
+                margin: "0 0 2px",
+                fontSize: 15,
+                letterSpacing: 2,
+                animation: "eta-pulse 1.2s ease-in-out infinite",
+              }}
+            >
+              现正到达
+            </p>
+          )}
           {/* 下一班大数字 */}
           <p
             className={`t-accent eta-big${
-              remainMs !== null && remainMs < 60_000 ? " eta-big--flash" : ""
+              !tickSec && remainMs !== null && remainMs < 60_000 ? " eta-big--flash" : ""
             }`}
             style={{ textAlign: "center", margin: "4px 0 0" }}
           >
-            {remainMs !== null && remainMs >= 60_000
-              ? tickSec
-                ? `还有 ${Math.floor(totalSec! / 60)} 分 ${totalSec! % 60} 秒`
-                : `下一班 ${Math.floor(remainMs / 60_000)} 分钟`
-              : "现正到达"}
+            {tickSec
+              ? `还有 ${Math.floor(totalSec! / 60)} 分 ${totalSec! % 60} 秒`
+              : remainMs !== null && remainMs >= 60_000
+                ? `下一班 ${Math.floor(remainMs / 60_000)} 分钟`
+                : "现正到达"}
           </p>
           {/* 副行：方向 + 绝对时刻 */}
           <p

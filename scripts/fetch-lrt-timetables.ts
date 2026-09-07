@@ -13,7 +13,7 @@
  *
  * 用法：npm run lrt:timetable   （幂等：本地已有同名文件即跳过；零第三方依赖）
  */
-import { mkdir, readFileSync, stat, writeFile } from "fs/promises";
+import { mkdir, stat, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
 

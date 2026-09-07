@@ -1,0 +1,219 @@
+{
+  "source": "https://www.mlm.com.mo/tc/route.html",
+  "fetched_at": "2026-09-07T02:56:47.465Z",
+  "month_dir": "2026_09",
+  "station_count": 15,
+  "image_count": 17,
+  "remark": [
+    "橫琴線之列車出發時刻表更新於2026年9月；",
+    "氹仔線之列車出發時刻表更新於2026年9月。"
+  ],
+  "stations": [
+    {
+      "slug": "barra",
+      "href": "/tc/station_locationDetail/article/lphpolkr.html",
+      "name": "媽閣站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/lphpolkr.html",
+      "images": [
+        {
+          "file": "2026_09/TT_BAR_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_BAR_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "ocean",
+      "href": "/tc/station_locationDetail/article/kblxj8xr.html",
+      "name": "海洋站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/kblxj8xr.html",
+      "images": [
+        {
+          "file": "2026_09/TT_OCE_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_OCE_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "jockey",
+      "href": "/tc/station_locationDetail/article/kblxjnvb.html",
+      "name": "馬會站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/kblxjnvb.html",
+      "images": [
+        {
+          "file": "2026_09/TT_JOC_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_JOC_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "stadium",
+      "href": "/tc/station_locationDetail/article/kblxlbxk.html",
+      "name": "運動場站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/kblxlbxk.html",
+      "images": [
+        {
+          "file": "2026_09/TT_STA_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_STA_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "paikok",
+      "href": "/tc/station_locationDetail/article/kblxlnc3.html",
+      "name": "排角站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/kblxlnc3.html",
+      "images": [
+        {
+          "file": "2026_09/TT_PAK_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_PAK_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "cotaiwest",
+      "href": "/tc/station_locationDetail/article/kblxn6qs.html",
+      "name": "路氹西站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/kblxn6qs.html",
+      "images": [
+        {
+          "file": "2026_09/TT_COW_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_COW_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "lotus",
+      "href": "/tc/station_locationDetail/article/m3mcu8fu.html",
+      "name": "蓮花站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/m3mcu8fu.html",
+      "images": [
+        {
+          "file": "2026_09/TT_LOT_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_LOT_2026_09.jpg",
+          "caption": "往媽閣站/氹仔碼頭站 - 列車出發時間表"
+        },
+        {
+          "file": "2026_09/TT_HQL_LOT_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_HQL_LOT_2026_09.jpg",
+          "caption": "往橫琴站 - 列車出發時刻表"
+        }
+      ]
+    },
+    {
+      "slug": "Hengqin",
+      "href": "/tc/station_locationDetail/article/kblxnr4t.html",
+      "name": "橫琴站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/kblxnr4t.html",
+      "images": [
+        {
+          "file": "2026_09/TT_HQL_HQ_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_HQL_HQ_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "UnionHospital",
+      "href": "/tc/station_locationDetail/article/m2naox9f.html",
+      "name": "協和醫院站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/m2naox9f.html",
+      "images": [
+        {
+          "file": "2026_09/TT_HU_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_HU_2026_09.jpg",
+          "caption": "協和醫院"
+        },
+        {
+          "file": "2026_09/TT_SPV_HU_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_SPV_HU_2026_09.jpg",
+          "caption": "協和醫院"
+        }
+      ]
+    },
+    {
+      "slug": "SeacPaiVan",
+      "href": "/tc/station_locationDetail/article/m03bueit.html",
+      "name": "石排灣站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/m03bueit.html",
+      "images": [
+        {
+          "file": "2026_09/TT_SPV_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_SPV_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "eastasia",
+      "href": "/tc/station_locationDetail/article/kblxo4hs.html",
+      "name": "東亞運站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/kblxo4hs.html",
+      "images": [
+        {
+          "file": "2026_09/TT_EAG_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_EAG_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "cotaieast",
+      "href": "/tc/station_locationDetail/article/kblxof24.html",
+      "name": "路氹東站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/kblxof24.html",
+      "images": [
+        {
+          "file": "2026_09/TT_COE_2026_06.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_COE_2026_06.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "must",
+      "href": "/tc/station_locationDetail/article/kblxottu.html",
+      "name": "科大站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/kblxottu.html",
+      "images": [
+        {
+          "file": "2026_09/TT_MUST_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_MUST_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "airport",
+      "href": "/tc/station_locationDetail/article/kblxp3a2.html",
+      "name": "機場站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/kblxp3a2.html",
+      "images": [
+        {
+          "file": "2026_09/TT_AIR_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_AIR_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    },
+    {
+      "slug": "taipaferry",
+      "href": "/tc/station_locationDetail/article/kblxpddy.html",
+      "name": "氹仔碼頭站",
+      "detail_url": "https://www.mlm.com.mo/tc/station_locationDetail/article/kblxpddy.html",
+      "images": [
+        {
+          "file": "2026_09/TT_TFT_2026_09.jpg",
+          "url": "https://www.mlm.com.mo/images/stations/TimeTable/2026_09/TT_TFT_2026_09.jpg",
+          "caption": ""
+        }
+      ]
+    }
+  ],
+  "fails": []
+}

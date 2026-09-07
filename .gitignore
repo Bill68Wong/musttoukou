@@ -47,3 +47,6 @@ next-env.d.ts
 
 # 本地截图验证输出
 /.verify/
+
+# LRT 时刻表图片（澳门轻轨官网按月发布，图片不进 git，只追踪 manifest.json）
+data/lrt-timetables/*/

@@ -1,26 +1,34 @@
 "use client";
 
 /**
- * 轻轨时刻表报站卡（src/components/LrtEta.tsx）v0.15.0
+ * 轻轨时刻表报站卡（src/components/LrtEta.tsx）v0.15.1
  * 与巴士 LiveEta 同位置同视觉：只显示「下一班 / 再下一班」，无整日时刻表。
  * 数据链路：/api/lrt/eta（本地算）→ 一次拉取当日该站该线该方向时刻，
  *   之后客户端按绝对发车时刻（depMs）本地每秒重算倒计时——秒级不依赖网络。
  *
- * 口径（与方案一致）：
- *   - 剩余 ≥60s → 「下一班 X 分钟」（floor）；<60s 且未过 → 「即将进站」（flash）
+ * 口径（与方案一致；v0.15.1 文案/读秒优化）：
+ *   - 氹仔线：剩余 ≥60s → 「下一班 X 分钟」（floor）；<60s 且未过 → 「现正到达」（flash）
+ *   - 石排湾线/横琴线：秒级读秒 —— 剩余 ≥60s → 「还有 X 分 Y 秒」（每秒重渲染）；<60s → 「现正到达」
+ *   - 轻轨一律用「现正到达」；「即将进站」是巴士（DSAT 实时车距）专属文案
  *   - 滚动：超过下一班发车时刻后自动落到再下一班（同数据，无请求）
  *   - 空态：首班前/已收车/无数据 文案与 LiveEta 空态同风格
  *   - 日切（澳门 0 点）自动重新拉取（服务班别/日期已变）
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/** 轻轨线路展示名（与 TimerWizard lrtLabelOf 一致）：LRT-氹仔线 → 輕軌·氹仔線 */
+/** v0.15.1：轻轨线路展示名（与 TimerWizard lrtLabelOf 一致，无「輕軌·」前缀）：
+ *  LRT-石排湾线 → 石排灣線；标题前的 🚈 已标识载具，无需重复 */
 const lineLabel = (code: string) =>
   code
-    .replace("LRT-", "輕軌·")
+    .replace(/^LRT-/, "")
     .replace(/湾/g, "灣")
     .replace(/横/g, "橫")
     .replace(/线/g, "線");
+
+/** 秒级读秒线路：石排湾线/横琴线（班次稀疏，倒计时需精确到秒）；
+ *  氹仔线班次密仍按整分显示。码内含简/繁写法兜底匹配 */
+const tickSecLine = (code: string) =>
+  code.includes("石排") || code.includes("横琴") || code.includes("橫琴");
 
 interface LrtDeparture {
   clock: string; // 'HH:MM'
@@ -68,6 +76,8 @@ export default function LrtEta({
   const [data, setData] = useState<LrtEtaData | null>(null);
   const [loading, setLoading] = useState(false);
   const [cooldownSec, setCooldownSec] = useState(0);
+  // v0.15.1：秒级读秒渲染节拍（+1 强制以最新 nowMs 重算；石排湾/横琴线「还有 X 分 Y 秒」实时滚动）
+  const [, setNowTick] = useState(0);
   const reqId = useRef(0);
   const cooldownUntil = useRef(0);
   const serverOffsetMs = useRef(0);
@@ -166,6 +176,8 @@ export default function LrtEta({
         return;
       }
       report();
+      // v0.15.1：运行中每秒 tick 一次 → 秒级倒计时与「下一班→再下一班」到点滚动即时生效
+      if (data.state === "running") setNowTick((t) => t + 1);
     }, 1000);
     return () => clearInterval(tick);
   }, [data, fetchEta, onRemainChange]);
@@ -191,6 +203,9 @@ export default function LrtEta({
     return data.departures[i + 1] ?? null;
   })();
   const remainMs = nxtDep ? nxtDep.depMs - nowMs : null;
+  // v0.15.1：石排湾/横琴线秒级读秒（氹仔线维持整分显示）
+  const tickSec = !!data && tickSecLine(data.lineCode);
+  const totalSec = remainMs != null ? Math.ceil(remainMs / 1000) : null;
 
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString("zh-CN", {
@@ -262,8 +277,10 @@ export default function LrtEta({
             style={{ textAlign: "center", margin: "4px 0 0" }}
           >
             {remainMs !== null && remainMs >= 60_000
-              ? `下一班 ${Math.floor(remainMs / 60_000)} 分钟`
-              : "即将进站"}
+              ? tickSec
+                ? `还有 ${Math.floor(totalSec! / 60)} 分 ${totalSec! % 60} 秒`
+                : `下一班 ${Math.floor(remainMs / 60_000)} 分钟`
+              : "现正到达"}
           </p>
           {/* 副行：方向 + 绝对时刻 */}
           <p

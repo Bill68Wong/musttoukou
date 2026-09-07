@@ -94,14 +94,16 @@ function textOn(hex: string): string {
   const b = n & 255;
   return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#101418" : "#fff";
 }
+// v0.15.1：轻轨标签去掉「輕軌·」前缀（🚈 图标/乘车语境已标识载具，无需重复）
+//   LRT-石排湾线 → 石排灣線；LRT-横琴线 → 橫琴線；LRT-氹仔线 → 氹仔線
 const lrtLabelOf = (code: string) =>
   code
-    .replace("LRT-", "輕軌·")
+    .replace(/^LRT-/, "")
     .replace(/湾/g, "灣")
     .replace(/横/g, "橫")
     .replace(/线/g, "線");
 
-/** 乘车标题线路显示：轻轨 → 「輕軌·氹仔線」；巴士 → 「51 路」 */
+/** 乘车标题线路显示：轻轨 → 「石排灣線」；巴士 → 「51 路」 */
 const rideRouteLabel = (code: string) =>
   code.startsWith("LRT-") ? lrtLabelOf(code) : `${code} 路`;
 

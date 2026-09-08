@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
     const legsRes = await pool.query(
       `SELECT seq, leg_kind, route_options, from_station, to_station,
-              border_label, board_candidates, alight_candidates
+              border_label, board_candidates, alight_candidates, minutes
        FROM plan_legs WHERE plan_id = $1 ORDER BY seq`,
       [session.plan_id],
     );

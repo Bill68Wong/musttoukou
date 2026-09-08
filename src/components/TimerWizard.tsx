@@ -250,13 +250,6 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         finished?: boolean;
         /** v0.12.0：服务器真实事件 id（撤销依赖） */
         event_id?: number | null;
-        /** v0.16.3：同场换乘自动接续（下车即到站，服务器已补 wait_start，直接进「上车」步） */
-        auto_wait_start?: {
-          type?: string;
-          event_id: number | null;
-          station_code: string | null;
-          recorded_at: string | null;
-        } | null;
       };
       if (!res.ok) throw new Error(body.error ?? "打点失败");
       // 打点已入库（成功或幂等命中）→ 释放幂等键，供下一次打点使用
@@ -277,34 +270,15 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         );
       }
 
-      // v0.16.3：同场换乘自动接续 —— 服务器在 alight 后自动补了 wait_start（transfer minutes=0，
-      // 如莲花路停车场下车即到隔壁台）：本地追加该真实事件 → 步骤直接跳到第二程「上车」，
-      // 无需再手动点一次「到站，开始等车」（2026-09-08 实测反馈）
-      if (type === "alight" && body.auto_wait_start?.event_id) {
-        const aw = body.auto_wait_start;
-        setData((prev) => {
-          if (!prev) return prev;
-          const maxSeq = prev.events.reduce((m, e) => Math.max(m, e.seq), 0);
-          return {
-            ...prev,
-            events: [
-              ...prev.events,
-              {
-                id: aw.event_id as number,
-                seq: maxSeq + 1,
-                event_type: aw.type ?? "wait_start",
-                station_code: aw.station_code ?? null,
-                recorded_at: aw.recorded_at ?? new Date().toISOString(),
-              },
-            ],
-          };
-        });
-      }
-      // 自动 wait_start 等同手动到达：补记第二程巴士段的车距快照（保持数据采集口径一致）
-      if (type === "alight" && body.auto_wait_start) {
+      // v0.16.4：同场换乘（莲花路停车场）步骤模型已不生成第二程「到站，开始等车」步
+      // （buildSteps 对 transfer minutes=0 的后段跳过 wait_start）→ 下车后 events/步骤直接
+      // 落到第二程 board（上车），无中间态/无残留事件。此处按步骤结构补记等车车距快照，
+      // 保持与手动 wait_start 一致的数据采集口径（wait_snapshots 独立表，不入事件链）
+      if (type === "alight") {
         const nextStep = curSteps[curIdx + 1];
         if (
-          nextStep?.quickKind === "stops" &&
+          nextStep?.eventType === "board" &&
+          nextStep.quickKind === "stops" &&
           nextStep.stationCode &&
           nextStep.routeOptions?.length
         ) {

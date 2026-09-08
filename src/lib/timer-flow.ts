@@ -34,6 +34,8 @@ export interface PlanLegLite {
   board_candidates?: string[] | null;
   /** bus 段可选下车点（回宿舍动态下车：末位=强制终点，与 to_station 一致） */
   alight_candidates?: string[] | null;
+  /** v0.16.4：段参考时长/分钟（transfer 0 = 同场换乘步行 0 分钟） */
+  minutes?: number | null;
 }
 
 export interface Step {
@@ -101,17 +103,28 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
       case "bus":
       case "lrt":
         vehIdx++;
-        steps.push({
-          eventType: "wait_start",
-          label: "到站，开始等车",
-          sub: `${leg.from_station ?? ""} 等候`,
-          stationCode: leg.from_station,
-          quickKind: leg.leg_kind === "bus" ? "stops" : "minutes",
-          routeOptions: leg.route_options,
-          destStationCode: leg.to_station ?? null,
-          lineColor: leg.color ?? null,
-          vehIndex: vehIdx,
-        });
+        // v0.16.4：同场换乘（前一个 leg 是 transfer minutes=0，如莲花路停车场
+        // T355/1↔T355/2 相邻台）→ 下车即已到站，第二程不再生成「到站，开始等车」步：
+        // 等车自下车时刻自动开始，UI 下车后直接是「上车」（board 步自带等车 LiveEta）。
+        // 判定仅限显式 0 分钟换乘（当前只有莲花路巴士卡；轻轨 UH/LOT 换乘未标注不受影响）
+        const prevLeg = legs[i - 1];
+        const sameFieldTransfer =
+          prevLeg?.leg_kind === "transfer" &&
+          prevLeg.minutes != null &&
+          Number(prevLeg.minutes) === 0;
+        if (!sameFieldTransfer) {
+          steps.push({
+            eventType: "wait_start",
+            label: "到站，开始等车",
+            sub: `${leg.from_station ?? ""} 等候`,
+            stationCode: leg.from_station,
+            quickKind: leg.leg_kind === "bus" ? "stops" : "minutes",
+            routeOptions: leg.route_options,
+            destStationCode: leg.to_station ?? null,
+            lineColor: leg.color ?? null,
+            vehIndex: vehIdx,
+          });
+        }
         steps.push({
           eventType: "board",
           label: "上车",

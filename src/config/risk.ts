@@ -13,7 +13,7 @@ export const RISK = {
     failThreshold: 3, // 连续失败 3 次 → 熔断
     cooldownMin: 30, // 熔断后静默 30 分钟
   },
-  dailyLimit: 500, // 每日请求总量硬上限（GMT+8 自然日，超限即停到次日）
+  // v0.17.1：dailyLimit 已彻底取消（单人 PWA 无刷量风险；dsat_call_logs 保留记账仅作统计）
   // M3 预留（本期不启用）
   poll: { enabled: false, intervalSec: 60 },
 } as const;

@@ -399,7 +399,11 @@ button:disabled {
 }
 
 /* v0.16.3：多车可选路线卡（去横琴巴士）——双色位置周期互换闪烁：
-   版本 A「左26右50」与版本 B「左50右26」整卡交替淡入淡出（主人 2026-09-08 反馈） */
+   版本 A「左26右50」与版本 B「左50右26」整卡交替淡入淡出
+   v0.17.1：方波硬切 → 柔和呼吸——两色交叉缓入缓出（ease-in-out + 对称斜坡）：
+   各层 0→25% 缓入、25→50% 保持、50→75% 缓出、75→100% 熄灭；
+   b 层延迟半周期，淡出/淡入在 50% 交界重叠（同刻两层半透明 → 颜色自然融合，无空卡瞬间）。
+   周期 2.4s → 3.4s（主人 2026-09-08 反馈「快而尖锐，要柔和呼吸」） */
 .pc-swap {
   position: absolute;
   inset: 0;
@@ -407,23 +411,27 @@ button:disabled {
   pointer-events: none;
 }
 .pc-swap-a {
-  animation: pc-swap-phase 2.4s ease-in-out infinite;
+  animation: pc-swap-phase 3.4s ease-in-out infinite;
 }
 .pc-swap-b {
-  animation: pc-swap-phase 2.4s ease-in-out infinite;
-  animation-delay: 1.2s;
+  animation: pc-swap-phase 3.4s ease-in-out infinite;
+  animation-delay: 1.7s;
 }
 @keyframes pc-swap-phase {
-  0%,
-  42% {
+  0% {
+    opacity: 0;
+  }
+  25% {
     opacity: 1;
   }
-  50%,
-  92% {
+  50% {
+    opacity: 1;
+  }
+  75% {
     opacity: 0;
   }
   100% {
-    opacity: 1;
+    opacity: 0;
   }
 }
 

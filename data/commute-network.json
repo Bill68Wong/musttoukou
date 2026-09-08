@@ -8,7 +8,7 @@
   "places": [
     { "id": "home", "name": "擎天匯 T8", "type": "dorm", "area": "路環石排灣" },
     { "id": "school", "name": "澳科大", "type": "school", "area": "氹仔偉龍馬路" },
-    { "id": "hengqin", "name": "橫琴口岸（澳方口岸 / 橫琴站）", "type": "border", "area": "橫琴" },
+    { "id": "hengqin", "name": "橫琴口岸（澳方口岸 / 橫琴）", "type": "border", "area": "橫琴" },
     { "id": "guanqin", "name": "關閘（拱北口岸）", "type": "border", "area": "澳門半島" }
   ],
   "stations": [
@@ -38,21 +38,21 @@
     { "code": "M9/2", "kind": "bus", "name_tc": "關閘廣場", "walk": {}, "note": "59 路站台（關閘廣場巴士站群 M9 分台；DSAT 已核对，v0.13.0）" },
     { "code": "M9/3", "kind": "bus", "name_tc": "關閘廣場", "walk": {}, "note": "25AX 路站台（關閘廣場巴士站群 M9 分台；DSAT 已核对，v0.13.0）" },
     { "code": "M9/4", "kind": "bus", "name_tc": "關閘廣場", "walk": {}, "note": "51/51B 路站台（關閘廣場巴士站群 M9 分台；DSAT 已核对，v0.13.0）" },
-    { "code": "LRT-BAR", "kind": "lrt", "no": "12", "name_tc": "媽閣站", "name_pt": "Barra", "name_en": "Barra", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線西端總站（澳門半島）；v0.8.0 補齊全線" },
-    { "code": "LRT-OCH", "kind": "lrt", "no": "13", "name_tc": "海洋站", "name_pt": "Oceano", "name_en": "Ocean", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
-    { "code": "LRT-JCK", "kind": "lrt", "no": "14", "name_tc": "馬會站", "name_pt": "Jockey Clube", "name_en": "Jockey Club", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
-    { "code": "LRT-STD", "kind": "lrt", "no": "15", "name_tc": "運動場站", "name_pt": "Estádio", "name_en": "Stadium", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
-    { "code": "LRT-PAK", "kind": "lrt", "no": "16", "name_tc": "排角站", "name_pt": "Pai Kok", "name_en": "Pai Kok", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
-    { "code": "LRT-CWE", "kind": "lrt", "no": "17", "name_tc": "路氹西站", "name_pt": "Cotai Oeste", "name_en": "Cotai West", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
-    { "code": "LRT-SPW", "kind": "lrt", "no": null, "name_tc": "石排灣站", "name_pt": "Seac Pai Van", "name_en": "Seac Pai Van", "lines": ["LRT-石排湾线"], "walk": { "home": 4 } },
-    { "code": "LRT-UH", "kind": "lrt", "no": "18A", "name_tc": "協和醫院站", "name_pt": "Hospital Union", "name_en": "Union Hospital", "lines": ["LRT-氹仔线", "LRT-石排湾线"], "walk": {}, "note": "石排灣線↔氹仔線換乘站（編號 18A 沿氹仔線）" },
-    { "code": "LRT-EAG", "kind": "lrt", "no": "19", "name_tc": "東亞運站", "name_pt": "Jogos da Ásia Oriental", "name_en": "East Asian Games", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線中間站（協和醫院↔路氹東之間）；v0.7.0 補齊中間站" },
-    { "code": "LRT-LDE", "kind": "lrt", "no": "20", "name_tc": "路氹東站", "name_pt": "Cotai Leste", "name_en": "Cotai East", "lines": ["LRT-氹仔线"], "walk": { "school": null }, "note": "步行分鐘數待測" },
-    { "code": "LRT-MUST", "kind": "lrt", "no": "21", "name_tc": "科大站", "name_pt": "UCTM", "name_en": "MUST", "lines": ["LRT-氹仔线"], "walk": { "school": 8 } },
-    { "code": "LRT-AP", "kind": "lrt", "no": "22", "name_tc": "機場站", "name_pt": "Aeroporto", "name_en": "Airport", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站（科大之後；備用全網絡資料）" },
-    { "code": "LRT-TFT", "kind": "lrt", "no": "23", "name_tc": "氹仔碼頭站", "name_pt": "Terminal Marítimo da Taipa", "name_en": "Taipa Ferry Terminal", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線終點站（備用全網絡資料）" },
-    { "code": "LRT-LOT", "kind": "lrt", "no": "18", "name_tc": "蓮花站", "name_pt": "Lótus", "name_en": "Lotus", "lines": ["LRT-氹仔线", "LRT-横琴线"], "walk": {}, "note": "氹仔線↔橫琴線換乘站（編號 18 沿氹仔線）" },
-    { "code": "LRT-HQ", "kind": "lrt", "no": null, "name_tc": "橫琴站", "name_pt": "Hengqin", "name_en": "Hengqin", "lines": ["LRT-横琴线"], "walk": { "hengqin": 0 } }
+    { "code": "LRT-BAR", "kind": "lrt", "no": "12", "name_tc": "媽閣", "name_pt": "Barra", "name_en": "Barra", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線西端總站（澳門半島）；v0.8.0 補齊全線" },
+    { "code": "LRT-OCH", "kind": "lrt", "no": "13", "name_tc": "海洋", "name_pt": "Oceano", "name_en": "Ocean", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
+    { "code": "LRT-JCK", "kind": "lrt", "no": "14", "name_tc": "馬會", "name_pt": "Jockey Clube", "name_en": "Jockey Club", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
+    { "code": "LRT-STD", "kind": "lrt", "no": "15", "name_tc": "運動場", "name_pt": "Estádio", "name_en": "Stadium", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
+    { "code": "LRT-PAK", "kind": "lrt", "no": "16", "name_tc": "排角", "name_pt": "Pai Kok", "name_en": "Pai Kok", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
+    { "code": "LRT-CWE", "kind": "lrt", "no": "17", "name_tc": "路氹西", "name_pt": "Cotai Oeste", "name_en": "Cotai West", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
+    { "code": "LRT-SPW", "kind": "lrt", "no": null, "name_tc": "石排灣", "name_pt": "Seac Pai Van", "name_en": "Seac Pai Van", "lines": ["LRT-石排湾线"], "walk": { "home": 4 } },
+    { "code": "LRT-UH", "kind": "lrt", "no": "18A", "name_tc": "協和醫院", "name_pt": "Hospital Union", "name_en": "Union Hospital", "lines": ["LRT-氹仔线", "LRT-石排湾线"], "walk": {}, "note": "石排灣線↔氹仔線換乘站（編號 18A 沿氹仔線）" },
+    { "code": "LRT-EAG", "kind": "lrt", "no": "19", "name_tc": "東亞運", "name_pt": "Jogos da Ásia Oriental", "name_en": "East Asian Games", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線中間站（協和醫院↔路氹東之間）；v0.7.0 補齊中間站" },
+    { "code": "LRT-LDE", "kind": "lrt", "no": "20", "name_tc": "路氹東", "name_pt": "Cotai Leste", "name_en": "Cotai East", "lines": ["LRT-氹仔线"], "walk": { "school": null }, "note": "步行分鐘數待測" },
+    { "code": "LRT-MUST", "kind": "lrt", "no": "21", "name_tc": "科大", "name_pt": "UCTM", "name_en": "MUST", "lines": ["LRT-氹仔线"], "walk": { "school": 8 } },
+    { "code": "LRT-AP", "kind": "lrt", "no": "22", "name_tc": "機場", "name_pt": "Aeroporto", "name_en": "Airport", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站（科大之後；備用全網絡資料）" },
+    { "code": "LRT-TFT", "kind": "lrt", "no": "23", "name_tc": "氹仔碼頭", "name_pt": "Terminal Marítimo da Taipa", "name_en": "Taipa Ferry Terminal", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線終點站（備用全網絡資料）" },
+    { "code": "LRT-LOT", "kind": "lrt", "no": "18", "name_tc": "蓮花", "name_pt": "Lótus", "name_en": "Lotus", "lines": ["LRT-氹仔线", "LRT-横琴线"], "walk": {}, "note": "氹仔線↔橫琴線換乘站（編號 18 沿氹仔線）" },
+    { "code": "LRT-HQ", "kind": "lrt", "no": null, "name_tc": "橫琴", "name_pt": "Hengqin", "name_en": "Hengqin", "lines": ["LRT-横琴线"], "walk": { "hengqin": 0 } }
   ],
   "routes": [
     { "code": "26", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "循環線（DSAT 僅一套站序）；DSAT 官方歸屬=新福利" },
@@ -196,7 +196,7 @@
       ]
     },
     {
-      "id": "home-school-8", "from": "home", "to": "school", "summary": "輕軌 石排灣→協和醫院(換)→路氹東（已併入 home-school-9，路氹東/科大站 動態下車）", "is_active": false,
+      "id": "home-school-8", "from": "home", "to": "school", "summary": "輕軌 石排灣→協和醫院(換)→路氹東（已併入 home-school-9，路氹東/科大 動態下車）", "is_active": false,
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:LRT-SPW", "minutes": 4 },
         { "seq": 2, "kind": "lrt", "routes": ["LRT-石排湾线"], "from": "station:LRT-SPW", "to": "station:LRT-UH", "minutes": null },
@@ -206,8 +206,8 @@
       ]
     },
     {
-      "id": "home-school-9", "from": "home", "to": "school", "summary": "輕軌 石排灣→協和醫院(換)→科大站 或 路氹東（動態下車）",
-      "note": "v0.16.0：并入原 home-school-8（路氹東）/home-school-9（科大站）；TPL 氹仔线 UH→LDE(路氹東,先)→MUST(科大,末位)，末位与 bus to 一致；LRT-LDE 步行待实测",
+      "id": "home-school-9", "from": "home", "to": "school", "summary": "輕軌 石排灣→協和醫院(換)→科大 或 路氹東（動態下車）",
+      "note": "v0.16.0：并入原 home-school-8（路氹東）/home-school-9（科大）；TPL 氹仔线 UH→LDE(路氹東,先)→MUST(科大,末位)，末位与 bus to 一致；LRT-LDE 步行待实测",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:LRT-SPW", "minutes": 4 },
         { "seq": 2, "kind": "lrt", "routes": ["LRT-石排湾线"], "from": "station:LRT-SPW", "to": "station:LRT-UH", "minutes": null },
@@ -294,7 +294,7 @@
       ]
     },
     {
-      "id": "school-home-6", "from": "school", "to": "home", "summary": "輕軌 路氹東→協和醫院(換)→石排灣（已併入 school-home-7，科大站/路氹東 上車）", "is_active": false,
+      "id": "school-home-6", "from": "school", "to": "home", "summary": "輕軌 路氹東→協和醫院(換)→石排灣（已併入 school-home-7，科大/路氹東 上車）", "is_active": false,
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:LRT-LDE", "minutes": null },
         { "seq": 2, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-LDE", "to": "station:LRT-UH", "minutes": null },
@@ -304,9 +304,9 @@
       ]
     },
     {
-      "id": "school-home-7", "from": "school", "to": "home", "summary": "輕軌 科大站 或 路氹東→協和醫院(換)→石排灣",
+      "id": "school-home-7", "from": "school", "to": "home", "summary": "輕軌 科大 或 路氹東→協和醫院(換)→石排灣",
       "board_candidates": ["LRT-MUST", "LRT-LDE"],
-      "note": "v0.16.0：并入原 school-home-6（路氹東）/school-home-7（科大站）；氹仔线 MUST(科大,近校正门)→LDE(路氹東) 回程可上兩站，首項=默认（MUST 步行 8min 已测）；LDE 步行待实测",
+      "note": "v0.16.0：并入原 school-home-6（路氹東）/school-home-7（科大）；氹仔线 MUST(科大,近校正门)→LDE(路氹東) 回程可上兩站，首項=默认（MUST 步行 8min 已测）；LDE 步行待实测",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:LRT-MUST", "minutes": 8 },
         { "seq": 2, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-MUST", "to": "station:LRT-UH", "minutes": null },
@@ -328,7 +328,7 @@
       "note": "50 路或可由樂居大馬路直達橫琴澳方口岸，待實地驗證後可作直達方案補充"
     },
     {
-      "id": "home-hengqin-2", "from": "home", "to": "hengqin", "summary": "輕軌 石排灣→協和醫院(換)→蓮花(換)→橫琴站",
+      "id": "home-hengqin-2", "from": "home", "to": "hengqin", "summary": "輕軌 石排灣→協和醫院(換)→蓮花(換)→橫琴",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:LRT-SPW", "minutes": 4 },
         { "seq": 2, "kind": "lrt", "routes": ["LRT-石排湾线"], "from": "station:LRT-SPW", "to": "station:LRT-UH", "minutes": null },
@@ -336,7 +336,7 @@
         { "seq": 4, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-UH", "to": "station:LRT-LOT", "minutes": null },
         { "seq": 5, "kind": "transfer", "at": "station:LRT-LOT", "minutes": null },
         { "seq": 6, "kind": "lrt", "routes": ["LRT-横琴线"], "from": "station:LRT-LOT", "to": "station:LRT-HQ", "minutes": null },
-        { "seq": 7, "kind": "walk", "from": "station:LRT-HQ", "to": "place:hengqin", "minutes": null, "note": "v0.13.0 显式口岸步行段：橫琴站出站→口岸通關大廳，計入行程；分鐘待實測" },
+        { "seq": 7, "kind": "walk", "from": "station:LRT-HQ", "to": "place:hengqin", "minutes": null, "note": "v0.13.0 显式口岸步行段：橫琴出站→口岸通關大廳，計入行程；分鐘待實測" },
         { "seq": 8, "kind": "cross_border", "at": "橫琴口岸", "label": "橫琴口岸", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
       ]
     },
@@ -351,11 +351,11 @@
       ]
     },
     {
-      "id": "hengqin-home-2", "from": "hengqin", "to": "home", "summary": "輕軌 橫琴站→蓮花(換)→協和醫院(換)→石排灣",
+      "id": "hengqin-home-2", "from": "hengqin", "to": "home", "summary": "輕軌 橫琴→蓮花(換)→協和醫院(換)→石排灣",
       "note": "v0.13.0：回程首步即通關（與去程對稱建模），通關獨立計時；口岸步行显式化待實測",
       "legs": [
         { "seq": 1, "kind": "cross_border", "at": "橫琴口岸", "label": "橫琴口岸", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:hengqin", "to": "station:LRT-HQ", "minutes": null, "note": "v0.13.0 显式口岸步行段：口岸通關大廳→橫琴站，計入行程；分鐘待實測" },
+        { "seq": 2, "kind": "walk", "from": "place:hengqin", "to": "station:LRT-HQ", "minutes": null, "note": "v0.13.0 显式口岸步行段：口岸通關大廳→橫琴，計入行程；分鐘待實測" },
         { "seq": 3, "kind": "lrt", "routes": ["LRT-横琴线"], "from": "station:LRT-HQ", "to": "station:LRT-LOT", "minutes": null },
         { "seq": 4, "kind": "transfer", "at": "station:LRT-LOT", "minutes": null },
         { "seq": 5, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-LOT", "to": "station:LRT-UH", "minutes": null },

@@ -111,6 +111,24 @@ const lrtLabelOf = (code: string) =>
 const rideRouteLabel = (code: string) =>
   code.startsWith("LRT-") ? lrtLabelOf(code) : `${code} 路`;
 
+/**
+ * v0.17.1：报站大字单行自适应——按「宽度当量」缩档（全角≈1、ASCII≈0.52、空格/斜杠≈0.33）。
+ * 卡内可用宽约 330px：24px 字号（h-headline 默认）可容 ≈13.5 当量，超长逐档缩至 18px
+ * 并配合 whiteSpace:nowrap 保持站名完整显示在同一行（主人定稿版式：一行写不下就紧凑）。
+ * 返回 undefined = 用默认字号。
+ */
+const stopFs = (name: string): number | undefined => {
+  let w = 0;
+  for (const ch of name) {
+    if (ch.charCodeAt(0) > 0xff) w += 1; // 全角（中文）
+    else if (/[\s/]/.test(ch)) w += 0.33;
+    else w += 0.52;
+  }
+  if (w <= 13) return undefined;
+  if (w <= 17) return 20;
+  return 18;
+};
+
 export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const router = useRouter();
   const [data, setData] = useState<SessionData | null>(null);
@@ -463,9 +481,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const step = effSteps[idx];
   const finished = idx >= steps.length || !!data.session.ended_at;
   // 当前生效的上车站（chips 高亮用；null = 未选 = 默认站）
-  const firstVehicle = metaLegs.find((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
+  // v0.17.1：候选站按「当前步所属载具段」取（vehIndex 与 buildSteps 段序同构）——
+  // 修：轻轨 school-home-7 首段（科大/路氹東）的候选在第二段（協和→石排灣）换乘
+  // 等车步不再误显（此前固定取首载具段）；depart/board 步也不显示（仅 wait_start）
+  const vehLegs = metaLegs.filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
+  const curVehLeg = step?.vehIndex != null ? vehLegs[step.vehIndex] : null;
   const boardCands =
-    (firstVehicle?.board_candidates?.length ?? 0) > 1 ? firstVehicle!.board_candidates! : null;
+    (curVehLeg?.board_candidates?.length ?? 0) > 1 ? curVehLeg!.board_candidates! : null;
+  const atWaitStart = step?.eventType === "wait_start";
   const lastBoardEvt = [...data.events]
     .reverse()
     .find((e) => e.event_type === "depart" || e.event_type === "wait_start" || e.event_type === "board");
@@ -475,36 +498,37 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         ? lastBoardEvt.station_code
         : null)
     : null;
-  // v0.12.2（需求 6）：行程进度条模型——按项目等分（上车步行 / 乘车各站 / 下车步行），
-  // 由方案 legs + 站序表生成；events 回放实时推进（撤销/刷新恢复天然一致）
+  // v0.12.2（需求 6）→ v0.17.1：行程进度条模型——只按「乘车站点」等分（步行/等车/通关
+  // 不占等分），由方案 legs + 站序表生成；events 回放实时推进（撤销/刷新恢复天然一致）
   const routeColors = data.routeColors ?? {};
-  const rawProgressUnits = buildProgress(metaLegs, data.routeStopsByRoute, {
-    boardStation: chosenBoard,
-    // v0.14.1：进度条按站等分同样按同场站名解析目标（26/50 分台各自正确）
-    stationNames: data.stationNames,
-  });
-  // v0.16.2：进度条各段颜色随「该段生效线路」联动（routeChoices/实乘线 > 段默认主色）——
-  // 去横琴等可换乘多线路方案：chips 选 50/25BS 后对应组/尾格即时换色
-  const vehLegs = metaLegs.filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
-  const lastVehGroup = vehLegs.length - 1;
-  const segEffColor = (g: number): string | null => {
+  // v0.17.1：各载具组生效线路（routeChoices chips > 会话已修正实乘线(首段) > 段默认首项）
+  // 进度条与乘车推进同口径：合并卡按所选线路选站序/终点（否则 50 站序配 26A 终点会兜底 1 站）
+  const effRouteOf = (g: number): string | null => {
     const leg = vehLegs[g];
     if (!leg) return null;
     const opts = leg.route_options ?? [];
     const ch = routeChoices[String(g)] ?? null;
-    const eff = ch && opts.includes(ch) ? ch
+    return ch && opts.includes(ch)
+      ? ch
       : g === 0 && data.session.route_code && opts.includes(data.session.route_code)
         ? data.session.route_code
         : (opts[0] ?? null);
+  };
+  const rawProgressUnits = buildProgress(metaLegs, data.routeStopsByRoute, {
+    boardStation: chosenBoard,
+    // v0.14.1：进度条按站等分同样按同场站名解析目标（26/50 分台各自正确）
+    stationNames: data.stationNames,
+    effRouteOf,
+  });
+  // v0.16.2：进度条各段颜色随「该段生效线路」联动（routeChoices/实乘线 > 段默认主色）——
+  // 去横琴等可换乘多线路方案：chips 选 50/25BS 后对应组/尾格即时换色
+  const segEffColor = (g: number): string | null => {
+    const eff = effRouteOf(g);
     return eff && routeColors[eff] ? routeColors[eff]! : null;
   };
   const progressUnits = rawProgressUnits.map((u) => {
-    if (u.group >= 0) {
-      const c = segEffColor(u.group);
-      return c ? { ...u, color: c } : u;
-    }
-    const c = segEffColor(lastVehGroup);
-    return c ? { ...u, color: c } : u; // 终点步行格沿用末段实乘色
+    const c = segEffColor(u.group); // 纯步行兜底组（-1）取不到 → 保持原色
+    return c ? { ...u, color: c } : u;
   });
   const progressFilled = computeFilled(progressUnits, data.events);
   const stationName = (code?: string | null) =>
@@ -541,12 +565,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
   // v0.10.0 A11：多候选线路段「乘哪一路」（chips 选中 > 会话已修正实乘线 > 首选项）
   // board 提交带实乘线 → 服务端把 route_code/dsat_dir 修正到实乘线（首个载具段）
-  // v0.17.0：合并卡「到站即选线」——chips 从 board 步提前到 wait_start（到站）与 depart 步，
-  // 早一步定线，乘车页站点/右上角标签/进度条颜色才能从等车起就跟着所选线走
+  // v0.17.1：chips 只出现在「上车」步（到站等车界面、上车按钮上方）——
+  // depart/wait_start 不再出现（主人实测反馈：出现在太多界面）
   const isRouteMulti =
-    (departing || waiting || step?.eventType === "board") &&
-    (step.routeOptions?.length ?? 0) > 1 &&
-    step.quickKind === "stops";
+    step?.eventType === "board" && (step.routeOptions?.length ?? 0) > 1 && step.quickKind === "stops";
   // v0.12.0：step?. 保护 —— arrive 打点后 idx 越界 step 为 undefined，而 routeChoices/
   // session.route_code 仍可能非空，此处无条件执行会读 step.routeOptions 崩溃
   // v0.14.2：只读当前载具段的槽位（无则 null → 走默认），换段后自动回默认
@@ -729,13 +751,12 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // v0.16.0：乘车中且能算出逐站进度 → 三段式逐站按钮接管（普通=记/甩；候选=三钮；终点=下车）
   const ridingUi = riding && !!rideInfo;
 
-  // ===== v0.17.0：轻轨换乘前预览 =====
-  // 距换乘站还剩 1 站（或已到「下站即换乘站」）时，预显下一段轻轨的下一班车，
-  // 方便提前做好换乘准备。卡片与正常轻轨报站卡完全相同（同一 LrtEta 组件）。
-  // remaining 语义 = UI 自己「再过 N 站到 X」的计数：N=1 下一站就是换乘站前一站
-  // （科大→石排灣 到東亞運），N=0(final) 已过該站、下站即換乘站協和醫院。
+  // ===== v0.17.0 → v0.17.1：轻轨换乘前预览 =====
+  // v0.17.1：只在「下一站就是换乘站」（stage final，下车按钮出现）时才显示，
+  // 位置在「下车」按钮正下方（渲染块位于乘车卡之后）——不再提前一站出现
+  //（主人实测反馈：出现太早）。卡片与正常轻轨报站卡完全相同（同一 LrtEta 组件）。
   const lrtOnward =
-    riding && rideInfo && (rideInfo.remaining ?? 99) <= 1
+    riding && rideInfo && rideInfo.stage === "final"
       ? findLrtOnward(metaLegs, step?.vehIndex, rideInfo.destCode)
       : null;
 
@@ -922,8 +943,9 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           {showFromZone && renderZones("从哪个座出发？", fromZone, setFromZone)}
           {showToZone && renderZones("到了哪个座？", toZone, setToZone)}
 
-          {/* 上车点选择（去学校 51 系：总站 或 C689/2 沿途站；出门/等车时可选） */}
-          {boardCands && (departing || waiting) && (
+          {/* 上车点选择（多上车点线路：到站前一步选定去哪站，如 51 系总站/沿途、轻轨科大/路氹東）。
+              v0.17.1：仅「到站，开始等车」步显示；depart/board 不再出现（主人实测反馈收敛） */}
+          {boardCands && atWaitStart && (
             <div className="card" style={{ padding: "12px 14px" }}>
               <p className="t-label" style={{ marginBottom: 8 }}>
                 在哪里上车？
@@ -1048,8 +1070,22 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
               {rideInfo.stage === "plain" && (
                 <>
-                  <p className="h-headline" style={{ margin: 0 }}>
-                    下一站：{rideInfo.nextName}
+                  {/* v0.17.1：报站统一版式——「下一站」标签换行 + 站名大字单行自适应 */}
+                  <p className="t-label t-muted" style={{ margin: 0 }}>
+                    下一站
+                  </p>
+                  <p
+                    className="h-headline"
+                    style={{
+                      margin: 0,
+                      lineHeight: 1.3,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontSize: stopFs(rideInfo.nextName),
+                    }}
+                  >
+                    {rideInfo.nextName}
                   </p>
                   {rideInfo.upcoming.length > 1 && (
                     <p className="t-label t-muted" style={{ lineHeight: 1.7 }}>
@@ -1087,8 +1123,21 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
               {rideInfo.stage === "candidate" && (
                 <div className="card" style={{ padding: 14 }}>
-                  <p className="h-headline" style={{ margin: 0 }}>
-                    🚏 到 {rideInfo.nextName} 了
+                  <p className="t-label t-muted" style={{ margin: 0 }}>
+                    下一站
+                  </p>
+                  <p
+                    className="h-headline"
+                    style={{
+                      margin: 0,
+                      lineHeight: 1.3,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontSize: stopFs(rideInfo.nextName),
+                    }}
+                  >
+                    {rideInfo.nextName}
                   </p>
                   <p className="t-body t-muted" style={{ marginTop: 6 }}>
                     可在此下车；若不下车，会继续坐到「{rideInfo.terminalName}」（到站直接下车）
@@ -1135,8 +1184,21 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
               {rideInfo.stage === "final" && (
                 <div className="card" style={{ padding: 14 }}>
-                  <p className="h-headline" style={{ margin: 0 }}>
-                    🚏 到 {rideInfo.nextName} 了
+                  <p className="t-label t-muted" style={{ margin: 0 }}>
+                    下一站
+                  </p>
+                  <p
+                    className="h-headline"
+                    style={{
+                      margin: 0,
+                      lineHeight: 1.3,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontSize: stopFs(rideInfo.nextName),
+                    }}
+                  >
+                    {rideInfo.nextName}
                   </p>
                   <p className="t-body t-muted" style={{ marginTop: 6 }}>
                     本站下车 · 结束本次乘车

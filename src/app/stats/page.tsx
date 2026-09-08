@@ -56,8 +56,8 @@ export default async function StatsPage() {
       SELECT count(*)::int AS n,
              count(DISTINCT travel_date)::int AS days,
              round(avg(total_minutes), 1)::float8 AS avg_min
-      FROM timer_sessions
-      WHERE deleted_at IS NULL AND total_minutes IS NOT NULL ${testFilter}
+      FROM timer_sessions s
+      WHERE s.deleted_at IS NULL AND s.total_minutes IS NOT NULL ${testFilter}
     `);
     const s = sumRes.rows[0] as { n: number; days: number; avg_min: number | null };
     summary = {

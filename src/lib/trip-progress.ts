@@ -12,6 +12,7 @@
  *    切换载具后新段用新主题色，旧段颜色不变（渲染层在组间做颜色渐变）
  *  - 事件推进映射：wait_start=走完一段步行；station_arrive/pass=过一站
  *    （乘车项目）；alight=本程结束（提前下车/漏记时自动补齐该程剩余站）；
+ *    border_start=关闭终点步行格（下车→边检步行走完；通关不占进度单位）；
  *    arrive=整趟结束（全部填满）
  */
 
@@ -159,7 +160,13 @@ export function computeFilled(
       }
       continue;
     }
-    // depart / board / missed / border_* / pause / resume 不推进
+    if (t === "border_start") {
+      // v0.16.2：终点步行格（group=-1，去程口岸卡 = 下车走向边检）在「开始通关」时关闭
+      // —— 通关本身不积累进度（border 段不占单位），通关全程停在 100% 直至收尾
+      if (p < units.length && units[p].kind === "walk" && units[p].group === -1) p++;
+      continue;
+    }
+    // depart / board / missed / border_end / pause / resume 不推进
   }
   return Math.min(p, units.length);
 }

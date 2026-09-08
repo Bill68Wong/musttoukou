@@ -36,6 +36,8 @@ interface SessionData {
   snapshots: { id: number; value_kind: string; value: number; station_code: string | null; recorded_at: string }[];
   stationNames: Record<string, string>;
   routeStopsByRoute: Record<string, { seq: number; code: string; name: string }[]>;
+  /** v0.16.2：全量线路色表（code → color），随实乘线选择联动标签/进度条颜色 */
+  routeColors?: Record<string, string>;
 }
 
 /** 轻轨码判定（LRT-* 线路/站点；v0.15.0 轻轨报站卡分派用） */
@@ -404,18 +406,6 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const idx = currentStepIndex(effSteps, data.events);
   const step = effSteps[idx];
   const finished = idx >= steps.length || !!data.session.ended_at;
-  // v0.7.0：当前阶段主题色（出门=将乘载具色；乘车=本段线路色；步行/到达无）
-  const curLine = step?.lineColor ?? null;
-  const curRoute = step?.routeOptions?.length ? step.routeOptions[0] : null;
-  const curLabel = curRoute
-    ? curRoute.startsWith("LRT-")
-      ? lrtLabelOf(curRoute)
-      : `${curRoute}路`
-    : step?.quickKind === "minutes"
-      ? "輕軌"
-      : step?.quickKind === "stops"
-        ? "巴士"
-        : null;
   // 当前生效的上车站（chips 高亮用；null = 未选 = 默认站）
   const firstVehicle = data.legs.find((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
   const boardCands =
@@ -431,10 +421,34 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     : null;
   // v0.12.2（需求 6）：行程进度条模型——按项目等分（上车步行 / 乘车各站 / 下车步行），
   // 由方案 legs + 站序表生成；events 回放实时推进（撤销/刷新恢复天然一致）
-  const progressUnits = buildProgress(data.legs, data.routeStopsByRoute, {
+  const routeColors = data.routeColors ?? {};
+  const rawProgressUnits = buildProgress(data.legs, data.routeStopsByRoute, {
     boardStation: chosenBoard,
     // v0.14.1：进度条按站等分同样按同场站名解析目标（26/50 分台各自正确）
     stationNames: data.stationNames,
+  });
+  // v0.16.2：进度条各段颜色随「该段生效线路」联动（routeChoices/实乘线 > 段默认主色）——
+  // 去横琴等可换乘多线路方案：chips 选 50/25BS 后对应组/尾格即时换色
+  const vehLegs = data.legs.filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
+  const lastVehGroup = vehLegs.length - 1;
+  const segEffColor = (g: number): string | null => {
+    const leg = vehLegs[g];
+    if (!leg) return null;
+    const opts = leg.route_options ?? [];
+    const ch = routeChoices[String(g)] ?? null;
+    const eff = ch && opts.includes(ch) ? ch
+      : g === 0 && data.session.route_code && opts.includes(data.session.route_code)
+        ? data.session.route_code
+        : (opts[0] ?? null);
+    return eff && routeColors[eff] ? routeColors[eff]! : null;
+  };
+  const progressUnits = rawProgressUnits.map((u) => {
+    if (u.group >= 0) {
+      const c = segEffColor(u.group);
+      return c ? { ...u, color: c } : u;
+    }
+    const c = segEffColor(lastVehGroup);
+    return c ? { ...u, color: c } : u; // 终点步行格沿用末段实乘色
   });
   const progressFilled = computeFilled(progressUnits, data.events);
   const stationName = (code?: string | null) =>
@@ -484,6 +498,20 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
       : data.session.route_code && step?.routeOptions?.includes(data.session.route_code)
         ? data.session.route_code
         : (step?.routeOptions?.[0] ?? null);
+
+  // v0.16.2：右上角标签随「当前段生效线路」联动（用户 chips 选择 > 会话已修正实乘线 > 段首选项），
+  // 颜色取全量线路色表 routeColors（随选择切换线路色），无对应色回退步骤静态色
+  const curRoute = effRoute;
+  const curLabel = curRoute
+    ? curRoute.startsWith("LRT-")
+      ? lrtLabelOf(curRoute)
+      : `${curRoute}路`
+    : step?.quickKind === "minutes"
+      ? "輕軌"
+      : step?.quickKind === "stops"
+        ? "巴士"
+        : null;
+  const curLine = (curRoute && routeColors[curRoute]) || step?.lineColor || null;
 
   /** 分区 chips（单选可取消；不选也不阻塞打点） */
   const renderZones = (question: string, value: string | null, onChange: (v: string | null) => void) => (

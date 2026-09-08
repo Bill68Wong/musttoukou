@@ -16,6 +16,8 @@ export interface PlanRow {
   samples: number;
   /** v0.7.0：各载具段主线路主题色（按乘坐顺序，walk 段不参与） */
   colors?: (string | null)[];
+  /** v0.16.2：多车可选方案（去横琴纯巴士：同程可换乘多条线路）→ 卡片双色左右交替闪烁 */
+  blink?: boolean;
 }
 
 export interface ActiveSession {

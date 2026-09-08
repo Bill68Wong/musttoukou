@@ -24,7 +24,10 @@ export async function GET() {
                    AND l.leg_kind IN ('bus','lrt')
                    AND l.route_options IS NOT NULL
                    AND r.color IS NOT NULL),
-               '{}'::text[]) AS colors
+               '{}'::text[]) AS colors,
+             (pt.slug = 'hengqin'
+               AND EXISTS(SELECT 1 FROM plan_legs lb WHERE lb.plan_id = p.id AND lb.leg_kind = 'bus')
+               AND NOT EXISTS(SELECT 1 FROM plan_legs ll WHERE ll.plan_id = p.id AND ll.leg_kind = 'lrt')) AS blink
       FROM commute_plans p
       JOIN places pf ON p.from_place = pf.id
       JOIN places pt ON p.to_place = pt.id

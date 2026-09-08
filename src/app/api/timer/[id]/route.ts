@@ -126,6 +126,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
           r.kind === "bus" ? `${r.code} ${r.name_tc}` : r.name_tc,
         ]),
       ),
+      // v0.16.2：全量线路色表（code → color）——乘车段随实乘线选择联动标签/进度条颜色
+      routeColors: Object.fromEntries(colorByCode),
       routeStopsByRoute,
     });
   } catch (err) {

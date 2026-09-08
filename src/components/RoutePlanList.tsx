@@ -53,6 +53,29 @@ function solidGradient(colors: (string | null)[]): string {
   return `linear-gradient(to right, ${stops})`;
 }
 
+/**
+ * v0.16.2：多车可选方案（去横琴巴士：同程可乘 26/50 等不同线路）的卡面——
+ * 双色左右分区底 + 左右交替闪烁动画（表达「这几路车都可以乘/换乘」，
+ * 而非静态「左=某公司右=某公司」的固定顺序语义）
+ */
+function BlinkVeil({ colors }: { colors: (string | null)[] }) {
+  const segs = colors.filter((c): c is string => !!c);
+  const [c1, c2] = segs.length >= 2 ? [segs[0], segs[1]] : [segs[0] ?? "#888", segs[0] ?? "#888"];
+  return (
+    <>
+      <span
+        aria-hidden
+        className="pc-veil"
+        style={{
+          background: `linear-gradient(90deg, ${shade(c1, 0.62)} 0%, ${shade(c1, 0.62)} 50%, ${shade(c2, 0.62)} 50%, ${shade(c2, 0.62)} 100%)`,
+        }}
+      />
+      <span aria-hidden className="pc-blink pc-blink-a" style={{ background: c1 }} />
+      <span aria-hidden className="pc-blink pc-blink-b" style={{ background: c2 }} />
+    </>
+  );
+}
+
 /** 读测试模式偏好（浏览器端；服务端渲染首帧返回 false 无碍） */
 export function readTestMode(): boolean {
   if (typeof window === "undefined") return false;
@@ -109,6 +132,7 @@ export default function RoutePlanList({
       {plans.map((p, pi) => {
         const isStarting = starting === p.id;
         const hasColor = p.colors?.some(Boolean) ?? false;
+        const blink = !!p.blink && hasColor && (p.colors!.filter(Boolean).length ?? 0) >= 2;
         const veil = hasColor ? solidGradient(p.colors!) : "";
         const ink = hasColor ? inkOf(p.colors!) : { color: "", shadow: "" };
         return (
@@ -120,7 +144,8 @@ export default function RoutePlanList({
             aria-busy={isStarting}
             style={{ animationDelay: `${pi * 30}ms` }}
           >
-            {veil && <span aria-hidden className="pc-veil" style={{ background: veil }} />}
+            {veil && !blink && <span aria-hidden className="pc-veil" style={{ background: veil }} />}
+            {blink && <BlinkVeil colors={p.colors!} />}
             <span
               className="pc-inner"
               style={{

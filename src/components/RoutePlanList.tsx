@@ -77,6 +77,22 @@ function BlinkVeil({ colors }: { colors: (string | null)[] }) {
   );
 }
 
+/**
+ * v0.17.0：同起点合并卡（如擎天匯→澳科大 25/26/26A/50 含新福利+澳巴）——
+ * **整张卡**两种颜色周期交替（横琴是左右分色互换，这里是整体换色）。
+ * 直接复用 .pc-swap-a/.pc-swap-b 的交替动画，只是把渐变换成纯色，无需新增 keyframes。
+ */
+function BlinkSolid({ colors }: { colors: (string | null)[] }) {
+  const segs = colors.filter((c): c is string => !!c);
+  const [c1, c2] = segs.length >= 2 ? [segs[0], segs[1]] : [segs[0] ?? "#888", segs[0] ?? "#888"];
+  return (
+    <>
+      <span aria-hidden className="pc-veil pc-swap pc-swap-a" style={{ background: c1 }} />
+      <span aria-hidden className="pc-veil pc-swap pc-swap-b" style={{ background: c2 }} />
+    </>
+  );
+}
+
 /** 读测试模式偏好（浏览器端；服务端渲染首帧返回 false 无碍） */
 export function readTestMode(): boolean {
   if (typeof window === "undefined") return false;
@@ -133,7 +149,9 @@ export default function RoutePlanList({
       {plans.map((p, pi) => {
         const isStarting = starting === p.id;
         const hasColor = p.colors?.some(Boolean) ?? false;
-        const blink = !!p.blink && hasColor && (p.colors!.filter(Boolean).length ?? 0) >= 2;
+        // v0.17.0：两种闪烁样式都要求至少 2 种颜色
+        const blinkStyle =
+          hasColor && (p.colors!.filter(Boolean).length ?? 0) >= 2 ? (p.blinkStyle ?? null) : null;
         const veil = hasColor ? solidGradient(p.colors!) : "";
         const ink = hasColor ? inkOf(p.colors!) : { color: "", shadow: "" };
         return (
@@ -145,8 +163,11 @@ export default function RoutePlanList({
             aria-busy={isStarting}
             style={{ animationDelay: `${pi * 30}ms` }}
           >
-            {veil && !blink && <span aria-hidden className="pc-veil" style={{ background: veil }} />}
-            {blink && <BlinkVeil colors={p.colors!} />}
+            {veil && !blinkStyle && (
+              <span aria-hidden className="pc-veil" style={{ background: veil }} />
+            )}
+            {blinkStyle === "split" && <BlinkVeil colors={p.colors!} />}
+            {blinkStyle === "solid" && <BlinkSolid colors={p.colors!} />}
             <span
               className="pc-inner"
               style={{

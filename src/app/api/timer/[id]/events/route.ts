@@ -251,28 +251,44 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // 修正会话主线路与方向到实乘线——只认首个载具段（route_code 语义 = 首段实乘线）。
     if (type === "board" && body.route) {
       const legRes = await pool.query(
-        `SELECT from_station, to_station, route_options FROM plan_legs
+        `SELECT from_station, to_station, route_options, route_meta FROM plan_legs
          WHERE plan_id = $1 AND leg_kind IN ('bus', 'lrt')
          ORDER BY seq LIMIT 1`,
         [session.plan_id],
       );
       const firstLeg = legRes.rows[0] as
-        | { from_station: string | null; to_station: string | null; route_options: string | null }
+        | {
+            from_station: string | null;
+            to_station: string | null;
+            route_options: string | null;
+            route_meta: Record<string, { to?: string; board?: string[] }> | string | null;
+          }
         | undefined;
-      if (firstLeg && sameStation(body.station_code, firstLeg.from_station)) {
-        const opts = firstLeg.route_options
-          ? ((JSON.parse(firstLeg.route_options) as string[]) ?? [])
+      // v0.17.0：合并卡各线路上车台不同（51A 在 C690/1、51B 在 C690/2）——
+      // 同站判定放宽到「段默认站 或 该线路自己的 board 列表」
+      const rawMeta = firstLeg?.route_meta ?? null;
+      const meta: Record<string, { to?: string; board?: string[] }> | null =
+        typeof rawMeta === "string"
+          ? (JSON.parse(rawMeta) as Record<string, { to?: string; board?: string[] }>)
+          : rawMeta;
+      const routeMeta = meta?.[body.route] ?? null;
+      const boardOk =
+        !!firstLeg &&
+        (sameStation(body.station_code, firstLeg.from_station) ||
+          (routeMeta?.board ?? []).some((b) => sameStation(body.station_code, b)));
+      if (boardOk) {
+        const opts = firstLeg!.route_options
+          ? ((JSON.parse(firstLeg!.route_options) as string[]) ?? [])
           : [];
         if (opts.includes(body.route)) {
+          // v0.17.0：方向按「该线路自己的终点 + 实际登车站」推导
+          // （59→M9/2 与 25→M1/13 终点不同；51A 实际在 C690/1 上车而非卡默认 C690/3）
+          const toStation = routeMeta?.to ?? firstLeg!.to_station;
+          const fromStation = body.station_code ?? firstLeg!.from_station;
           // 实乘线有方向推导条件时重算 dir（循环线/无站序 → 保持原值）
           const dir =
-            firstLeg.from_station && firstLeg.to_station
-              ? await deriveRouteDir(
-                  body.route,
-                  firstLeg.from_station,
-                  firstLeg.to_station,
-                  session.dsat_dir ?? "0",
-                )
+            fromStation && toStation
+              ? await deriveRouteDir(body.route, fromStation, toStation, session.dsat_dir ?? "0")
               : session.dsat_dir;
           await pool.query(
             `UPDATE timer_sessions SET route_code = $1, dsat_dir = $2 WHERE id = $3`,

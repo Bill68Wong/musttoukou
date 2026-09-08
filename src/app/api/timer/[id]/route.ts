@@ -31,7 +31,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
     const legsRes = await pool.query(
       `SELECT seq, leg_kind, route_options, from_station, to_station,
-              border_label, board_candidates, alight_candidates, minutes
+              border_label, board_candidates, alight_candidates, minutes,
+              route_meta
        FROM plan_legs WHERE plan_id = $1 ORDER BY seq`,
       [session.plan_id],
     );
@@ -53,6 +54,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         border_label: string | null;
         board_candidates: string[] | null;
         alight_candidates: string[] | null;
+        /** v0.17.0：合并卡每线路差异化（JSONB 列，pg 直接返回对象；本地可能为字符串） */
+        route_meta: Record<string, unknown> | string | null;
       }[]
     ).map((r) => {
       const route_options =
@@ -60,9 +63,14 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
           ? (JSON.parse(r.route_options) as string[])
           : r.route_options;
       const isVehicle = r.leg_kind === "bus" || r.leg_kind === "lrt";
+      const route_meta =
+        typeof r.route_meta === "string"
+          ? ((JSON.parse(r.route_meta) as Record<string, unknown>) ?? null)
+          : (r.route_meta ?? null);
       return {
         ...r,
         route_options,
+        route_meta,
         // 主线路 = route_options 首项（与首页卡片色带同口径）；无则中性
         color:
           isVehicle && route_options?.length
@@ -95,11 +103,20 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     const vehicleLegs = legs.filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
     for (const leg of vehicleLegs) {
       const opts = leg.route_options ?? [];
+      const meta = (leg.route_meta ?? null) as Record<
+        string,
+        { to?: string; board?: string[] }
+      > | null;
       for (const rc of opts) {
         if (!rc || routeStopsByRoute[rc]) continue;
+        // v0.17.0：合并卡各线路的起终点不同（59→M9/2 与 25→M1/13；51A 在 C690/1 上车而非
+        // 卡默认 C690/3）→ 方向必须按「该线路自己的 from/to」推导，否则站序会取错方向
+        const rm = meta?.[rc] ?? null;
+        const fromForDir = rm?.board?.[0] ?? leg.from_station;
+        const toForDir = rm?.to ?? leg.to_station;
         const dir =
-          leg.from_station && leg.to_station
-            ? await deriveRouteDir(rc, leg.from_station, leg.to_station, session.dsat_dir ?? "0")
+          fromForDir && toForDir
+            ? await deriveRouteDir(rc, fromForDir, toForDir, session.dsat_dir ?? "0")
             : (session.dsat_dir ?? "0");
         const stopsRes = await pool.query(
           `SELECT rs.seq, rs.station_code AS code,

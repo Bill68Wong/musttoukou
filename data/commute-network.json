@@ -105,12 +105,13 @@
       "id": "home-school-1", "from": "home", "to": "school", "summary": "50路 C653 金峰南岸/金譽峰→T400 路氹東/新濠天地",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
-        { "seq": 2, "kind": "bus", "routes": ["50"], "from": "station:C653", "to": "station:T400", "minutes": null },
+        { "seq": 2, "kind": "bus", "routes": ["50", "26", "26A", "25"], "from": "station:C653", "to": "station:T400", "minutes": null, "routeMeta": { "50": { "to": "T400" }, "26": { "to": "T374" }, "26A": { "to": "T367", "alight": ["T363/1", "T367"] }, "25": { "to": "T363/2" } } },
         { "seq": 3, "kind": "walk", "from": "station:T400", "to": "place:school", "minutes": null }
       ]
     },
     {
       "id": "home-school-2", "from": "home", "to": "school", "summary": "26路 C653 金峰南岸/金譽峰→T374 澳門土木工程實驗室",
+      "is_active": false,
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
         { "seq": 2, "kind": "bus", "routes": ["26"], "from": "station:C653", "to": "station:T374", "minutes": null },
@@ -119,6 +120,7 @@
     },
     {
       "id": "home-school-3", "from": "home", "to": "school", "summary": "26A路 C653 金峰南岸/金譽峰→T363/1 連貫公路/威尼斯人 或 T367 望德聖母灣馬路/連貫公路（動態下車）",
+      "is_active": false,
       "note": "v0.16.0：26A 去学校方向先到 T363/1 威尼斯人（可提前下）再 T367 望德聖母灣（末位强制下）；末位与 bus to 一致",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
@@ -131,7 +133,7 @@
       "board_candidates": ["C690/3", "C689/2"],
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/3", "minutes": 7 },
-        { "seq": 2, "kind": "bus", "routes": ["51"], "from": "station:C690/3", "to": "station:T429", "minutes": null },
+        { "seq": 2, "kind": "bus", "routes": ["51", "51A", "51B", "25AX"], "from": "station:C690/3", "to": "station:T429", "minutes": null, "routeMeta": { "51": { "board": ["C690/3", "C689/2"], "to": "T429" }, "51A": { "board": ["C690/1", "C689/2"], "to": "T374" }, "51B": { "board": ["C690/2", "C689/2"], "to": "T363/1" }, "25AX": { "board": ["C690/2", "C689/2"], "to": "T363/2" } } },
         { "seq": 3, "kind": "walk", "from": "station:T429", "to": "place:school", "minutes": null }
       ]
     },
@@ -145,6 +147,7 @@
     },
     {
       "id": "home-school-6", "from": "home", "to": "school", "summary": "51A路 C690/1 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T374 澳門土木工程實驗室",
+      "is_active": false,
       "board_candidates": ["C690/1", "C689/2"],
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/1", "minutes": 7 },
@@ -162,6 +165,7 @@
     },
     {
       "id": "home-school-10", "from": "home", "to": "school", "summary": "51B路 C690/2 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T363/1 連貫公路/威尼斯人",
+      "is_active": false,
       "board_candidates": ["C690/2", "C689/2"],
       "note": "51B 循环线第 5 站即 T363/1 連貫公路/威尼斯人（近路，不绕澳门半岛）；下车步行到校，分钟数待实测",
       "legs": [
@@ -172,6 +176,7 @@
     },
     {
       "id": "home-school-25", "from": "home", "to": "school", "summary": "25路 C653 金峰南岸/金譽峰→T363/2 連貫公路/威尼斯人",
+      "is_active": false,
       "note": "v0.16.0 新增去学校方案：25 循环线 C653 金峰南岸上車（家步行 3 分钟）→ T363/2 連貫公路/威尼斯人下（回程繞行方向，去学校近路）；下车步行到校，分钟数待实测",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
@@ -181,6 +186,7 @@
     },
     {
       "id": "home-school-25ax", "from": "home", "to": "school", "summary": "25AX路 C690/2 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T363/2 連貫公路/威尼斯人",
+      "is_active": false,
       "board_candidates": ["C690/2", "C689/2"],
       "note": "v0.16.0 新增去学校方案：25AX 高峰快線 C690/2 或 C689/2 上車 → T363/2 連貫公路/威尼斯人下；下车步行到校，分钟数待实测",
       "legs": [
@@ -214,7 +220,7 @@
       "id": "school-home-1", "from": "school", "to": "home", "summary": "26路 T373/2 偉龍/科技大學→C652 安順大廈",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["26"], "from": "station:T373/2", "to": "station:C652", "minutes": null },
+        { "seq": 2, "kind": "bus", "routes": ["26", "51A", "51B"], "from": "station:T373/2", "to": "station:C652", "minutes": null, "routeMeta": { "26": { "to": "C652" }, "51A": { "to": "C690/1", "alight": ["C688/2", "C690/1"] }, "51B": { "to": "C690/2", "alight": ["C688/2", "C690/2"] } } },
         { "seq": 3, "kind": "walk", "from": "station:C652", "to": "place:home", "minutes": 3 }
       ]
     },
@@ -228,6 +234,7 @@
     },
     {
       "id": "school-home-2-51a", "from": "school", "to": "home", "summary": "51A路 T373/2 偉龍/科技大學→C688/2 和諧廣場 或 C690/1 蝴蝶谷（動態下車）",
+      "is_active": false,
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
         { "seq": 2, "kind": "bus", "routes": ["51A"], "from": "station:T373/2", "to": "station:C690/1", "alight_candidates": ["C688/2", "C690/1"], "minutes": null },
@@ -236,6 +243,7 @@
     },
     {
       "id": "school-home-2-51b", "from": "school", "to": "home", "summary": "51B路 T373/2 偉龍/科技大學→C688/2 和諧廣場 或 C690/2 蝴蝶谷（動態下車）",
+      "is_active": false,
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
         { "seq": 2, "kind": "bus", "routes": ["51B"], "from": "station:T373/2", "to": "station:C690/2", "alight_candidates": ["C688/2", "C690/2"], "minutes": null },
@@ -361,13 +369,14 @@
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
-        { "seq": 2, "kind": "bus", "routes": ["59"], "from": "station:C653", "to": "station:M9/2", "minutes": null, "note": "59 雙向線 dir1 由石排灣往關閘（DSAT 站序 C653 在 dir1 idx1）" },
+        { "seq": 2, "kind": "bus", "routes": ["59", "25"], "from": "station:C653", "to": "station:M9/2", "minutes": null, "note": "59 雙向線 dir1 由石排灣往關閘（DSAT 站序 C653 在 dir1 idx1）", "routeMeta": { "59": { "to": "M9/2" }, "25": { "to": "M1/13" } } },
         { "seq": 3, "kind": "walk", "from": "station:M9/2", "to": "place:guanqin", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
         { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
       ]
     },
     {
       "id": "home-guanqin-25", "from": "home", "to": "guanqin", "summary": "25路 C653 金峰南岸/金譽峰→M1/13 關閘總站",
+      "is_active": false,
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘總站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
@@ -381,13 +390,14 @@
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/3", "minutes": 7 },
-        { "seq": 2, "kind": "bus", "routes": ["51"], "from": "station:C690/3", "to": "station:M9/4", "minutes": null, "note": "51 循環線；蝴蝶谷 C690/3 發車往關閘方向（DSAT 僅一套站序）" },
+        { "seq": 2, "kind": "bus", "routes": ["51", "51B", "25AX"], "from": "station:C690/3", "to": "station:M9/4", "minutes": null, "note": "51 循環線；蝴蝶谷 C690/3 發車往關閘方向（DSAT 僅一套站序）", "routeMeta": { "51": { "board": ["C690/3", "C689/2"], "to": "M9/4" }, "51B": { "board": ["C690/2", "C689/2"], "to": "M9/4" }, "25AX": { "board": ["C690/2", "C689/2"], "to": "M9/3" } } },
         { "seq": 3, "kind": "walk", "from": "station:M9/4", "to": "place:guanqin", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
         { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
       ]
     },
     {
       "id": "home-guanqin-51b", "from": "home", "to": "guanqin", "summary": "51B路 C690/2 蝴蝶谷大馬路總站→M9/4 關閘廣場",
+      "is_active": false,
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/2", "minutes": 7 },
@@ -398,6 +408,7 @@
     },
     {
       "id": "home-guanqin-25ax", "from": "home", "to": "guanqin", "summary": "25AX路 C690/2 蝴蝶谷大馬路總站→M9/3 關閘廣場",
+      "is_active": false,
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/2", "minutes": 7 },
@@ -432,12 +443,13 @@
       "legs": [
         { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
         { "seq": 2, "kind": "walk", "from": "place:guanqin", "to": "station:M9/4", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
-        { "seq": 3, "kind": "bus", "routes": ["51"], "from": "station:M9/4", "to": "station:C690/3", "minutes": null, "note": "51 循環線繞回蝴蝶谷總站" },
+        { "seq": 3, "kind": "bus", "routes": ["51", "51B"], "from": "station:M9/4", "to": "station:C690/3", "minutes": null, "note": "51 循環線繞回蝴蝶谷總站", "routeMeta": { "51": { "to": "C690/3", "alight": ["C688/2", "C690/3"] }, "51B": { "to": "C690/2", "alight": ["C688/2", "C690/2"] } } },
         { "seq": 4, "kind": "walk", "from": "station:C690/3", "to": "place:home", "minutes": 7 }
       ]
     },
     {
       "id": "guanqin-home-51b", "from": "guanqin", "to": "home", "summary": "51B路 M9/4 關閘廣場→C690/2 蝴蝶谷大馬路總站",
+      "is_active": false,
       "note": "v0.13.0 回程（關閘→宿舍）；首步即通關（與去程對稱建模），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },

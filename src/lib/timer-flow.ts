@@ -36,6 +36,18 @@ export interface PlanLegLite {
   alight_candidates?: string[] | null;
   /** v0.16.4：段参考时长/分钟（transfer 0 = 同场换乘步行 0 分钟） */
   minutes?: number | null;
+  /** v0.17.0：合并卡「每线路差异化」——key=线路码，值=该线自己的 下车站/上车台/下车候选 */
+  route_meta?: Record<string, RouteMeta> | null;
+}
+
+/** v0.17.0：单条线路在合并卡里的差异化配置（全部可选，缺省沿用段级值） */
+export interface RouteMeta {
+  /** 该线路的下车站（终点） */
+  to?: string | null;
+  /** 该线路可用上车台（首项 = 该线默认上车台） */
+  board?: string[] | null;
+  /** 该线路下车候选（末位 = 强制终点，语义同 alight_candidates） */
+  alight?: string[] | null;
 }
 
 export interface Step {
@@ -62,6 +74,102 @@ export interface Step {
   /** v0.14.2：载具段序号（0-based，仅 bus/lrt 段 wait_start/board/alight 步有值）。
    *  多段方案区分「乘哪一路」的段槽位——chips 选择按段独立记忆，换乘后回默认 */
   vehIndex?: number;
+}
+
+/** 载具段（bus/lrt）在 legs 中的下标与其 0-based 段序号（v0.17.0：合并卡/预览共用） */
+export function vehicleLegEntries(legs: PlanLegLite[]): { leg: PlanLegLite; legIdx: number; vehIndex: number }[] {
+  const out: { leg: PlanLegLite; legIdx: number; vehIndex: number }[] = [];
+  let v = -1;
+  legs.forEach((leg, legIdx) => {
+    if (leg.leg_kind === "bus" || leg.leg_kind === "lrt") {
+      v += 1;
+      out.push({ leg, legIdx, vehIndex: v });
+    }
+  });
+  return out;
+}
+
+/**
+ * v0.17.0：合并卡「按所选线路改写段」——
+ * 同一张卡合并多条同起点线路后，各线路的下车站/上车台/下车候选不同，
+ * 由 route_meta（key=线路码）按「当前段生效线路」改写 legs，使
+ * buildSteps / applyBoardSteps / buildProgress / rideInfo 全部自动跟随。
+ *
+ * @param choicesByVeh 段序号 → 生效线路码（由调用方按「用户 chips > 会话已修正实乘线」解析好；
+ *                              null/未命中 → 保持段级默认值）
+ */
+export function applyRouteMeta(
+  legs: PlanLegLite[],
+  choicesByVeh: Record<string, string | null>,
+): PlanLegLite[] {
+  const entries = vehicleLegEntries(legs);
+  if (!entries.some((e) => e.leg.route_meta)) return legs;
+
+  const rewritten = new Map<number, PlanLegLite>();
+  for (const e of entries) {
+    const choice = choicesByVeh[String(e.vehIndex)] ?? null;
+    const meta = choice ? (e.leg.route_meta?.[choice] ?? null) : null;
+    if (!meta) continue;
+    const next: PlanLegLite = { ...e.leg };
+    if (meta.to) next.to_station = meta.to;
+    if (meta.alight?.length) next.alight_candidates = meta.alight;
+    if (meta.board?.length) {
+      next.board_candidates = meta.board;
+      // 上车台首项 = 该线默认台（用户二级选择由 applyBoardSteps 再覆盖）
+      if (meta.board[0]) next.from_station = meta.board[0];
+    }
+    rewritten.set(e.legIdx, next);
+  }
+  if (!rewritten.size) return legs;
+
+  return legs.map((leg, i) => {
+    if (rewritten.has(i)) return rewritten.get(i)!;
+    // 紧随载具段之后的步行段：起点同步为「实际下车站」（换线后下车点跟着变）
+    const prev = legs[i - 1];
+    if (leg.leg_kind === "walk" && prev && (prev.leg_kind === "bus" || prev.leg_kind === "lrt")) {
+      const newPrev = rewritten.get(i - 1);
+      if (newPrev?.to_station && leg.from_station !== newPrev.to_station) {
+        return { ...leg, from_station: newPrev.to_station };
+      }
+    }
+    return leg;
+  });
+}
+
+/**
+ * v0.17.0：轻轨换乘前预览——当前轻轨段的下一站就是换乘站（或只剩一站）时，
+ * 找出「在换乘站上车的下一段轻轨」，供乘车页预显下一段的下一班车。
+ * 只有当中间隔着 transfer（必要时允许 walk）且下段上车站 == 本段终点时才成立。
+ */
+export interface LrtOnward {
+  /** 换乘站（下一段的上车站） */
+  station: string;
+  /** 下一段线路码 */
+  route: string;
+  /** 下一段终点（用于 /api/lrt/eta 推导方向） */
+  dest: string | null;
+}
+
+export function findLrtOnward(
+  legs: PlanLegLite[],
+  vehIndex: number | null | undefined,
+  destCode?: string | null,
+): LrtOnward | null {
+  if (vehIndex == null || !destCode) return null;
+  const entries = vehicleLegEntries(legs);
+  const cur = entries[vehIndex];
+  const next = entries[vehIndex + 1];
+  if (!cur || !next) return null;
+  if (cur.leg.leg_kind !== "lrt" || next.leg.leg_kind !== "lrt") return null;
+  // 中间只允许 transfer / walk（轻轨同场换乘），出现其它段则不是纯换乘衔接
+  for (let k = cur.legIdx + 1; k < next.legIdx; k++) {
+    const kind = legs[k]?.leg_kind;
+    if (kind !== "transfer" && kind !== "walk") return null;
+  }
+  if (!next.leg.from_station || !stationCodesEq(next.leg.from_station, destCode)) return null;
+  const route = next.leg.route_options?.[0];
+  if (!route) return null;
+  return { station: next.leg.from_station, route, dest: next.leg.to_station ?? null };
 }
 
 /** 由方案分段生成打点步骤序列 */

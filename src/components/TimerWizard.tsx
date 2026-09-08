@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   applyBoardSteps,
+  applyRouteMeta,
   buildSteps,
   currentStepIndex,
+  findLrtOnward,
   stationCodesEq,
   type PlanLegLite,
 } from "@/lib/timer-flow";
@@ -137,6 +139,24 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   } | null>(null);
   const [undoing, setUndoing] = useState(false);
 
+  /**
+   * v0.17.0：各载具段的「生效线路」——用户 chips 选择 > 会话已修正实乘线（仅首段）> 段默认。
+   * 结果喂给 applyRouteMeta 改写 legs（下车站/上车台/下车候选随线而变）；
+   * 纳入 session.route_code 是为了刷新后仍能恢复已选线路（chips 是本地 state，刷新即丢）。
+   */
+  function effChoiceByVeh(legs: PlanLegLite[]): Record<string, string | null> {
+    const out: Record<string, string | null> = {};
+    let v = -1;
+    for (const l of legs) {
+      if (l.leg_kind !== "bus" && l.leg_kind !== "lrt") continue;
+      v += 1;
+      const opts = l.route_options ?? [];
+      const ch = routeChoices[String(v)] ?? (v === 0 ? (data?.session.route_code ?? null) : null);
+      out[String(v)] = ch && opts.includes(ch) ? ch : null;
+    }
+    return out;
+  }
+
   // v0.12.0：暂停态由 events 推导（最后一条是 pause → 暂停中）；暂停时 1s 一跳刷新秒表
   const evtsForPause = data?.events ?? [];
   const pausedNow =
@@ -189,7 +209,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     }
     // 当前被打点的步骤（自动记录车距用：depart / wait_start 的巴士段）
     // 注意用覆盖后的步骤，否则选了非默认上车站会以默认站为基准错位
-    const curSteps = applyBoardSteps(buildSteps(data.legs), data.legs, data.events, boardStation);
+    // v0.17.0：合并卡先按「当前段生效线路」改写 legs（下车站/上车台随线而变）
+    const curMetaLegs = applyRouteMeta(data.legs, effChoiceByVeh(data.legs));
+    const curSteps = applyBoardSteps(
+      buildSteps(curMetaLegs),
+      curMetaLegs,
+      data.events,
+      boardStation,
+    );
     const curIdx = currentStepIndex(curSteps, data.events);
     const curStep = curSteps[curIdx];
     try {
@@ -426,14 +453,17 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     );
   }
 
-  const steps = buildSteps(data.legs);
+  // v0.17.0：合并卡按「当前段生效线路」改写 legs（下车站/上车台/下车候选随所选线而变），
+  // 之后的 buildSteps / applyBoardSteps / buildProgress / rideInfo 全部消费 metaLegs
+  const metaLegs = applyRouteMeta(data.legs, effChoiceByVeh(data.legs));
+  const steps = buildSteps(metaLegs);
   // —— 去学校 51 系：上车点动态覆盖（用户选择 > 已打点事件恢复 > 默认站）——
-  const effSteps = applyBoardSteps(steps, data.legs, data.events, boardStation);
+  const effSteps = applyBoardSteps(steps, metaLegs, data.events, boardStation);
   const idx = currentStepIndex(effSteps, data.events);
   const step = effSteps[idx];
   const finished = idx >= steps.length || !!data.session.ended_at;
   // 当前生效的上车站（chips 高亮用；null = 未选 = 默认站）
-  const firstVehicle = data.legs.find((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
+  const firstVehicle = metaLegs.find((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
   const boardCands =
     (firstVehicle?.board_candidates?.length ?? 0) > 1 ? firstVehicle!.board_candidates! : null;
   const lastBoardEvt = [...data.events]
@@ -448,14 +478,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // v0.12.2（需求 6）：行程进度条模型——按项目等分（上车步行 / 乘车各站 / 下车步行），
   // 由方案 legs + 站序表生成；events 回放实时推进（撤销/刷新恢复天然一致）
   const routeColors = data.routeColors ?? {};
-  const rawProgressUnits = buildProgress(data.legs, data.routeStopsByRoute, {
+  const rawProgressUnits = buildProgress(metaLegs, data.routeStopsByRoute, {
     boardStation: chosenBoard,
     // v0.14.1：进度条按站等分同样按同场站名解析目标（26/50 分台各自正确）
     stationNames: data.stationNames,
   });
   // v0.16.2：进度条各段颜色随「该段生效线路」联动（routeChoices/实乘线 > 段默认主色）——
   // 去横琴等可换乘多线路方案：chips 选 50/25BS 后对应组/尾格即时换色
-  const vehLegs = data.legs.filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
+  const vehLegs = metaLegs.filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt");
   const lastVehGroup = vehLegs.length - 1;
   const segEffColor = (g: number): string | null => {
     const leg = vehLegs[g];
@@ -511,8 +541,12 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
   // v0.10.0 A11：多候选线路段「乘哪一路」（chips 选中 > 会话已修正实乘线 > 首选项）
   // board 提交带实乘线 → 服务端把 route_code/dsat_dir 修正到实乘线（首个载具段）
-  const isBoardRouteMulti =
-    step?.eventType === "board" && (step.routeOptions?.length ?? 0) > 1 && step.quickKind === "stops";
+  // v0.17.0：合并卡「到站即选线」——chips 从 board 步提前到 wait_start（到站）与 depart 步，
+  // 早一步定线，乘车页站点/右上角标签/进度条颜色才能从等车起就跟着所选线走
+  const isRouteMulti =
+    (departing || waiting || step?.eventType === "board") &&
+    (step.routeOptions?.length ?? 0) > 1 &&
+    step.quickKind === "stops";
   // v0.12.0：step?. 保护 —— arrive 打点后 idx 越界 step 为 undefined，而 routeChoices/
   // session.route_code 仍可能非空，此处无条件执行会读 step.routeOptions 崩溃
   // v0.14.2：只读当前载具段的槽位（无则 null → 走默认），换段后自动回默认
@@ -524,6 +558,22 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
       : data.session.route_code && step?.routeOptions?.includes(data.session.route_code)
         ? data.session.route_code
         : (step?.routeOptions?.[0] ?? null);
+
+  // v0.17.0：合并卡等车页只展示「当前上车台真的停靠」的线路，避免同站场不同台的线路
+  // 刷出「51 路 · 站 C690/1 不在 51 的站序中」这类噪音；所选线路永远保留。
+  // 全部被过滤掉（站序缺失等极端情况）时回退完整候选，不至于空卡。
+  const stepRoutes = step?.routeOptions ?? null;
+  const etaRoutes =
+    stepRoutes && stepRoutes.length > 1
+      ? (() => {
+          const hit = stepRoutes.filter((r) => {
+            if (effRoute && r === effRoute) return true;
+            const stops = data.routeStopsByRoute[r] ?? [];
+            return stops.some((s) => stationCodesEq(s.code, step?.stationCode));
+          });
+          return hit.length ? hit : stepRoutes;
+        })()
+      : stepRoutes;
 
   // v0.16.2：右上角标签随「当前段生效线路」联动（用户 chips 选择 > 会话已修正实乘线 > 段首选项），
   // 颜色取全量线路色表 routeColors（随选择切换线路色），无对应色回退步骤静态色
@@ -678,6 +728,16 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const recentEvents = [...data.events].reverse().slice(0, 4);
   // v0.16.0：乘车中且能算出逐站进度 → 三段式逐站按钮接管（普通=记/甩；候选=三钮；终点=下车）
   const ridingUi = riding && !!rideInfo;
+
+  // ===== v0.17.0：轻轨换乘前预览 =====
+  // 距换乘站还剩 1 站（或已到「下站即换乘站」）时，预显下一段轻轨的下一班车，
+  // 方便提前做好换乘准备。卡片与正常轻轨报站卡完全相同（同一 LrtEta 组件）。
+  // remaining 语义 = UI 自己「再过 N 站到 X」的计数：N=1 下一站就是换乘站前一站
+  // （科大→石排灣 到東亞運），N=0(final) 已过該站、下站即換乘站協和醫院。
+  const lrtOnward =
+    riding && rideInfo && (rideInfo.remaining ?? 99) <= 1
+      ? findLrtOnward(metaLegs, step?.vehIndex, rideInfo.destCode)
+      : null;
 
   // ===== v0.12.0：步行暂停 / 最近事件撤销 =====
   // 暂停态由顶部 pausedNow 派生（events 最后一条是 pause）
@@ -846,7 +906,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                 step.stationCode && (
                   <LiveEta
                     station={step.stationCode}
-                    routes={step.routeOptions!}
+                    routes={etaRoutes!}
                     dir={data.session.dsat_dir ?? "0"}
                     dest={step.destStationCode}
                     refreshKey={etaTick}
@@ -889,7 +949,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           )}
 
           {/* v0.10.0 A11：多候选线路段——上车前确认「乘哪一路」（实乘线决定记录/乘车推进/车辆抓取） */}
-          {isBoardRouteMulti && step.routeOptions && (
+          {isRouteMulti && step.routeOptions && (
             <div className="card" style={{ padding: "12px 14px" }}>
               <p className="t-label" style={{ marginBottom: 8 }}>
                 乘哪一路？
@@ -940,7 +1000,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                     ...(step.eventType === "depart" && fromZone ? { from_zone: fromZone } : {}),
                     ...(step.eventType === "arrive" && toZone ? { to_zone: toZone } : {}),
                     // v0.10.0 A11：多候选段 board 提交实乘线 → 服务端修正 route_code/dsat_dir
-                    ...(step.eventType === "board" && isBoardRouteMulti && effRoute
+                    ...(step.eventType === "board" && isRouteMulti && effRoute
                       ? { route: effRoute }
                       : {}),
                   })
@@ -1094,6 +1154,22 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+          {/* v0.17.0：轻轨换乘前预览——与正常轻轨报站卡同款（同一 LrtEta），
+              不传 onRemainChange：预览不回写 lrtRemainMs，避免污染本段 wait_start 的分钟快照 */}
+          {lrtOnward && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <p className="t-label t-muted" style={{ margin: 0 }}>
+                🚈 换乘预览 · 於「{stationName(lrtOnward.station)}」轉乘
+                {lrtOnward.dest ? ` → ${stationName(lrtOnward.dest)}` : ""}
+              </p>
+              <LrtEta
+                station={lrtOnward.station}
+                route={lrtOnward.route}
+                dest={lrtOnward.dest}
+                refreshKey={etaTick}
+              />
             </div>
           )}
           {riding && !rideInfo && <p className="t-body t-muted">{fullSub(step.sub)}</p>}

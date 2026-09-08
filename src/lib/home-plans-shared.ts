@@ -16,8 +16,13 @@ export interface PlanRow {
   samples: number;
   /** v0.7.0：各载具段主线路主题色（按乘坐顺序，walk 段不参与） */
   colors?: (string | null)[];
-  /** v0.16.2：多车可选方案（去横琴纯巴士：同程可换乘多条线路）→ 卡片双色左右交替闪烁 */
-  blink?: boolean;
+  /**
+   * v0.16.2 → v0.17.0 卡片闪烁样式：
+   *  'split' = 去横琴纯巴士卡，左右两色位置周期互换（「这几路都能乘」）
+   *  'solid' = 同起点合并卡且含澳巴+新福利两色，整卡两色交替变换
+   *  null/undefined = 不闪（单色静态色带）
+   */
+  blinkStyle?: "split" | "solid" | null;
 }
 
 export interface ActiveSession {

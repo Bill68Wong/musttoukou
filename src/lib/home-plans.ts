@@ -33,19 +33,43 @@ export async function queryPlans(opts: { from?: string; to?: string } = {}): Pro
                WHERE s.plan_id = p.id AND s.deleted_at IS NULL
                  AND NOT COALESCE(s.is_test, false)
                  AND s.total_minutes IS NOT NULL) AS samples,
+             -- v0.17.0：合并卡单段含多条线路 → 展开 route_options 全部项取色，
+             -- 去重后按「首次出现顺序」保留（前两色即卡面双色）
              COALESCE(
-               (SELECT array_agg(r.color ORDER BY l.seq)
-                  FROM plan_legs l
-                  LEFT JOIN routes r
-                    ON r.code = (l.route_options::jsonb ->> 0) AND r.kind = l.leg_kind
-                 WHERE l.plan_id = p.id
-                   AND l.leg_kind IN ('bus','lrt')
-                   AND l.route_options IS NOT NULL
-                   AND r.color IS NOT NULL),
+               (SELECT array_agg(t.color ORDER BY t.k)
+                  FROM (
+                    SELECT r.color, MIN(l.seq * 1000 + ro.ord) AS k
+                      FROM plan_legs l
+                      CROSS JOIN LATERAL jsonb_array_elements_text(l.route_options::jsonb)
+                             WITH ORDINALITY AS ro(code, ord)
+                      JOIN routes r
+                        ON r.code = ro.code AND r.kind = l.leg_kind
+                     WHERE l.plan_id = p.id
+                       AND l.leg_kind IN ('bus','lrt')
+                       AND l.route_options IS NOT NULL
+                       AND r.color IS NOT NULL
+                     GROUP BY r.color
+                  ) t),
                '{}'::text[]) AS colors,
-             (pt.slug = 'hengqin'
-               AND EXISTS(SELECT 1 FROM plan_legs lb WHERE lb.plan_id = p.id AND lb.leg_kind = 'bus')
-               AND NOT EXISTS(SELECT 1 FROM plan_legs ll WHERE ll.plan_id = p.id AND ll.leg_kind = 'lrt')) AS blink
+             -- v0.17.0：闪烁样式 —— 'split' 去横琴纯巴士卡（左右两色互换）；
+             -- 'solid' 同起点合并卡且含 ≥2 家公司色（整卡两色交替）；否则 null
+             (CASE
+               WHEN pt.slug = 'hengqin'
+                 AND EXISTS(SELECT 1 FROM plan_legs lb WHERE lb.plan_id = p.id AND lb.leg_kind = 'bus')
+                 AND NOT EXISTS(SELECT 1 FROM plan_legs ll WHERE ll.plan_id = p.id AND ll.leg_kind = 'lrt')
+                 THEN 'split'
+               WHEN (SELECT count(DISTINCT r2.color)
+                       FROM plan_legs l2
+                       CROSS JOIN LATERAL jsonb_array_elements_text(l2.route_options::jsonb) AS ro2(code)
+                       JOIN routes r2 ON r2.code = ro2.code AND r2.kind = l2.leg_kind
+                      WHERE l2.plan_id = p.id
+                        AND l2.leg_kind IN ('bus','lrt')
+                        AND l2.route_options IS NOT NULL
+                        AND jsonb_array_length(l2.route_options::jsonb) > 1
+                        AND r2.color IS NOT NULL) >= 2
+                 THEN 'solid'
+               ELSE NULL
+             END) AS blink_style
       FROM commute_plans p
       JOIN places pf ON p.from_place = pf.id
       JOIN places pt ON p.to_place = pt.id
@@ -56,7 +80,10 @@ export async function queryPlans(opts: { from?: string; to?: string } = {}): Pro
     `,
     params,
   );
-  return res.rows as PlanRow[];
+  // v0.17.0：SQL 别名是 snake_case（blink_style）→ 前端统一用 blinkStyle
+  return (res.rows as (PlanRow & { blink_style?: string | null })[]).map(
+    ({ blink_style, ...r }) => ({ ...r, blinkStyle: (blink_style ?? null) as PlanRow["blinkStyle"] }),
+  );
 }
 
 /** 进行中的真实计时（未结束 & 未删除 & 非测试） */

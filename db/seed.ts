@@ -36,6 +36,8 @@ interface LegSeed {
   label?: string;
   /** 动态下车候选（bus 回宿舍），末位 = 强制终点 */
   alight_candidates?: string[];
+  /** v0.17.0：合并卡每线路差异化 { "50": { to, board?, alight? } } */
+  routeMeta?: Record<string, { to?: string; board?: string[]; alight?: string[] }>;
 }
 interface PlanSeed {
   id: string;
@@ -209,8 +211,8 @@ async function main() {
         await q(
           `INSERT INTO plan_legs (plan_id, seq, leg_kind, route_id, route_options,
                                   from_station, to_station, minutes, note,
-                                  border_label, board_candidates, alight_candidates)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+                                  border_label, board_candidates, alight_candidates, route_meta)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
           [
             planId,
             leg.seq,
@@ -228,6 +230,10 @@ async function main() {
             leg.kind === "cross_border" ? (leg.label ?? null) : null,
             boardCands.length ? boardCands : null,
             alightCands.length ? alightCands : null,
+            // v0.17.0：合并卡的每线路差异化（routeMeta）——站码已是最终码，无需 resolve
+            leg.routeMeta && Object.keys(leg.routeMeta).length
+              ? JSON.stringify(leg.routeMeta)
+              : null,
           ],
         );
         legCount++;

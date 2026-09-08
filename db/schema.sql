@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS plan_legs (
     border_label  TEXT,                    -- v0.13.0 cross_border 段口岸显示名：'橫琴口岸' / '關閘（拱北口岸）'
     board_candidates TEXT[],               -- bus 段可选上车站（v0.6.0 去学校 51 系：首项=默认展示）
     alight_candidates TEXT[],              -- bus 段可选下车点（v0.6.0 回宿舍动态下车：末位=强制终点）
+    route_meta      JSONB,                 -- v0.17.0 合并卡「每线路差异化」：{"50":{"to":"T400"},"51A":{"board":["C690/1","C689/2"]}}
     UNIQUE (plan_id, seq)
 );
 

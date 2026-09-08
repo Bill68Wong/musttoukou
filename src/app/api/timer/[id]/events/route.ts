@@ -126,6 +126,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const pool = getPool();
     // 本次插入的真实事件 id（撤销依赖；wait_snapshot/dedup 为 null）
     let eventId: number | null = null;
+    // v0.16.3：同场换乘自动接续补插的 wait_start（alight 后自动记录，客户端直接进「上车」步）
+    let autoAfter: {
+      type: string;
+      event_id: number | null;
+      station_code: string | null;
+      recorded_at: string | null;
+    } | null = null;
 
     // 会话存在且未结束
     const sessRes = await pool.query(
@@ -282,6 +289,58 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }
     }
 
+    // v0.16.3：同场换乘自动接续 —— 下车即到站（两载具段之间的 transfer minutes=0，
+    // 如莲花路停车场 T355/1↔T355/2 相邻台）→ 自动补 wait_start（第二程等车自下车时刻起算），
+    // 客户端据响应直接进入「上车」步（2026-09-08 实测反馈：下车后不应再点一次「到站等车」）
+    if (type === "alight" && session.plan_id) {
+      const legRows = await pool.query(
+        `SELECT seq, leg_kind, from_station, minutes FROM plan_legs
+         WHERE plan_id = $1 ORDER BY seq`,
+        [session.plan_id],
+      );
+      const legsAll = legRows.rows as {
+        seq: number;
+        leg_kind: string;
+        from_station: string | null;
+        minutes: string | null;
+      }[];
+      const vehIdx = legsAll
+        .map((l, i) => ({ l, i }))
+        .filter((x) => x.l.leg_kind === "bus" || x.l.leg_kind === "lrt");
+      const alightCnt = await pool.query(
+        `SELECT count(*)::int AS n FROM timer_events
+         WHERE session_id = $1 AND event_type = 'alight'`,
+        [sessionId],
+      );
+      const k = ((alightCnt.rows[0] as { n: number }).n ?? 0) - 1; // 0-based：本次为第 k+1 段下车
+      const cur = vehIdx[k];
+      const next = vehIdx[k + 1];
+      if (cur && next) {
+        const between = legsAll.filter(
+          (l) => l.seq > cur.l.seq && l.seq < next.l.seq && l.leg_kind === "transfer",
+        );
+        if (between.some((t) => Number(t.minutes) === 0)) {
+          const seqRes2 = await pool.query(
+            `SELECT coalesce(max(seq), 0) + 1 AS next FROM timer_events WHERE session_id = $1`,
+            [sessionId],
+          );
+          const seq2 = (seqRes2.rows[0] as { next: number }).next;
+          const ins2 = await pool.query<{ id: number; recorded_at: string }>(
+            `INSERT INTO timer_events (session_id, seq, event_type, station_code)
+             VALUES ($1, $2, 'wait_start', $3)
+             RETURNING id, recorded_at`,
+            [sessionId, seq2, next.l.from_station ?? null],
+          );
+          autoAfter = {
+            type: "wait_start",
+            event_id: ins2.rows[0]?.id ?? null,
+            station_code: next.l.from_station ?? null,
+            recorded_at: ins2.rows[0]?.recorded_at ?? null,
+          };
+        }
+      }
+    }
+
     if (type === "border_end") {
       // v0.16.1：方案以 cross_border 结尾（去程口岸卡，border 即最后一步）→ 通关完成即结束行程并结算
       // （主人 2026-09-07 实测口径：通关完即结束，无「到达」收尾步；回程口岸卡 border 在中段不收尾）
@@ -307,7 +366,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       return NextResponse.json({ ok: true, finished: true, event_id: eventId });
     }
 
-    return NextResponse.json({ ok: true, finished: false, event_id: eventId });
+    return NextResponse.json({
+      ok: true,
+      finished: false,
+      event_id: eventId,
+      auto_wait_start: autoAfter,
+    });
   } catch (err) {
     console.error("[events] 写入失败：", (err as Error).message);
     return NextResponse.json({ error: "事件写入失败" }, { status: 500 });

@@ -54,9 +54,9 @@ function solidGradient(colors: (string | null)[]): string {
 }
 
 /**
- * v0.16.2：多车可选方案（去横琴巴士：同程可乘 26/50 等不同线路）的卡面——
- * 双色左右分区底 + 左右交替闪烁动画（表达「这几路车都可以乘/换乘」，
- * 而非静态「左=某公司右=某公司」的固定顺序语义）
+ * v0.16.2→v0.16.3：多车可选方案（去横琴巴士：同程可乘 26/50 等不同线路）的卡面——
+ * 双色位置周期互换闪烁：「一会左 26 右 50，一会左 50 右 26」，
+ * 表达「这几路车都可以乘」，而非静态左右分区被误读成固定公司顺序
  */
 function BlinkVeil({ colors }: { colors: (string | null)[] }) {
   const segs = colors.filter((c): c is string => !!c);
@@ -65,13 +65,14 @@ function BlinkVeil({ colors }: { colors: (string | null)[] }) {
     <>
       <span
         aria-hidden
-        className="pc-veil"
-        style={{
-          background: `linear-gradient(90deg, ${shade(c1, 0.62)} 0%, ${shade(c1, 0.62)} 50%, ${shade(c2, 0.62)} 50%, ${shade(c2, 0.62)} 100%)`,
-        }}
+        className="pc-veil pc-swap pc-swap-a"
+        style={{ background: `linear-gradient(90deg, ${c1} 0%, ${c1} 50%, ${c2} 50%, ${c2} 100%)` }}
       />
-      <span aria-hidden className="pc-blink pc-blink-a" style={{ background: c1 }} />
-      <span aria-hidden className="pc-blink pc-blink-b" style={{ background: c2 }} />
+      <span
+        aria-hidden
+        className="pc-veil pc-swap pc-swap-b"
+        style={{ background: `linear-gradient(90deg, ${c2} 0%, ${c2} 50%, ${c1} 50%, ${c1} 100%)` }}
+      />
     </>
   );
 }

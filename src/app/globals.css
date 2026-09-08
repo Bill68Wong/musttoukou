@@ -398,31 +398,30 @@ button:disabled {
   filter: brightness(0.88);
 }
 
-/* v0.16.2：多车可选路线卡（去横琴巴士）——双色左右交替闪烁（底为暗版双色，两半轮流亮起） */
-.pc-blink {
+/* v0.16.3：多车可选路线卡（去横琴巴士）——双色位置周期互换闪烁：
+   版本 A「左26右50」与版本 B「左50右26」整卡交替淡入淡出（主人 2026-09-08 反馈） */
+.pc-swap {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 50%;
+  inset: 0;
   opacity: 0;
   pointer-events: none;
 }
-.pc-blink-a {
-  animation: pc-blink-swap 1.8s ease-in-out infinite;
+.pc-swap-a {
+  animation: pc-swap-phase 2.4s ease-in-out infinite;
 }
-.pc-blink-b {
-  left: auto;
-  right: 0;
-  animation: pc-blink-swap 1.8s ease-in-out infinite;
-  animation-delay: 0.9s;
+.pc-swap-b {
+  animation: pc-swap-phase 2.4s ease-in-out infinite;
+  animation-delay: 1.2s;
 }
-@keyframes pc-blink-swap {
+@keyframes pc-swap-phase {
   0%,
   42% {
+    opacity: 1;
+  }
+  50%,
+  92% {
     opacity: 0;
   }
-  58%,
   100% {
     opacity: 1;
   }

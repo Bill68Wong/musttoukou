@@ -132,11 +132,19 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       }
     }
 
+    // v0.18.0：每程拥挤度（换乘每趟车一条；前端按 veh_index 判断是否已记录）
+    const crowdRes = await pool.query(
+      `SELECT veh_index, level, route_code FROM ride_crowd
+        WHERE session_id = $1 ORDER BY veh_index`,
+      [sessionId],
+    );
+
     return NextResponse.json({
       session,
       legs,
       events: eventsRes.rows,
       snapshots: snapsRes.rows,
+      crowd: crowdRes.rows as { veh_index: number; level: number; route_code: string | null }[],
       stationNames: Object.fromEntries(
         (stationsRes.rows as { code: string; name_tc: string; kind: string }[]).map((r) => [
           r.code,
@@ -178,7 +186,10 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   }
 }
 
-/** PATCH /api/timer/[id]：结束页提交拥挤度等收尾字段 */
+/**
+ * PATCH /api/timer/[id]：收尾字段
+ * ⚠️ v0.18.0 起拥挤度改走 POST /api/timer/[id]/crowd（按程记录），本接口保留仅为兼容旧调用
+ */
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;

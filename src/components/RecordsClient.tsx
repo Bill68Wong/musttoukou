@@ -11,13 +11,15 @@ export interface RecordRow {
   /** v0.13.0：口岸通关耗时（独立于行程，展示「行程 + 通关」） */
   border_minutes?: number | null;
   missed_count: number;
-  crowd_level: number | null;
+  /** v0.18.0：每程拥挤度（ride_crowd.level 按 veh_index 以「/」连接，如 "1/3"） */
+  crowd_levels: string | null;
   route_code: string | null;
   travel_date: string;
   is_test?: boolean;
 }
 
-const CROWD_LABELS = ["空", "正常", "挤", "爆满"];
+/** v0.18.0：拥挤度五档（0空/1正常/2饱和/3挤/4爆满） */
+const CROWD_LABELS = ["空", "正常", "饱和", "挤", "爆满"];
 
 // 固定模板格式化（MM/DD HH:mm），避免 toLocaleString 在 iOS/安卓输出
 // 「2026年9月3日 上午12:35」等长格式把行挤爆/截断
@@ -139,8 +141,13 @@ export default function RecordsClient({
                       {r.missed_count > 0 && (
                         <span className="t-error"> · 没挤上 ×{r.missed_count}</span>
                       )}
-                      {r.crowd_level !== null &&
-                        ` · ${CROWD_LABELS[r.crowd_level] ?? "?"}`}
+                      {r.crowd_levels &&
+                        ` · 拥挤 ${
+                          r.crowd_levels
+                            .split("/")
+                            .map((lv) => CROWD_LABELS[Number(lv)] ?? "?")
+                            .join("/")
+                        }`}
                     </>
                   ) : (
                     <span className="t-accent">进行中…</span>

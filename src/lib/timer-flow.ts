@@ -76,6 +76,32 @@ export interface Step {
   vehIndex?: number;
 }
 
+/**
+ * v0.18.0：线路显示顺序统一（主人定稿）
+ *   ① 轻轨（LRT-*）统一排在巴士之上，轻轨之间保持方案原相对顺序；
+ *   ② 巴士按「自然排序」：开头数字升序 → 同数字按字母后缀升序 → 纯字母开头（N6 等）排最后
+ *     例：25 → 25AX → 25B → 25BS → 26 → 26A → 50 → 51 → 51A → 51B → 59 → 102 → 701X → N6
+ * ⚠️ 只用于「展示排序」，不改变 plan_legs.route_options 数组本身——
+ *    route_options[0] 语义 = 方案默认线路（历史样本口径），排序不得影响它。
+ */
+export function sortRouteOptions(codes: (string | null)[] | null | undefined): string[] {
+  const list = (codes ?? []).filter((c): c is string => !!c);
+  const lrt = list.filter((c) => c.startsWith("LRT-"));
+  const bus = list.filter((c) => !c.startsWith("LRT-"));
+  const keyOf = (c: string): [number, number, string] => {
+    const m = c.match(/^(\d+)(.*)$/);
+    return m ? [0, Number(m[1]), m[2] ?? ""] : [1, 0, c];
+  };
+  bus.sort((a, b) => {
+    const ka = keyOf(a);
+    const kb = keyOf(b);
+    if (ka[0] !== kb[0]) return ka[0] - kb[0];
+    if (ka[1] !== kb[1]) return ka[1] - kb[1];
+    return ka[2] < kb[2] ? -1 : ka[2] > kb[2] ? 1 : 0;
+  });
+  return [...lrt, ...bus];
+}
+
 /** 载具段（bus/lrt）在 legs 中的下标与其 0-based 段序号（v0.17.0：合并卡/预览共用） */
 export function vehicleLegEntries(legs: PlanLegLite[]): { leg: PlanLegLite; legIdx: number; vehIndex: number }[] {
   const out: { leg: PlanLegLite; legIdx: number; vehIndex: number }[] = [];

@@ -23,7 +23,10 @@ export default async function RecordsPage() {
     const pool = getPool();
     const res = await pool.query(`
       SELECT s.id, s.started_at, s.ended_at, s.total_minutes, s.border_minutes,
-             s.missed_count, s.crowd_level, s.route_code, s.travel_date, s.is_test
+             s.missed_count, s.route_code, s.travel_date, s.is_test,
+             -- v0.18.0：拥挤度按程（ride_crowd），多程以「/」分隔（按 veh_index 顺序）
+             (SELECT string_agg(rc.level::text, '/' ORDER BY rc.veh_index)
+                FROM ride_crowd rc WHERE rc.session_id = s.id) AS crowd_levels
       FROM timer_sessions s
       JOIN commute_plans p ON s.plan_id = p.id
       WHERE s.deleted_at IS NULL

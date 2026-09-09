@@ -20,7 +20,8 @@ const BUCKET_LABEL: Record<string, string> = {
   day: "白天",
   night: "夜间",
 };
-const CROWD_LABEL = ["空", "正常", "挤", "爆满"];
+// v0.18.0：拥挤度五档（0空/1正常/2饱和/3挤/4爆满），按程记录
+const CROWD_LABEL = ["空", "正常", "饱和", "挤", "爆满"];
 
 function csvCell(v: unknown): string {
   if (v === null || v === undefined) return "";
@@ -47,7 +48,9 @@ export async function GET(req: NextRequest) {
              round(s.border_minutes, 1) AS border_total,
              s.weekday,
              s.time_bucket,
-             s.crowd_level,
+             -- v0.18.0：拥挤度按程（ride_crowd），多程以「/」分隔
+             (SELECT string_agg(rc.level::text, '/' ORDER BY rc.veh_index)
+                FROM ride_crowd rc WHERE rc.session_id = s.id) AS crowd_levels,
              s.missed_count,
              s.vehicle_plate,
              s.vehicle_code,
@@ -95,7 +98,12 @@ export async function GET(req: NextRequest) {
       r.border_total,
       WEEKDAY_TC[(r.weekday as number) ?? -1] ?? "",
       BUCKET_LABEL[(r.time_bucket as string) ?? ""] ?? (r.time_bucket ?? ""),
-      CROWD_LABEL[(r.crowd_level as number) ?? -1] ?? "",
+      // v0.18.0：按程拥挤度（"1/3" → "正常/挤"）
+      String(r.crowd_levels ?? "")
+        .split("/")
+        .filter((x) => x !== "")
+        .map((lv) => CROWD_LABEL[Number(lv)] ?? "?")
+        .join("/"),
       (r.missed_count as number) ?? 0,
       r.vehicle_plate ?? "",
       r.vehicle_code ?? "",

@@ -74,8 +74,19 @@ export async function queryPlans(opts: { from?: string; to?: string } = {}): Pro
       JOIN places pf ON p.from_place = pf.id
       JOIN places pt ON p.to_place = pt.id
       WHERE ${where}
-      ORDER BY samples DESC,
-               (SELECT max(s.started_at) FROM timer_sessions s WHERE s.plan_id = p.id) DESC NULLS LAST,
+      -- v0.18.0：方案显示顺序统一——① 轻轨方案在前 ② 巴士按主线路自然排序
+      --          （数字前缀升序 → 线路码兜底；无数字开头如 N6 排最后）
+      ORDER BY CASE WHEN (SELECT l.leg_kind FROM plan_legs l
+                           WHERE l.plan_id = p.id AND l.leg_kind IN ('bus','lrt')
+                           ORDER BY l.seq LIMIT 1) = 'lrt' THEN 0 ELSE 1 END,
+               COALESCE(substring(COALESCE((SELECT l.route_options::jsonb ->> 0 FROM plan_legs l
+                                             WHERE l.plan_id = p.id AND l.leg_kind IN ('bus','lrt')
+                                               AND l.route_options IS NOT NULL
+                                             ORDER BY l.seq LIMIT 1), '') from '^\\d+')::int, 2147483647),
+               COALESCE((SELECT l.route_options::jsonb ->> 0 FROM plan_legs l
+                          WHERE l.plan_id = p.id AND l.leg_kind IN ('bus','lrt')
+                            AND l.route_options IS NOT NULL
+                          ORDER BY l.seq LIMIT 1), ''),
                p.id
     `,
     params,

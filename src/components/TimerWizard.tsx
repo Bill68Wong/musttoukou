@@ -8,6 +8,7 @@ import {
   buildSteps,
   currentStepIndex,
   findLrtOnward,
+  sortRouteOptions,
   stationCodesEq,
   type PlanLegLite,
 } from "@/lib/timer-flow";
@@ -40,7 +41,18 @@ interface SessionData {
   routeStopsByRoute: Record<string, { seq: number; code: string; name: string }[]>;
   /** v0.16.2：全量线路色表（code → color），随实乘线选择联动标签/进度条颜色 */
   routeColors?: Record<string, string>;
+  /** v0.18.0：每程拥挤度（ride_crowd；veh_index → level） */
+  crowd?: { veh_index: number; level: number; route_code: string | null }[];
 }
+
+/** v0.18.0：拥挤度五档（记录「当前当班车」的拥挤程度，每程各记一次） */
+const CROWD_LEVELS = [
+  { value: 0, label: "空", hint: "随便坐" },
+  { value: 1, label: "正常", hint: "有座" },
+  { value: 2, label: "饱和", hint: "没座位但站稳" },
+  { value: 3, label: "挤", hint: "贴着站" },
+  { value: 4, label: "爆满", hint: "前胸贴后背" },
+];
 
 /** 轻轨码判定（LRT-* 线路/站点；v0.15.0 轻轨报站卡分派用） */
 const isLrtCode = (c?: string | null): boolean => !!c && c.startsWith("LRT-");
@@ -156,6 +168,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     station_code: string | null;
   } | null>(null);
   const [undoing, setUndoing] = useState(false);
+  // v0.18.0：行程内拥挤度——draft=当前选中未提交；edit=已记录后点「修改」重新展开
+  const [crowdDraft, setCrowdDraft] = useState<number | null>(null);
+  const [crowdEdit, setCrowdEdit] = useState(false);
+  const [crowdBusy, setCrowdBusy] = useState(false);
 
   /**
    * v0.17.0：各载具段的「生效线路」——用户 chips 选择 > 会话已修正实乘线（仅首段）> 段默认。
@@ -584,9 +600,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // v0.17.0：合并卡等车页只展示「当前上车台真的停靠」的线路，避免同站场不同台的线路
   // 刷出「51 路 · 站 C690/1 不在 51 的站序中」这类噪音；所选线路永远保留。
   // 全部被过滤掉（站序缺失等极端情况）时回退完整候选，不至于空卡。
-  const stepRoutes = step?.routeOptions ?? null;
+  // v0.18.0：展示顺序统一（轻轨在前、巴士自然排序）——只影响展示，不改 route_options 语义首项
+  const stepRoutes = sortRouteOptions(step?.routeOptions);
   const etaRoutes =
-    stepRoutes && stepRoutes.length > 1
+    stepRoutes.length > 1
       ? (() => {
           const hit = stepRoutes.filter((r) => {
             if (effRoute && r === effRoute) return true;
@@ -750,6 +767,42 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   const recentEvents = [...data.events].reverse().slice(0, 4);
   // v0.16.0：乘车中且能算出逐站进度 → 三段式逐站按钮接管（普通=记/甩；候选=三钮；终点=下车）
   const ridingUi = riding && !!rideInfo;
+
+  // ===== v0.18.0：行程内拥挤度（每程各记一次）=====
+  // 当前程的已记录值（veh_index = 载具段序号，换乘后换段自然变「未记录」）
+  const rideVehIdx = step?.vehIndex ?? null;
+  const crowdRecorded =
+    rideVehIdx != null ? (data.crowd ?? []).find((c) => c.veh_index === rideVehIdx) ?? null : null;
+  const crowdShowForm = !!rideInfo && (!crowdRecorded || crowdEdit);
+  async function submitCrowd(level: number) {
+    if (rideVehIdx == null || crowdBusy) return;
+    setCrowdBusy(true);
+    try {
+      const res = await fetch(`/api/timer/${sessionId}/crowd`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vehIndex: rideVehIdx, level, routeCode: effRoute }),
+      });
+      if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? "提交失败");
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              crowd: [
+                ...(prev.crowd ?? []).filter((c) => c.veh_index !== rideVehIdx),
+                { veh_index: rideVehIdx, level, route_code: effRoute ?? null },
+              ],
+            }
+          : prev,
+      );
+      setCrowdDraft(null);
+      setCrowdEdit(false);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setCrowdBusy(false);
+    }
+  }
 
   // ===== v0.17.0 → v0.17.1：轻轨换乘前预览 =====
   // v0.17.1：只在「下一站就是换乘站」（stage final，下车按钮出现）时才显示，
@@ -977,7 +1030,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                 乘哪一路？
               </p>
               <div className="chip-row">
-                {step.routeOptions.map((r) => (
+                {/* v0.18.0：展示按「轻轨在前 + 巴士自然排序」（stepRoutes 已排序） */}
+                {(stepRoutes.length ? stepRoutes : step.routeOptions).map((r) => (
                   <button
                     key={r}
                     className={`chip${effRoute === r ? " chip--on" : ""}`}
@@ -1067,6 +1121,53 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                 {rideInfo.stage === "candidate" &&
                   ` · 可下车，或继续坐到「${rideInfo.terminalName}」`}
               </p>
+
+              {/* v0.18.0：拥挤度——上车后（乘车页）记录「当前当班车」，确认后收起可再改；
+                  换乘后 veh_index 变化 → 下一程重新出现（每趟车都记） */}
+              {crowdShowForm ? (
+                <div className="card" style={{ padding: "12px 14px" }}>
+                  <p className="t-label" style={{ marginBottom: 8 }}>
+                    这趟车挤吗？
+                    {rideVehIdx != null && rideVehIdx > 0 ? `（第 ${rideVehIdx + 1} 程）` : ""}
+                  </p>
+                  <div className="chip-row">
+                    {CROWD_LEVELS.map((c) => (
+                      <button
+                        key={c.value}
+                        className={`chip${crowdDraft === c.value ? " chip--on" : ""}`}
+                        aria-pressed={crowdDraft === c.value}
+                        onClick={() =>
+                          setCrowdDraft(crowdDraft === c.value ? null : c.value)
+                        }
+                      >
+                        {c.label} · {c.hint}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    className="btn btn--tonal btn--block"
+                    style={{ marginTop: 10 }}
+                    disabled={crowdDraft == null || crowdBusy}
+                    onClick={() => crowdDraft != null && submitCrowd(crowdDraft)}
+                  >
+                    {crowdBusy ? "记录中…" : "确认"}
+                  </button>
+                </div>
+              ) : (
+                <p className="t-label t-muted" style={{ margin: 0 }}>
+                  已记录：{CROWD_LEVELS.find((c) => c.value === crowdRecorded?.level)?.label ?? "—"}
+                  <button
+                    className="btn--undo"
+                    style={{ marginLeft: 8 }}
+                    onClick={() => {
+                      setCrowdDraft(crowdRecorded?.level ?? null);
+                      setCrowdEdit(true);
+                    }}
+                  >
+                    修改
+                  </button>
+                </p>
+              )}
 
               {rideInfo.stage === "plain" && (
                 <>

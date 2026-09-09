@@ -54,7 +54,19 @@ export async function GET() {
       JOIN places pf ON p.from_place = pf.id
       JOIN places pt ON p.to_place = pt.id
       WHERE p.is_active
-      ORDER BY samples DESC, last_used DESC NULLS LAST, p.id
+      -- v0.18.0：方案显示顺序统一——① 轻轨方案在前 ② 巴士按主线路自然排序
+      ORDER BY CASE WHEN (SELECT l.leg_kind FROM plan_legs l
+                           WHERE l.plan_id = p.id AND l.leg_kind IN ('bus','lrt')
+                           ORDER BY l.seq LIMIT 1) = 'lrt' THEN 0 ELSE 1 END,
+               COALESCE(substring(COALESCE((SELECT l.route_options::jsonb ->> 0 FROM plan_legs l
+                                             WHERE l.plan_id = p.id AND l.leg_kind IN ('bus','lrt')
+                                               AND l.route_options IS NOT NULL
+                                             ORDER BY l.seq LIMIT 1), '') from '^\\d+')::int, 2147483647),
+               COALESCE((SELECT l.route_options::jsonb ->> 0 FROM plan_legs l
+                          WHERE l.plan_id = p.id AND l.leg_kind IN ('bus','lrt')
+                            AND l.route_options IS NOT NULL
+                          ORDER BY l.seq LIMIT 1), ''),
+               p.id
     `);
     // v0.17.0：SQL 别名是 snake_case（blink_style）→ 前端统一用 blinkStyle
     const plans = (rows as (Record<string, unknown> & { blink_style?: string | null })[]).map(

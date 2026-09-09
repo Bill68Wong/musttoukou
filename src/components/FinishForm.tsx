@@ -17,17 +17,12 @@ interface SessionData {
   };
 }
 
-const CROWD_OPTIONS = [
-  { value: 0, label: "空", desc: "随便坐" },
-  { value: 1, label: "正常", desc: "有座或站稳" },
-  { value: 2, label: "挤", desc: "贴着站" },
-  { value: 3, label: "爆满", desc: "挤不上/前胸贴后背" },
-];
+// v0.18.0：拥挤度移入行程内（TimerWizard 乘车页，按程记录五档）→ 结束页不再选择
+// （旧 CROWD_OPTIONS 与 PATCH crowd_level 逻辑一并移除；旧列保留作历史参考）
 
 export default function FinishForm({ sessionId }: { sessionId: number }) {
   const router = useRouter();
   const [data, setData] = useState<SessionData | null>(null);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetch(`/api/timer/${sessionId}`, { cache: "no-store" })
@@ -48,22 +43,6 @@ export default function FinishForm({ sessionId }: { sessionId: number }) {
   // pg NUMERIC 列返回字符串 → 统一转数字；0（不足 30 秒舍入为 0.0）视为未通关不展示
   const borderMin = s.border_minutes != null ? Number(s.border_minutes) : null;
   const hasBorder = borderMin !== null && borderMin > 0;
-
-  async function submit(crowdLevel: number) {
-    setSaving(true);
-    try {
-      await fetch(`/api/timer/${sessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ crowd_level: crowdLevel }),
-      });
-    } finally {
-      setSaving(false);
-      router.push("/");
-    }
-  }
-
-  const done = s.crowd_level !== null;
 
   return (
     <main className="page">
@@ -121,35 +100,13 @@ export default function FinishForm({ sessionId }: { sessionId: number }) {
         )}
       </div>
 
-      {done ? (
-        <>
-          <p className="t-body t-ok" style={{ marginBottom: 16, textAlign: "center" }}>
-            ✓ 已提交（拥挤度：{CROWD_OPTIONS.find((c) => c.value === s.crowd_level)?.label}）
-          </p>
-          <button className="btn btn--primary btn--block" onClick={() => router.push("/")}>
-            回到首页
-          </button>
-        </>
-      ) : (
-        <>
-          <p className="t-body" style={{ marginBottom: 12 }}>
-            这趟车挤吗？
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {CROWD_OPTIONS.map((c) => (
-              <button
-                key={c.value}
-                className="press-card"
-                onClick={() => submit(c.value)}
-                disabled={saving}
-              >
-                <span className="h-title">{c.label}</span>
-                <span className="t-label t-muted">{c.desc}</span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+      {/* v0.18.0：拥挤度改为「上车后在行程内按程记录」（见 TimerWizard），结束页不再询问 */}
+      <p className="t-body t-ok" style={{ marginBottom: 16, textAlign: "center" }}>
+        ✓ 行程已完结
+      </p>
+      <button className="btn btn--primary btn--block" onClick={() => router.push("/")}>
+        回到首页
+      </button>
     </main>
   );
 }

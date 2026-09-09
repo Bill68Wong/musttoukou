@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS timer_sessions (
     travel_date   DATE NOT NULL,
     weekday       SMALLINT NOT NULL,       -- 0=周日…6=周六
     time_bucket   TEXT,                    -- 时段 'am_peak'/'pm_peak'/'day'/'night'
-    crowd_level   SMALLINT,                -- 0空/1正常/2拥挤/3爆满
+    crowd_level   SMALLINT,                -- 【v0.18.0 起废弃】旧会话级拥挤度 0空/1正常/2拥挤/3爆满；新数据写 ride_crowd（按程）
     missed_count  SMALLINT NOT NULL DEFAULT 0,  -- 没挤上车次数
     vehicle_plate TEXT,                    -- 打点时自动抓取的车辆牌号（失败留空）
     vehicle_code  TEXT,                    -- 车号
@@ -133,6 +133,21 @@ CREATE TABLE IF NOT EXISTS timer_sessions (
     deleted_at    TIMESTAMPTZ              -- 软删除
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_route_date ON timer_sessions (route_code, travel_date);
+
+-- 2.9b 每程拥挤度（v0.18.0：拥挤度改为「上车后在行程内记录」，换乘每趟车都记一次）
+--      语义：level = 0空(随便坐)/1正常(有座)/2饱和(没座位但站稳)/3挤(贴着站)/4爆满(前胸贴后背)
+--      veh_index = 载具段序号（0-based，与 buildSteps 的 Step.vehIndex 同构）
+--      route_code 冗余存当时的线路，便于统计「哪条线最挤」
+CREATE TABLE IF NOT EXISTS ride_crowd (
+    id           BIGSERIAL PRIMARY KEY,
+    session_id   INT NOT NULL REFERENCES timer_sessions(id) ON DELETE CASCADE,
+    veh_index    INT NOT NULL DEFAULT 0,
+    level        SMALLINT NOT NULL,
+    route_code   TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (session_id, veh_index)
+);
+CREATE INDEX IF NOT EXISTS idx_ride_crowd_route ON ride_crowd (route_code);
 -- v0.4.0 学校分区（B/C|N/O|R 三组座）：随 depart/arrive 打点落到会话，做步行分组上下文
 ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS from_zone TEXT;  -- 离校时从哪个座出发
 ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS to_zone TEXT;    -- 到校后到哪个座

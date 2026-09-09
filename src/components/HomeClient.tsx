@@ -199,6 +199,13 @@ export default function HomeClient({
           📊 通勤统计
         </button>
       </div>
+      <button
+        className="btn btn--outline btn--sm"
+        onClick={() => router.push("/free")}
+        style={{ width: "100%", minHeight: 44, fontWeight: 500, marginTop: 8 }}
+      >
+        ⏱ 自由记站（实测站间时长）
+      </button>
 
       <p
         className="t-label t-muted t-center"

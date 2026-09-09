@@ -1,0 +1,69 @@
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { getPool } from "@/lib/db";
+import { freeStopsOf, grabFreeVehicle } from "@/lib/free-ride";
+
+export const preferredRegion = "sin1";
+
+/**
+ * POST /api/free/start { route, dir, boardStation }
+ * 创建自由记站会话 = 上车（board）打点一步完成：
+ *   写 free_rides 行（含方向/上车站/开始时刻）+ board 事件 + 抓实际车牌（巴士；轻轨无）。
+ * is_test 取自 cookie mtk_include_test=1（与全站一致）。
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const body = (await req.json()) as {
+      route?: string;
+      dir?: string;
+      boardStation?: string;
+    };
+    const route = body.route?.trim();
+    const dir = body.dir?.trim() || "0";
+    const boardStation = body.boardStation?.trim() || null;
+    if (!route || !boardStation) {
+      return NextResponse.json({ ok: false, error: "缺少 route / boardStation" }, { status: 400 });
+    }
+    const store = await cookies();
+    const isTest = store.get("mtk_include_test")?.value === "1";
+
+    const pool = getPool();
+    const now = new Date();
+    const ins = await pool.query(
+      `INSERT INTO free_rides (route_code, dsat_dir, board_station, started_at, is_test)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [route, dir, boardStation, now.toISOString(), isTest],
+    );
+    const id = (ins.rows[0] as { id: number }).id;
+    await pool.query(
+      `INSERT INTO free_ride_events (free_ride_id, seq, event_type, station_code, recorded_at)
+       VALUES ($1, 1, 'board', $2, $3)`,
+      [id, boardStation, now.toISOString()],
+    );
+
+    // 抓实际车牌（异步静默，失败留空；轻轨直接跳过）
+    const veh = await grabFreeVehicle(route, dir, boardStation);
+    if (veh?.plate || veh?.code) {
+      await pool.query(
+        `UPDATE free_rides SET vehicle_plate = $2, vehicle_code = $3 WHERE id = $1`,
+        [id, veh.plate, veh.code],
+      );
+    }
+
+    // 上车站是否在该方向站序中（客户端已保证；复核供调试）
+    const stops = await freeStopsOf(route, dir);
+    const boardIdx = stops.findIndex((s) => s.code === boardStation);
+    return NextResponse.json({
+      ok: true,
+      id,
+      isTest,
+      vehiclePlate: veh?.plate ?? null,
+      vehicleCode: veh?.code ?? null,
+      boardIdx,
+      stopCount: stops.length,
+    });
+  } catch (err) {
+    console.error("[free/start] 失败：", (err as Error).message);
+    return NextResponse.json({ ok: false, error: "启动失败" }, { status: 500 });
+  }
+}

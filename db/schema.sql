@@ -152,6 +152,40 @@ CREATE TABLE IF NOT EXISTS ride_crowd (
 --       需要「具体哪班车」时 join bus_snapshots（按 route_code + 时间窗/stage 取 bus_plate）
 --       或 join timer_events 取 board/alight 时刻；轻轨无车辆数据。
 CREATE INDEX IF NOT EXISTS idx_ride_crowd_route ON ride_crowd (route_code);
+
+-- 2.11 自由记站（v0.19.0：独立数据采集渠道，与乘车计时完全隔离、互不影响）
+--      用途：平时有空坐车时采集「任意线路任意两站间的实测行车时长」，供自动选线建模
+--      （巴士站间时长 ≈ N 站 ↔ X 分钟映射）；单次只记一条线、不换乘。
+--      与 timer_sessions/events/ride_crowd 无任何关联，不入 stats/records。
+CREATE TABLE IF NOT EXISTS free_rides (
+    id             BIGSERIAL PRIMARY KEY,
+    route_code     TEXT NOT NULL,          -- 实乘线路（如 '25B' / 'LRT-氹仔线'）
+    dsat_dir       TEXT NOT NULL DEFAULT '0',
+    board_station  TEXT,                   -- 上车站（events board 冗余）
+    alight_station TEXT,                   -- 下车站（alight 事件带）
+    vehicle_plate  TEXT,                   -- 上车时抓取的实际车辆牌号（轻轨/失败留空）
+    vehicle_code   TEXT,                   -- 车号
+    crowd_level    SMALLINT,               -- v0.19.0 五档（0空..4爆满，与 ride_crowd 同口径）
+    started_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ended_at       TIMESTAMPTZ,
+    total_ms       INT,                    -- 全程毫秒（下车结算）
+    is_test        BOOLEAN NOT NULL DEFAULT FALSE,
+    note           TEXT,                   -- 备注（可选）
+    deleted_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_free_rides_route ON free_rides (route_code, started_at);
+
+CREATE TABLE IF NOT EXISTS free_ride_events (
+    id            BIGSERIAL PRIMARY KEY,
+    free_ride_id  BIGINT NOT NULL REFERENCES free_rides(id) ON DELETE CASCADE,
+    seq           INT NOT NULL,
+    -- event_type：board（上车）/ stop_arrive（到站·记时刻）/ stop_pass（甩站·车未停）/
+    --            stop_skip（忘记·已过站未记时，永不计时）/ alight（下车·结束）
+    event_type    TEXT NOT NULL,
+    station_code  TEXT,                    -- board=上车站；stop_*=该站；alight=下车站
+    recorded_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (free_ride_id, seq)
+);
 -- v0.4.0 学校分区（B/C|N/O|R 三组座）：随 depart/arrive 打点落到会话，做步行分组上下文
 ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS from_zone TEXT;  -- 离校时从哪个座出发
 ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS to_zone TEXT;    -- 到校后到哪个座

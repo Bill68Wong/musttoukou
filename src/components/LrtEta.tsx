@@ -50,6 +50,29 @@ interface LrtEtaData {
   serverNow: string;
 }
 
+/**
+ * v0.18.4：轻轨到站留白——真实站台灯在列车进站后不会立刻显示下一班，会留白片刻；
+ * 且轻轨实际到站可能比时刻表延迟，立刻切「下一班」容易误导。
+ * 规则：某班时刻表到点后的 45s 内不显示任何班次（留白静默），之后才显示下一班。
+ */
+const ARRIVAL_GAP_MS = 45_000;
+
+/** 选取要显示的下一班；「上一班刚过点 ≤45s」→ 返回 null（留白期） */
+function pickNext(dep: LrtDeparture[], nowMs: number): LrtDeparture | null {
+  if (!dep.length) return null;
+  const firstGone = nowMs - dep[0].depMs;
+  if (firstGone <= 0) return dep[0]; // 第一班还没到点
+  if (firstGone < ARRIVAL_GAP_MS) return null; // 刚过点 → 留白
+  return dep.find((d) => d.depMs - nowMs > 0) ?? null;
+}
+
+/** 是否处于「班次刚过点 ≤45s」的留白期（渲染静默用） */
+function arrivalGapActive(dep: LrtDeparture[], nowMs: number): boolean {
+  if (!dep.length) return false;
+  const firstGone = nowMs - dep[0].depMs;
+  return firstGone >= 0 && firstGone < ARRIVAL_GAP_MS;
+}
+
 /** 澳门自然日 ymd（GMT+8，本地纯算） */
 function macauYmd(ms: number): string {
   const d = new Date(ms + 8 * 3600 * 1000);
@@ -146,9 +169,8 @@ export default function LrtEta({
         }
         return;
       }
-      const firstLeft = dep[0].depMs - nowMs;
-      const nxtDep =
-        firstLeft > 0 ? dep[0] : dep[1] && dep[1].depMs - nowMs > 0 ? dep[1] : null;
+      // v0.18.4：上一班到点后 45s 留白（pickNext 返回 null → 上报 null，不写快照）
+      const nxtDep = pickNext(dep, nowMs);
       if (!nxtDep) {
         if (lastReportedRemain.current !== null) {
           lastReportedRemain.current = null;
@@ -190,14 +212,9 @@ export default function LrtEta({
 
   // —— 渲染 ——
   const nowMs = data ? Date.now() + serverOffsetMs.current : 0;
-  const nxtDep = (() => {
-    if (!data || data.departures.length === 0) return null;
-    const dep = data.departures;
-    const remainOf = (ms: number) => ms - nowMs;
-    if (remainOf(dep[0].depMs) > 0) return dep[0];
-    if (dep[1] && remainOf(dep[1].depMs) > 0) return dep[1];
-    return null;
-  })();
+  // v0.18.4：班次选择统一走 pickNext（到点后 45s 留白，不立刻切下一班）
+  const nxtDep = data ? pickNext(data.departures, nowMs) : null;
+  const gapSilent = !!data && data.state === "running" && arrivalGapActive(data.departures, nowMs);
   const sndDep = (() => {
     if (!data || !nxtDep) return null;
     const i = data.departures.indexOf(nxtDep);
@@ -257,7 +274,7 @@ export default function LrtEta({
         <p className="t-body t-muted" style={{ lineHeight: 1.7 }}>
           輕軌時刻暫不可用 · {data.error}
         </p>
-      ) : data.state !== "running" || !nxtDep ? (
+      ) : data.state !== "running" ? (
         <p className="t-body t-muted" style={{ lineHeight: 1.7, textAlign: "center", marginTop: 4 }}>
           {data.state === "before_first" && data.firstClock
             ? `首班 ${data.firstClock} 開出${data.directionName ? ` · 往${data.directionName}` : ""}`
@@ -268,6 +285,14 @@ export default function LrtEta({
                 : data.state === "after_last"
                   ? "今日已收車"
                   : "該方向暫無時刻數據"}
+        </p>
+      ) : gapSilent ? (
+        /* v0.18.4：列车到站后 45s 留白——什么都不显示（同真实站台灯），
+           占位空档保持卡片高度稳定，避免来回跳动 */
+        <div style={{ height: 72 }} aria-hidden="true" />
+      ) : !nxtDep ? (
+        <p className="t-body t-muted" style={{ lineHeight: 1.7, textAlign: "center", marginTop: 4 }}>
+          該方向暫無時刻數據
         </p>
       ) : (
         <div style={{ marginTop: 2 }}>

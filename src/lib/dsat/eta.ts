@@ -169,22 +169,6 @@ export async function queryEta(
         ? await deriveRouteDir(route, station, dest, dir)
         : dir;
 
-      // 站序 + 站名（该方向）；v0.4.0 起巴士站名带站号前缀（"T358 偉龍/科大醫院"），轻轨不带
-      const stopsRes = await pool.query(
-        `SELECT rs.seq, rs.station_code AS code,
-                (CASE WHEN st.kind = 'bus' THEN rs.station_code || ' ' || st.name_tc ELSE st.name_tc END) AS name
-         FROM route_stations rs
-         JOIN routes r ON rs.route_id = r.id
-         JOIN stations st ON rs.station_code = st.code
-         WHERE r.code = $1 AND r.kind = 'bus' AND rs.dsat_dir = $2
-         ORDER BY rs.seq`,
-        [route, queryDir],
-      );
-      const stops = stopsRes.rows as { seq: number; code: string; name: string }[];
-      if (stops.length === 0) {
-        return { route, ok: false, error: `线路 ${route} 未同步站序（dir=${queryDir}）` };
-      }
-
       // 循环线判定：该线路在 DB 只有 dir=0 一套站序（双方向线会有 dir=0/1 两套）
       const dirsRes = await pool.query(
         `SELECT DISTINCT rs.dsat_dir FROM route_stations rs
@@ -193,13 +177,46 @@ export async function queryEta(
       );
       const isLoop = dirsRes.rows.length <= 1;
 
-      const userIdx = findStopIdx(stops, station);
+      // 站序 + 站名（该方向）；v0.4.0 起巴士站名带站号前缀（"T358 偉龍/科大醫院"），轻轨不带
+      const loadStops = async (d: string) => {
+        const res = await pool.query(
+          `SELECT rs.seq, rs.station_code AS code,
+                  (CASE WHEN st.kind = 'bus' THEN rs.station_code || ' ' || st.name_tc ELSE st.name_tc END) AS name
+           FROM route_stations rs
+           JOIN routes r ON rs.route_id = r.id
+           JOIN stations st ON rs.station_code = st.code
+           WHERE r.code = $1 AND r.kind = 'bus' AND rs.dsat_dir = $2
+           ORDER BY rs.seq`,
+          [route, d],
+        );
+        return res.rows as { seq: number; code: string; name: string }[];
+      };
+
+      // v0.18.4：同台多线候选的方向未必与「dest 推导/会话方向」一致——典型 26A 仅在
+      // dir1（北行 C669/2→M95/3）停 C653，而 dir0（南行）不含；若 dest 不属于该线
+      // （如 C653 合并卡的 dest=T400 是 50 的终点）方向推导会偏 → 所选方向站序不含
+      // 用户站时，换另一方向兜底（仅双方向线），避免「站 C653 不在 26A 的站序中」误报
+      let effDir = queryDir;
+      let stops = await loadStops(queryDir);
+      let userIdx = findStopIdx(stops, station);
+      if (userIdx < 0 && !isLoop) {
+        const alt = queryDir === "0" ? "1" : "0";
+        const altStops = await loadStops(alt);
+        if (altStops.length > 0 && findStopIdx(altStops, station) >= 0) {
+          effDir = alt;
+          stops = altStops;
+          userIdx = findStopIdx(stops, station);
+        }
+      }
+      if (stops.length === 0) {
+        return { route, ok: false, error: `线路 ${route} 未同步站序（dir=${effDir}）` };
+      }
       if (userIdx < 0) {
         return { route, ok: false, error: `站 ${station} 不在 ${route} 的站序中` };
       }
 
       // DSAT 实时车辆
-      const res = await getBusPositions(route, queryDir, "poll");
+      const res = await getBusPositions(route, effDir, "poll");
       if (!res.ok || !res.data?.routeInfo) {
         return { route, ok: false, error: res.error ?? "DSAT 无数据" };
       }
@@ -303,7 +320,7 @@ export async function queryEta(
       return {
         route,
         ok: true,
-        dir: queryDir,
+        dir: effDir,
         isLoop,
         nearest,
         second,

@@ -20,6 +20,26 @@ export interface RecordRow {
 
 /** v0.18.0：拥挤度五档（0空/1正常/2饱和/3挤/4爆满） */
 const CROWD_LABELS = ["空", "正常", "饱和", "挤", "爆满"];
+const CROWD_HINTS = ["随便坐", "有座", "没座位但站稳", "贴着站", "前胸贴后背"];
+
+/**
+ * v0.18.2：拥挤度展示——旧写法「拥挤 正常」前缀与档名矛盾（会出现「拥挤 空」），
+ * 改为「拥挤度：正常」；多程按「/」分隔（如「拥挤度：正常/挤」）
+ */
+const crowdText = (levels: string | null): string | null => {
+  if (!levels) return null;
+  const parts = levels
+    .split("/")
+    .filter((x) => x !== "")
+    .map((lv) => CROWD_LABELS[Number(lv)] ?? "?");
+  return parts.length ? `拥挤度：${parts.join("/")}` : null;
+};
+const crowdTitle = (levels: string | null): string =>
+  (levels ?? "")
+    .split("/")
+    .filter((x) => x !== "")
+    .map((lv, i) => `第${i + 1}程 ${CROWD_LABELS[Number(lv)] ?? "?"}（${CROWD_HINTS[Number(lv)] ?? "—"}）`)
+    .join(" / ");
 
 // 固定模板格式化（MM/DD HH:mm），避免 toLocaleString 在 iOS/安卓输出
 // 「2026年9月3日 上午12:35」等长格式把行挤爆/截断
@@ -141,13 +161,12 @@ export default function RecordsClient({
                       {r.missed_count > 0 && (
                         <span className="t-error"> · 没挤上 ×{r.missed_count}</span>
                       )}
-                      {r.crowd_levels &&
-                        ` · 拥挤 ${
-                          r.crowd_levels
-                            .split("/")
-                            .map((lv) => CROWD_LABELS[Number(lv)] ?? "?")
-                            .join("/")
-                        }`}
+                      {crowdText(r.crowd_levels) && (
+                        <span title={crowdTitle(r.crowd_levels)}>
+                          {" · "}
+                          {crowdText(r.crowd_levels)}
+                        </span>
+                      )}
                     </>
                   ) : (
                     <span className="t-accent">进行中…</span>

@@ -1,16 +1,20 @@
 import { cookies } from "next/headers";
 import { getPool } from "@/lib/db";
-import StatsClient, { GroupStat, PlanStat, Summary } from "@/components/StatsClient";
+import { sortRouteOptions } from "@/lib/timer-flow";
+import { HOME_SLUG, PAIR_ORDER, PLACE_SHORT, dirLabel } from "@/lib/home-plans-shared";
+import StatsClient, { DirStat, GroupStat, PlanStat, Summary } from "@/components/StatsClient";
 
 export const dynamic = "force-dynamic";
 
-// v0.13.0：border（口岸）按目的地 slug 拆组——横琴 与 關閘（拱北）各自成组
-const GROUP_TITLES: { kind: string; title: string; slug?: string }[] = [
-  { kind: "school", title: "去学校" },
-  { kind: "dorm", title: "回宿舍" },
-  { kind: "border", slug: "hengqin", title: "去横琴口岸" },
-  { kind: "border", slug: "guanqin", title: "去關閘（拱北）" },
-];
+/**
+ * v0.18.2：分块口径改为「与首页一致」——宿舍 ⇄ 學校 / 橫琴口岸 / 關閘（拱北口岸）
+ * 每块内再分「去程 / 回程」两个小块（主人定稿：块内分两块、不分列）。
+ * 旧口径按「目的地 kind」分四组（去学校/回宿舍/去横琴/去關閘），会把不同起点混进同组。
+ */
+
+/** 横琴相关方案不按线路拆分（换乘方案、线路多样，合并一行更易读；主人定稿） */
+const isHengqin = (fromSlug: string, toSlug: string) =>
+  fromSlug === "hengqin" || toSlug === "hengqin";
 
 // v0.10.0：默认排除测试会话（is_test=true），「含测试」偏好存 cookie（mtk_include_test=1）
 async function includeTestPref(): Promise<boolean> {
@@ -33,9 +37,15 @@ export default async function StatsPage() {
     const pool = getPool();
 
     // 统计口径：非软删 且 非测试 且 已完成（total_minutes 非空）的会话才算 1 个样本
+    // v0.18.2：按「方案 + 实乘线路」拆分（同台多线不再合并统计）——横琴方案例外（route_code 置空合并）
     const planRes = await pool.query(`
       SELECT cp.id AS plan_id, cp.plan_key, cp.summary,
-             pt.kind AS to_kind, pt.slug AS to_slug,
+             pf.slug AS from_slug, pt.slug AS to_slug,
+             (CASE WHEN pf.slug = 'hengqin' OR pt.slug = 'hengqin'
+                   THEN NULL ELSE s.route_code END) AS route_code,
+             -- 副标题：剥掉线路前缀（「50路 」/「輕軌 」）与合并提示尾巴（「｜…到站後任選」），
+             -- 行首已有线路标签，避免重复
+             regexp_replace(regexp_replace(cp.summary, '^[^ ]+\\s+', ''), '｜.*$', '') AS route_summary,
              count(s.id) FILTER (WHERE s.total_minutes IS NOT NULL)::int AS n,
              round(avg(s.total_minutes) FILTER (WHERE s.total_minutes IS NOT NULL), 1)::float8 AS avg_min,
              min(s.total_minutes) FILTER (WHERE s.total_minutes IS NOT NULL)::float8 AS min_min,
@@ -47,7 +57,10 @@ export default async function StatsPage() {
       LEFT JOIN timer_sessions s ON s.plan_id = cp.id AND s.deleted_at IS NULL
         ${includeTest ? "" : "AND NOT COALESCE(s.is_test, false)"}
       WHERE cp.is_active
-      GROUP BY cp.id, cp.plan_key, cp.summary, pf.kind, pt.kind, pt.slug
+      GROUP BY cp.id, cp.plan_key, cp.summary, pf.slug, pt.slug,
+               (CASE WHEN pf.slug = 'hengqin' OR pt.slug = 'hengqin'
+                     THEN NULL ELSE s.route_code END),
+               regexp_replace(regexp_replace(cp.summary, '^[^ ]+\\s+', ''), '｜.*$', '')
       ORDER BY cp.id
     `);
     const plans = planRes.rows as PlanStat[];
@@ -68,19 +81,49 @@ export default async function StatsPage() {
       active: plans.length,
     };
 
-    // 按场景分组；组内按缺口优先（样本少在前），同缺口按方案 id 稳定排序
-    // group.kind 唯一化：border 组拼上 slug（dorm/school/border:hengqin/border:guanqin），
-    // 避免 StatsClient 里 section key 冲突
-    groups = GROUP_TITLES.map((g) => {
-      const groupPlans = plans
-        .filter((p) => p.to_kind === g.kind && (!g.slug || p.to_slug === g.slug))
-        .sort((a, b) => (a.n === b.n ? a.plan_id - b.plan_id : a.n - b.n));
+    // v0.18.2：按首页方向对分块，块内分「去程 / 回程」两小块；
+    // 小块内同方案的线路行按 sortRouteOptions（轻轨在前 + 巴士自然序）排列，
+    // 方案之间仍按「样本缺口优先」（样本少在前），同缺口按方案 id 稳定排序
+    const planOrder = (a: PlanStat, b: PlanStat) =>
+      a.n === b.n ? a.plan_id - b.plan_id : a.n - b.n;
+
+    groups = PAIR_ORDER.map((other) => {
+      const pairPlans = plans.filter(
+        (p) =>
+          (p.from_slug === HOME_SLUG && p.to_slug === other) ||
+          (p.from_slug === other && p.to_slug === HOME_SLUG),
+      );
+      const dirs: DirStat[] = (["out", "back"] as const)
+        .map((d) => {
+          const from = d === "out" ? HOME_SLUG : other;
+          const to = d === "out" ? other : HOME_SLUG;
+          const rows = pairPlans.filter((p) => p.from_slug === from && p.to_slug === to);
+          // 同一方案的多条线路行相邻且按线路排序
+          const byPlan = new Map<number, PlanStat[]>();
+          for (const r of rows) {
+            const arr = byPlan.get(r.plan_id) ?? [];
+            arr.push(r);
+            byPlan.set(r.plan_id, arr);
+          }
+          const sorted: PlanStat[] = [];
+          for (const [pid, arr] of [...byPlan.entries()].sort((a, b) =>
+            planOrder(a[1][0], b[1][0]),
+          )) {
+            const codes = arr.map((r) => r.route_code ?? "");
+            const order = sortRouteOptions(codes);
+            arr.sort((x, y) => order.indexOf(x.route_code ?? "") - order.indexOf(y.route_code ?? ""));
+            sorted.push(...arr);
+            void pid;
+          }
+          return { dir: d, title: dirLabel(from, to), plans: sorted };
+        })
+        .filter((d) => d.plans.length > 0);
       return {
-        kind: g.slug ? `${g.kind}:${g.slug}` : g.kind,
-        title: g.title,
-        plans: groupPlans,
+        kind: other,
+        title: `${PLACE_SHORT[HOME_SLUG]} ⇄ ${PLACE_SHORT[other]}`,
+        dirs,
       };
-    }).filter((g) => g.plans.length > 0);
+    }).filter((g) => g.dirs.length > 0);
   } catch (err) {
     dbError = (err as Error).message;
   }

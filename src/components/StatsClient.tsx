@@ -6,9 +6,12 @@ export interface PlanStat {
   plan_id: number;
   plan_key: string;
   summary: string;
-  to_kind: string;
-  /** v0.13.0：目的地 slug（border 组按它拆分横琴/關閘） */
+  from_slug: string;
   to_slug: string;
+  /** v0.18.2：实乘线路（同台多线按线路拆分统计）；横琴方案为 null（不拆） */
+  route_code: string | null;
+  /** v0.18.2：summary 剥掉线路前缀后的起讫描述（卡片副标题用） */
+  route_summary: string;
   n: number;
   avg_min: number | null;
   min_min: number | null;
@@ -16,10 +19,25 @@ export interface PlanStat {
   last_end: string | null;
 }
 
+/** v0.18.2：方向小块（去程 home→X / 回程 X→home） */
+export interface DirStat {
+  dir: "out" | "back";
+  title: string;
+  plans: PlanStat[];
+}
+
 export interface GroupStat {
   kind: string;
   title: string;
-  plans: PlanStat[];
+  dirs: DirStat[];
+}
+
+/** v0.18.2：线路展示名（轻轨「氹仔線」/ 巴士「26 路」） */
+function routeLabel(code: string | null): string {
+  if (!code) return "";
+  if (code.startsWith("LRT-"))
+    return code.replace(/^LRT-/, "").replace(/湾/g, "灣").replace(/横/g, "橫").replace(/线/g, "線");
+  return `${code} 路`;
 }
 
 export interface Summary {
@@ -100,16 +118,33 @@ export default function StatsClient({
       {groups.map((g, gi) => (
         <section key={g.kind} style={{ marginBottom: gi === groups.length - 1 ? 28 : 24, width: "100%" }}>
           <h2 className="group-title">{g.title}</h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {g.plans.map((p) => {
+          {g.dirs.map((d) => (
+            <div key={d.dir} style={{ marginBottom: 14 }}>
+              <p className="t-label t-muted" style={{ margin: "0 0 8px 2px", fontWeight: 600 }}>
+                {d.title}
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {d.plans.map((p) => {
               const done = p.n >= GOAL;
               const has = p.n > 0;
+              const label = routeLabel(p.route_code);
               return (
-                <article key={p.plan_id} className="card" style={{ padding: "13px 14px" }}>
+                <article
+                  key={`${p.plan_id}:${p.route_code ?? "all"}`}
+                  className="card"
+                  style={{ padding: "13px 14px" }}
+                >
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" }}>
                       <p className="t-body" style={{ lineHeight: 1.5 }}>
-                        {p.summary}
+                        {label ? (
+                          <>
+                            <strong style={{ fontWeight: 700 }}>{label}</strong>
+                            <span className="t-muted"> · {p.route_summary || p.summary}</span>
+                          </>
+                        ) : (
+                          p.summary
+                        )}
                       </p>
                       <p className="t-label t-muted" style={{ marginTop: 4, lineHeight: 1.5 }}>
                         {has
@@ -152,8 +187,10 @@ export default function StatsClient({
                   </div>
                 </article>
               );
-            })}
-          </div>
+                })}
+              </div>
+            </div>
+          ))}
         </section>
       ))}
 

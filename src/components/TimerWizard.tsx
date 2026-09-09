@@ -17,6 +17,7 @@ import LrtEta from "./LrtEta";
 import JourneyProgress from "./JourneyProgress";
 import { buildProgress, computeFilled } from "@/lib/trip-progress";
 import { findStopIdx, resolveRideDestIdx } from "@/lib/station-match";
+import { PLACE_SHORT } from "@/lib/home-plans-shared";
 
 interface SessionData {
   session: {
@@ -1349,7 +1350,16 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             <span>
               {new Date(e.recorded_at).toLocaleTimeString("zh-CN", { timeZone: "Asia/Macau" })}{" "}
               {EVENT_LABELS[e.event_type] ?? e.event_type}
-              {e.station_code ? `（${stationName(e.station_code)}）` : ""}
+              {/* v0.18.3：出发时刻显示出发地点（擎天匯/橫琴口岸…），等车时刻显示上车站——
+                  depart 事件 station_code 语义 = 步行目标上车站（实时报站用），展示层不再把它当「出发地点」 */}
+              {(() => {
+                const loc =
+                  e.event_type === "depart" && data.session.from_slug
+                    ? (PLACE_SHORT[data.session.from_slug] ?? null)
+                    : null;
+                const label = loc ?? (e.station_code ? stationName(e.station_code) : null);
+                return label ? `（${label}）` : "";
+              })()}
             </span>
             {undoableLatest && Number(undoableLatest.id) === Number(e.id) && (
               <button

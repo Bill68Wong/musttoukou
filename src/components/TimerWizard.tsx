@@ -72,6 +72,7 @@ const EVENT_LABELS: Record<string, string> = {
   board: "上车",
   station_arrive: "途经站",
   station_pass: "甩站未停",
+  station_skip: "已过站",
   alight: "下车",
   border_start: "开始通关",
   border_end: "通关完成",
@@ -699,7 +700,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
       const lastBoardSeq = [...data.events].reverse().find((e) => e.event_type === "board")?.seq ?? -1;
       const posEvts = data.events.filter(
         (e) =>
-          (e.event_type === "station_arrive" || e.event_type === "station_pass") &&
+          (e.event_type === "station_arrive" ||
+            e.event_type === "station_pass" ||
+            // v0.18.5：忘打卡 = 已过站（推进进度，无到站时刻）
+            e.event_type === "station_skip") &&
           (e.seq ?? 0) > lastBoardSeq,
       );
       const passed = posEvts.length;
@@ -1210,15 +1214,30 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                   >
                     ✓ 停靠 · 记一站
                   </button>
+                  {/* v0.18.5：轻轨必停不甩站 → 巴士才有甩站按钮 */}
+                  {!rideInfo.routeCode.startsWith("LRT-") && (
+                    <button
+                      className="btn btn--outline btn--block"
+                      onClick={() =>
+                        postEvent("station_pass", {
+                          station_code: rideInfo?.nextCode ?? step.stationCode ?? null,
+                        })
+                      }
+                    >
+                      ↷ 甩站没停 · 也记一站
+                    </button>
+                  )}
+                  {/* v0.18.5：忘记打卡——这站过了但没来得及点记站；推进到下一站但不留该站时刻 */}
                   <button
-                    className="btn btn--outline btn--block"
+                    className="btn btn--text t-muted"
+                    style={{ alignSelf: "center" }}
                     onClick={() =>
-                      postEvent("station_pass", {
+                      postEvent("station_skip", {
                         station_code: rideInfo?.nextCode ?? step.stationCode ?? null,
                       })
                     }
                   >
-                    ↷ 甩站没停 · 也记一站
+                    忘记打卡（已过站）
                   </button>
                 </>
               )}
@@ -1270,15 +1289,30 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                     >
                       ✓ 停靠 · 记一站（继续坐）
                     </button>
+                    {/* v0.18.5：轻轨必停不甩站 → 巴士才有甩站按钮 */}
+                    {!rideInfo.routeCode.startsWith("LRT-") && (
+                      <button
+                        className="btn btn--outline btn--block"
+                        onClick={() =>
+                          postEvent("station_pass", {
+                            station_code: rideInfo?.nextCode ?? null,
+                          })
+                        }
+                      >
+                        ↷ 甩站没停（继续坐）
+                      </button>
+                    )}
+                    {/* v0.18.5：忘记打卡（继续坐）——已过站未记时，推进但不留该站时刻 */}
                     <button
-                      className="btn btn--outline btn--block"
+                      className="btn btn--text t-muted"
+                      style={{ alignSelf: "center" }}
                       onClick={() =>
-                        postEvent("station_pass", {
+                        postEvent("station_skip", {
                           station_code: rideInfo?.nextCode ?? null,
                         })
                       }
                     >
-                      ↷ 甩站没停（继续坐）
+                      忘记打卡（已过站）
                     </button>
                   </div>
                 </div>
@@ -1347,8 +1381,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         {recentEvents.map((e) => (
           <div key={e.id} className="timeline-item">
             <span className="timeline-dot" />
-            <span>
-              {new Date(e.recorded_at).toLocaleTimeString("zh-CN", { timeZone: "Asia/Macau" })}{" "}
+            <span className={e.event_type === "station_skip" ? "t-muted" : undefined}>
+              {/* v0.18.5：忘打卡（已过站）不显示时间——该站无真实到站时刻，不误当计时 */}
+              {e.event_type !== "station_skip" &&
+                new Date(e.recorded_at).toLocaleTimeString("zh-CN", { timeZone: "Asia/Macau" })}{" "}
               {EVENT_LABELS[e.event_type] ?? e.event_type}
               {/* v0.18.3：出发时刻显示出发地点（擎天匯/橫琴口岸…），等车时刻显示上车站——
                   depart 事件 station_code 语义 = 步行目标上车站（实时报站用），展示层不再把它当「出发地点」 */}

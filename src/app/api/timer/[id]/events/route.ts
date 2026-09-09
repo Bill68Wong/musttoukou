@@ -13,6 +13,8 @@ const VALID_EVENTS: EventType[] = [
   "board",
   "station_arrive",
   "station_pass",
+  // v0.18.5：忘记打卡（已过站未记时）——推进乘车进度但无到站时刻，不计任何样本
+  "station_skip",
   "alight",
   "border_start",
   "border_end",

@@ -18,7 +18,12 @@ export type EventType =
   // v0.12.0：步行中途暂停/继续——暂停区间不计入步行计时与总时长。
   // 不入 steps（无独立步骤），currentStepIndex 天然忽略（不匹配任何步骤即不推进）。
   | "pause"
-  | "resume";
+  | "resume"
+  // v0.18.5：忘记打卡——用户经过该站但没及时点「记一站」时的补点。
+  // 语义 = 「该站已过、但无真实到站时刻」：计入乘车进度推进（同 station_arrive/pass），
+  // 但该站永远不进入任何时间/时长/车距样本（分析端排除 station_skip）。
+  // ⚠️ 与 station_pass（车没停靠、甩站）语义不同，勿混用。
+  | "station_skip";
 
 export interface PlanLegLite {
   seq: number;

@@ -145,8 +145,12 @@ CREATE TABLE IF NOT EXISTS ride_crowd (
     level        SMALLINT NOT NULL,
     route_code   TEXT,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    source       TEXT NOT NULL DEFAULT 'in_ride',  -- 'in_ride' 行程内记录 / 'migrated' 由旧会话级 crowd_level 迁移
     UNIQUE (session_id, veh_index)
 );
+-- 说明：车牌/上下车时刻不在此表冗余——session_id 已绑定整趟行程，
+--       需要「具体哪班车」时 join bus_snapshots（按 route_code + 时间窗/stage 取 bus_plate）
+--       或 join timer_events 取 board/alight 时刻；轻轨无车辆数据。
 CREATE INDEX IF NOT EXISTS idx_ride_crowd_route ON ride_crowd (route_code);
 -- v0.4.0 学校分区（B/C|N/O|R 三组座）：随 depart/arrive 打点落到会话，做步行分组上下文
 ALTER TABLE timer_sessions ADD COLUMN IF NOT EXISTS from_zone TEXT;  -- 离校时从哪个座出发

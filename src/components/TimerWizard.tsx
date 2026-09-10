@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   applyBoardSteps,
@@ -641,16 +641,12 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // v0.16.2：右上角标签随「当前段生效线路」联动（用户 chips 选择 > 会话已修正实乘线 > 段首选项），
   // 颜色取全量线路色表 routeColors（随选择切换线路色），无对应色回退步骤静态色
   // v0.20.9：各线路自己的上车台（合并卡：25AX→M9/3、51/51B→M9/4、59→M9/2）
-  const etaStationByRoute = useMemo(() => {
-    const map: Record<string, string> = {};
-    const rm = curVehLeg?.route_meta;
-    for (const r of etaRoutes ?? []) {
-      const board = rm?.[r]?.board?.[0];
-      if (board) map[r] = board;
-    }
-    return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curVehLeg, (etaRoutes ?? []).join(",")]);
+  // ⚠️ 普通对象即可（不可用 useMemo：此位置在提前 return 之后，会违反 hooks 规则）
+  const etaStationByRoute: Record<string, string> = {};
+  for (const r of etaRoutes ?? []) {
+    const board = curVehLeg?.route_meta?.[r]?.board?.[0];
+    if (board) etaStationByRoute[r] = board;
+  }
 
   const curRoute = effRoute;
   // v0.20.0（主人第 5 条）：同台多线/换乘段——**用户点了线路选择之后**右上角才出现线路标签；

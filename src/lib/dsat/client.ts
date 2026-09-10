@@ -134,7 +134,12 @@ export function getRouteData(
 
 /** 全部线路+公司清单 */
 export function getRouteAndCompanyList(): Promise<
-  DsatResult<{ routeName: string; company?: string }[]>
+  DsatResult<{
+    /** 公司列表（色名 Blue/Orange → 名称） */
+    companyList?: { color?: string; name?: string }[];
+    /** 全量线路（routeName=线路码；direction=2 为循环线标记；color=公司色名） */
+    routeList?: { routeName?: string; color?: string; direction?: string; routeChange?: string }[];
+  }>
 > {
   return dsatPost("/getRouteAndCompanyList.html", { lang: "zh_tw", device: "web" }, "sync");
 }

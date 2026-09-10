@@ -99,6 +99,7 @@ export default function FreeRideClient({
   // —— setup 状态 ——
   const [mode, setMode] = useState<"route" | "station">("route");
   const [routes, setRoutes] = useState<RouteOpt[] | null>(null);
+  const [routeKw, setRouteKw] = useState("");
   const [stations, setStations] = useState<StationOpt[] | null>(null);
   const [selRoute, setSelRoute] = useState<RouteOpt | null>(null); // 已选线路
   const [selDir, setSelDir] = useState<string | null>(null);
@@ -630,8 +631,27 @@ export default function FreeRideClient({
             <>
               {!selRoute ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {/* v0.21.0：全澳线路（~95 条）→ 搜索过滤 */}
+                  <input
+                    className="inp"
+                    value={routeKw}
+                    onChange={(e) => setRouteKw(e.target.value)}
+                    placeholder="搜索线路（如 10、MT1、N6、氹仔）"
+                    style={{ padding: "10px 12px", borderRadius: 10 }}
+                  />
                   {!routes && <p className="t-body t-muted">加载中…</p>}
-                  {(routes ?? []).map((r) => (
+                  {(routes ?? [])
+                    .filter((r) => {
+                      const k = routeKw.trim().toLowerCase();
+                      if (!k) return true;
+                      const label = r.code.startsWith("LRT-") ? freeLineLabel(r.code) : r.code;
+                      return (
+                        r.code.toLowerCase().includes(k) ||
+                        label.toLowerCase().includes(k) ||
+                        r.dirs.some((d) => d.label.toLowerCase().includes(k))
+                      );
+                    })
+                    .map((r) => (
                     <button
                       key={r.code}
                       className="card"
@@ -655,7 +675,7 @@ export default function FreeRideClient({
                         {r.dirs.length} 方向
                       </span>
                     </button>
-                  ))}
+                    ))}
                 </div>
               ) : !selDir ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

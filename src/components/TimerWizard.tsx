@@ -491,18 +491,21 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
   // v0.20.0（主人第 6 条）：顶部结构化行程标题——每个载具段一行（换乘继续写下一程）：
   // 图标 + 上车站（编号+全称）→ 下车站（编号+全称）+ 线路标签组（自然排序）
-  const planTitle = (metaLegs ?? data.legs)
-    .filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt")
-    .map((l) => {
-      const codes = sortRouteOptions(l.route_options ?? []);
-      const first = codes[0] ?? "";
-      return {
-        icon: first.startsWith("LRT-") ? "🚈" : "🚌",
-        board: l.from_station ? stationName(l.from_station) : "",
-        alight: l.to_station ? stationName(l.to_station) : "",
-        codes,
-      };
-    });
+  // ⚠️ 必须惰性求值：stationName 定义在下方（const 有 TDZ），此处若立即调用会抛
+  //    「Cannot access … before initialization」（v0.20.1 线上崩溃根因）
+  const planTitle = () =>
+    (metaLegs ?? data.legs)
+      .filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt")
+      .map((l) => {
+        const codes = sortRouteOptions(l.route_options ?? []);
+        const first = codes[0] ?? "";
+        return {
+          icon: first.startsWith("LRT-") ? "🚈" : "🚌",
+          board: l.from_station ? stationName(l.from_station) : "",
+          alight: l.to_station ? stationName(l.to_station) : "",
+          codes,
+        };
+      });
   const steps = buildSteps(metaLegs);
   // —— 去学校 51 系：上车点动态覆盖（用户选择 > 已打点事件恢复 > 默认站）——
   const effSteps = applyBoardSteps(steps, metaLegs, data.events, boardStation);
@@ -906,8 +909,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           {/* v0.20.0（主人第 6 条）：顶部改为与首页卡片同款的结构化模板——
               图标 + 上车站（编号+全称）+ 下车站（编号+全称）+ 线路标签；换乘继续写下一程 */}
           <span style={{ flex: 1, minWidth: 0 }}>
-            {planTitle.length > 0 ? (
-              planTitle.map((t, i) => (
+            {planTitle().length > 0 ? (
+              planTitle().map((t, i) => (
                 <span
                   key={i}
                   style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}

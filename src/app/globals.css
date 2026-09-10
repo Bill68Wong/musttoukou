@@ -540,6 +540,7 @@ button:disabled {
   /* 左右 padding 大于斜边宽度（8px）→ 文字始终完整落在实色区内，不被斜边切到 */
   padding: 4px 14px;
   white-space: nowrap;
+  font-size: 13px;
   /* 每块都是平行四边形（右倾）：左/右边界皆为「右上→左下」的斜边，
      相邻块负 margin 重叠 → 斜向留白缝隙（谷歌地图样式），不再是竖直缝 */
   clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
@@ -557,7 +558,7 @@ button:disabled {
   clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%);
 }
 .route-stack--sm .route-stack__seg {
-  font-size: 11px;
+  font-size: 12px;
   padding: 3px 12px;
   clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
   margin-right: -4px;
@@ -570,6 +571,21 @@ button:disabled {
   margin-right: 0;
   padding-right: 9px;
   clip-path: polygon(6px 0, 100% 0, 100% 100%, 0 100%);
+}
+.route-stack--sm .route-stack__seg:only-child {
+  clip-path: none;
+  margin-right: 0;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+/* v0.20.8：只有一个线路时不做任何斜切——保留完整圆角矩形（此前单块同时命中
+   :first-child/:last-child，被「尾块右侧竖直」规则削掉了左上角） */
+.route-stack__seg:only-child {
+  clip-path: none;
+  margin-right: 0;
+  padding: 4px 9px;
+  font-size: 13px;
 }
 
 /* 图标徽标（小圆圈图标） */

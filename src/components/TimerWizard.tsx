@@ -636,10 +636,13 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // v0.20.0（主人第 5 条）：同台多线/换乘段——**用户点了线路选择之后**右上角才出现线路标签；
   // 未选择前（segChoice 为空）不显示，避免「还没选就替用户决定」的误导。
   // v0.20.0：标签文字统一（巴士只写号「26」、轻轨「氹仔線」），与全站一致
+  // v0.20.3：session.route_code 仅在「已上车（board 打点修正为实乘线）」后才算用户的选择；
+  // 未上车前它是方案默认线，不能当作用户已选（否则右上标签会提前出现）
+  const boarded = (data.events ?? []).some((e) => e.event_type === "board");
   const chosenRoute =
     segChoice && step?.routeOptions?.includes(segChoice)
       ? segChoice
-      : data.session.route_code && step?.routeOptions?.includes(data.session.route_code)
+      : boarded && data.session.route_code && step?.routeOptions?.includes(data.session.route_code)
         ? data.session.route_code
         : null;
   const curLabel = chosenRoute
@@ -908,7 +911,15 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         >
           {/* v0.20.0（主人第 6 条）：顶部改为与首页卡片同款的结构化模板——
               图标 + 上车站（编号+全称）+ 下车站（编号+全称）+ 线路标签；换乘继续写下一程 */}
-          <span style={{ flex: 1, minWidth: 0 }}>
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+            }}
+          >
             {planTitle().length > 0 ? (
               planTitle().map((t, i) => (
                 <span

@@ -42,8 +42,10 @@ export default async function RoutesPage({
         >
           ‹ 首页
         </Link>
+        {/* v0.20.7（主人）：去程/回程的地点名不再写在页头——卡片右上角已显示目的地地点名，
+            页头保留中性标题 + 条数提示，避免重复 */}
         <h1 className="h-headline" style={{ marginTop: 6 }}>
-          {valid ? dirLabel(from, to) : "选择路线"}
+          选择路线
         </h1>
         <p className="t-label t-muted" style={{ marginTop: 4, lineHeight: 1.6 }}>
           {dbError

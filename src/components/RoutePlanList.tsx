@@ -3,7 +3,7 @@
 import RouteStack from "./RouteStack";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PLACE_SHORT, type PlanRow } from "@/lib/home-plans-shared";
+import type { PlanRow } from "@/lib/home-plans-shared";
 
 /** 测试模式 localStorage 键（首页开关与路线选择页共用） */
 export const TEST_MODE_KEY = "mtk_test_mode";
@@ -195,24 +195,7 @@ export default function RoutePlanList({
                   p.summary
                 )}
               </span>
-              {/* v0.20.6（主人）：右上角 = 下车站的**地点名**（澳科大 / 關閘 / 擎天匯 …），
-                  其他不显示；样本数标签文案改为「路线 N 份」 */}
-              <span
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-end",
-                  gap: 3,
-                  flexShrink: 0,
-                }}
-              >
-                <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>
-                  {PLACE_SHORT[p.to_slug] ?? p.to_name}
-                </span>
-                <span className="pc-count" style={{ fontSize: 12, fontWeight: 600 }}>
-                  {isStarting ? "" : `路线 ${p.samples} 份`}
-                </span>
-              </span>
+
             </span>
           </button>
         );

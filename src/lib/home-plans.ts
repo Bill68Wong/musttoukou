@@ -47,6 +47,17 @@ export async function queryPlans(opts: { from?: string; to?: string } = {}): Pro
                        l.from_station)
                WHERE l.plan_id = p.id AND l.leg_kind IN ('bus','lrt')
                ORDER BY l.seq LIMIT 1) AS board_name,
+             -- v0.20.9：各线的上车台（meta.board[0]；无 meta 时段级 from_station）
+             -- 用于「同主码不同子台」的合并卡（如關閘 M9/2、M9/3、M9/4 → 只显示 M9）
+             (SELECT COALESCE(
+                       jsonb_agg(DISTINCT COALESCE(
+                         l.route_meta -> ro.code -> 'board' ->> 0, l.from_station)),
+                       '[]'::jsonb)
+                FROM plan_legs l
+                CROSS JOIN LATERAL jsonb_array_elements_text(
+                  CASE WHEN l.route_options IS NULL OR l.route_options = '' THEN '[]'::jsonb
+                       ELSE l.route_options::jsonb END) AS ro(code)
+               WHERE l.plan_id = p.id AND l.leg_kind IN ('bus','lrt')) AS board_codes,
              -- 下车站：默认线路的 meta.to，无则段级 to_station
              (SELECT (CASE WHEN sa.kind = 'bus' THEN sa.code || ' ' || sa.name_tc ELSE sa.name_tc END)
                 FROM plan_legs l
@@ -121,7 +132,24 @@ export async function queryPlans(opts: { from?: string; to?: string } = {}): Pro
   );
   // v0.17.0：SQL 别名是 snake_case（blink_style）→ 前端统一用 blinkStyle
   return (res.rows as (PlanRow & { blink_style?: string | null })[]).map(
-    ({ blink_style, ...r }) => ({ ...r, blinkStyle: (blink_style ?? null) as PlanRow["blinkStyle"] }),
+    ({ blink_style, ...r }) => {
+      // v0.20.9：合并卡若各线上车台是「同一主码的不同子台」（M9/2、M9/3、M9/4），
+      // 上车站只显示主码（M9 關閘廣場）——子台在选线后按该线的 board 生效
+      let board_name = r.board_name ?? null;
+      const codes: string[] = Array.isArray(r.board_codes) ? r.board_codes.filter(Boolean) : [];
+      if (board_name && codes.length > 1) {
+        const mains = new Set(codes.map((c) => c.split("/")[0]));
+        if (mains.size === 1) {
+          const main = [...mains][0];
+          board_name = board_name.replace(/^[A-Za-z]+\d+\/\d+(\s+)/, `${main}$1`);
+        }
+      }
+      return {
+        ...r,
+        board_name,
+        blinkStyle: (blink_style ?? null) as PlanRow["blinkStyle"],
+      };
+    },
   );
 }
 

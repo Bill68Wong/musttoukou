@@ -76,6 +76,7 @@ export default function LiveEta({
   dest,
   refreshKey = 0,
   routeColors,
+  stationByRoute,
 }: {
   station: string;
   routes: string[];
@@ -83,6 +84,8 @@ export default function LiveEta({
   dest?: string | null;
   /** v0.20.1：全量线路色表（线路名标签取色） */
   routeColors?: Record<string, string>;
+  /** v0.20.9：各线路各自的查询站台（合并卡：51→M9/4、59→M9/2 …） */
+  stationByRoute?: Record<string, string>;
   /** 打点成功后父组件递增 → 立即刷新（系统时刻，不受 10s 手动下限约束） */
   refreshKey?: number;
 }) {
@@ -122,12 +125,20 @@ export default function LiveEta({
       setLoading(true);
       startCooldown(); // v0.12.1：任何刷新都启动/重置 10s 冷却（按钮进入读秒）
       try {
+        // v0.20.9：各线站台不同时把 smap 带上（route:station）
+        const smap = stationByRoute
+          ? routes
+              .filter((r) => stationByRoute![r] && stationByRoute![r] !== station)
+              .map((r) => `${r}:${stationByRoute![r]}`)
+              .join(",")
+          : "";
         const qs = new URLSearchParams({
           station,
           routes: routesKey,
           dir,
           ...(dest ? { dest } : {}),
           ...(force ? { force: "1" } : {}),
+          ...(smap ? { smap } : {}),
         });
         const res = await fetch(`/api/dsat/eta?${qs.toString()}`, { cache: "no-store" });
         if (!res.ok) return;

@@ -25,6 +25,8 @@ export interface PlanRow {
   blinkStyle?: "split" | "solid" | null;
   /** v0.20.5：每个载具段的线路码（按 seq；换乘多程 → 卡片上用「→」连接各组标签） */
   leg_routes?: string[][];
+  /** v0.20.9：各线的上车台（M9/2、M9/3…），用于同主码合并卡只显示主码 */
+  board_codes?: string[];
   /** v0.20.0（兼容）：首载具段线路码 */
   route_codes?: string[];
   /** v0.20.0：统一模板——上车站（编号+全称，来自首载具段/默认线路 meta） */

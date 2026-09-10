@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   applyBoardSteps,
@@ -624,7 +624,15 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           const hit = stepRoutes.filter((r) => {
             if (effRoute && r === effRoute) return true;
             const stops = data.routeStopsByRoute[r] ?? [];
-            return stops.some((s) => stationCodesEq(s.code, step?.stationCode));
+            // v0.20.9：合并卡各线上车台不同（M9/2、M9/3、M9/4）→ 只要该线自己
+            // 的任一台（meta.board）在站序中就保留，避免「同台多线只剩一条」
+            const rm = curVehLeg?.route_meta?.[r];
+            const cands = [
+              ...(rm?.board ?? []),
+              ...(curVehLeg?.board_candidates ?? []),
+              step?.stationCode,
+            ].filter(Boolean) as string[];
+            return cands.some((c) => stops.some((s) => stationCodesEq(s.code, c)));
           });
           return hit.length ? hit : stepRoutes;
         })()
@@ -632,6 +640,18 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
   // v0.16.2：右上角标签随「当前段生效线路」联动（用户 chips 选择 > 会话已修正实乘线 > 段首选项），
   // 颜色取全量线路色表 routeColors（随选择切换线路色），无对应色回退步骤静态色
+  // v0.20.9：各线路自己的上车台（合并卡：25AX→M9/3、51/51B→M9/4、59→M9/2）
+  const etaStationByRoute = useMemo(() => {
+    const map: Record<string, string> = {};
+    const rm = curVehLeg?.route_meta;
+    for (const r of etaRoutes ?? []) {
+      const board = rm?.[r]?.board?.[0];
+      if (board) map[r] = board;
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curVehLeg, (etaRoutes ?? []).join(",")]);
+
   const curRoute = effRoute;
   // v0.20.0（主人第 5 条）：同台多线/换乘段——**用户点了线路选择之后**右上角才出现线路标签；
   // 未选择前（segChoice 为空）不显示，避免「还没选就替用户决定」的误导。
@@ -1041,6 +1061,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                     dir={data.session.dsat_dir ?? "0"}
                     dest={step.destStationCode}
                     routeColors={data.routeColors ?? undefined}
+                    stationByRoute={etaStationByRoute}
                     refreshKey={etaTick}
                   />
                 ))}

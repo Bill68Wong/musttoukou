@@ -30,6 +30,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "routes 参数为空" }, { status: 400 });
   }
 
-  const data = await queryEta(station, routes, dir, dest, force);
+  // v0.20.9：可选「按线路指定站台」smap=26:M9/2,51:M9/4（合并卡各线站台不同）
+  const smapParam = sp.get("smap")?.trim() ?? "";
+  let stationByRoute: Record<string, string> | undefined;
+  if (smapParam) {
+    stationByRoute = {};
+    for (const pair of smapParam.split(",")) {
+      const [r, st] = pair.split(":");
+      if (r && st) stationByRoute[r.trim()] = st.trim();
+    }
+  }
+  const data = await queryEta(station, routes, dir, dest, force, stationByRoute);
   return NextResponse.json(data);
 }

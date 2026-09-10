@@ -145,6 +145,8 @@ export async function queryEta(
   dirIn: string,
   dest: string,
   force = false,
+  /** v0.20.9：合并卡各线上车台不同（M9/2、M9/3、M9/4）→ 按线路指定查询站台 */
+  stationByRoute?: Record<string, string>,
 ): Promise<EtaResponse> {
   const routes = routesIn
     .map((r) => r.trim())
@@ -163,10 +165,12 @@ export async function queryEta(
   /** 单线路查询（并发批内调用）：返回自身结果而非 push，保证 Promise.all 顺序 = routes 顺序 */
   const queryOne = async (route: string): Promise<EtaRouteResult> => {
     try {
+      // v0.20.9：该线路自己的上车台（合并卡各线站台不同），缺省用传入 station
+      const st = stationByRoute?.[route] || station;
       // 方向推导：dest 提供时按 from→to 找方向；推导不出回退 dir 参数
       // （循环线单方向 + from>to 时也回退，因循环线绕圈无所谓先后）
       const queryDir = dest
-        ? await deriveRouteDir(route, station, dest, dir)
+        ? await deriveRouteDir(route, st, dest, dir)
         : dir;
 
       // 循环线判定：该线路在 DB 只有 dir=0 一套站序（双方向线会有 dir=0/1 两套）
@@ -198,21 +202,21 @@ export async function queryEta(
       // 用户站时，换另一方向兜底（仅双方向线），避免「站 C653 不在 26A 的站序中」误报
       let effDir = queryDir;
       let stops = await loadStops(queryDir);
-      let userIdx = findStopIdx(stops, station);
+      let userIdx = findStopIdx(stops, st);
       if (userIdx < 0 && !isLoop) {
         const alt = queryDir === "0" ? "1" : "0";
         const altStops = await loadStops(alt);
-        if (altStops.length > 0 && findStopIdx(altStops, station) >= 0) {
+        if (altStops.length > 0 && findStopIdx(altStops, st) >= 0) {
           effDir = alt;
           stops = altStops;
-          userIdx = findStopIdx(stops, station);
+          userIdx = findStopIdx(stops, st);
         }
       }
       if (stops.length === 0) {
         return { route, ok: false, error: `线路 ${route} 未同步站序（dir=${effDir}）` };
       }
       if (userIdx < 0) {
-        return { route, ok: false, error: `站 ${station} 不在 ${route} 的站序中` };
+        return { route, ok: false, error: `站 ${st} 不在 ${route} 的站序中` };
       }
 
       // DSAT 实时车辆

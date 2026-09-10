@@ -1,6 +1,6 @@
 import Link from "next/link";
 import RoutePlanList from "@/components/RoutePlanList";
-import { dirLabel, queryPlans, type PlanRow } from "@/lib/home-plans";
+import { dirLabel, queryPlans, queryRouteColors, type PlanRow } from "@/lib/home-plans";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +21,12 @@ export default async function RoutesPage({
 
   let plans: PlanRow[] = [];
   let dbError: string | null = null;
+  // v0.20.0：全量线路色表（供卡片上的线路标签取主题色）
+  let routeColors: Record<string, string> = {};
   if (valid) {
     try {
       plans = await queryPlans({ from, to });
+      routeColors = await queryRouteColors();
     } catch (err) {
       dbError = (err as Error).message;
     }
@@ -51,7 +54,7 @@ export default async function RoutesPage({
         </p>
       </header>
 
-      {!dbError && valid && <RoutePlanList plans={plans} />}
+      {!dbError && valid && <RoutePlanList plans={plans} routeColors={routeColors} />}
     </main>
   );
 }

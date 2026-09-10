@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import RouteStack from "./RouteStack";
 
 export interface RecordRow {
   id: number;
@@ -14,6 +15,8 @@ export interface RecordRow {
   /** v0.18.0：每程拥挤度（ride_crowd.level 按 veh_index 以「/」连接，如 "1/3"） */
   crowd_levels: string | null;
   route_code: string | null;
+  /** v0.20.0：线路标签底色 */
+  route_color?: string | null;
   travel_date: string;
   is_test?: boolean;
 }
@@ -136,10 +139,14 @@ export default function RecordsClient({
                 <p className="t-body" style={{ lineHeight: 1.5 }}>
                   {fmtDateTime(r.started_at)}
                   {r.route_code && (
-                    <span className="t-muted" style={{ fontSize: 13 }}>
+                    <>
                       {" · "}
-                      {r.route_code} 路
-                    </span>
+                      <RouteStack
+                        codes={[r.route_code]}
+                        colorOf={() => r.route_color ?? undefined}
+                        size="sm"
+                      />
+                    </>
                   )}
                   {r.is_test && (
                     <span className="t-muted" style={{ fontSize: 12 }}> · 🧪 测试</span>

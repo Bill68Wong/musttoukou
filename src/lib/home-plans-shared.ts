@@ -23,6 +23,12 @@ export interface PlanRow {
    *  null/undefined = 不闪（单色静态色带）
    */
   blinkStyle?: "split" | "solid" | null;
+  /** v0.20.0：首载具段线路码列表（供统一卡片模板的线路标签组） */
+  route_codes?: string[];
+  /** v0.20.0：统一模板——上车站（编号+全称，来自首载具段/默认线路 meta） */
+  board_name?: string | null;
+  /** v0.20.0：统一模板——下车站（编号+全称） */
+  alight_name?: string | null;
 }
 
 export interface ActiveSession {
@@ -38,11 +44,11 @@ export const PLACE_SHORT: Record<string, string> = {
   home: "擎天匯",
   school: "澳科大",
   hengqin: "橫琴口岸",
-  guanqin: "關閘（拱北口岸）",
+  gate: "關閘（拱北口岸）",
 };
 
 /** 方向对顺序（首页分行顺序）：宿舍 ⇄ 學校 / 橫琴口岸 / 關閘（拱北口岸） */
-export const PAIR_ORDER = ["school", "hengqin", "guanqin"] as const;
+export const PAIR_ORDER = ["school", "hengqin", "gate"] as const;
 
 /** 「擎天匯 → 澳科大」方向标题 */
 export function dirLabel(from: string, to: string): string {

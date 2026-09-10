@@ -1,0 +1,36 @@
+"use client";
+/**
+ * 线路名标签组（v0.19.1）：主题色底 + 白字标签
+ * 多线路时按谷歌地图样式——色块之间用「右上到左下」的斜切留白分隔（不用「/」字符）。
+ */
+import { lineNameOf, sortRouteOptions } from "@/lib/route-label";
+
+export default function RouteStack({
+  codes,
+  colorOf,
+  size = "md",
+  className = "",
+}: {
+  codes: (string | null | undefined)[];
+  /** 线路码 → 主题色（缺省用主色） */
+  colorOf?: (code: string) => string | null | undefined;
+  size?: "sm" | "md";
+  className?: string;
+}) {
+  const list = sortRouteOptions((codes ?? []).filter(Boolean) as string[]);
+  if (!list.length) return null;
+  return (
+    <span className={`route-stack${size === "sm" ? " route-stack--sm" : ""} ${className}`}>
+      {list.map((c) => (
+        <span
+          key={c}
+          className="route-stack__seg"
+          style={{ background: colorOf?.(c) || "var(--primary)" }}
+          title={lineNameOf(c)}
+        >
+          {lineNameOf(c)}
+        </span>
+      ))}
+    </span>
+  );
+}

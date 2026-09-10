@@ -9,7 +9,7 @@
     { "id": "home", "name": "擎天匯 T8", "type": "dorm", "area": "路環石排灣" },
     { "id": "school", "name": "澳科大", "type": "school", "area": "氹仔偉龍馬路" },
     { "id": "hengqin", "name": "橫琴口岸（澳方口岸 / 橫琴）", "type": "border", "area": "橫琴" },
-    { "id": "guanqin", "name": "關閘（拱北口岸）", "type": "border", "area": "澳門半島" }
+    { "id": "gate", "name": "關閘（拱北口岸）", "type": "border", "area": "澳門半島" }
   ],
   "stations": [
     { "code": "C653", "kind": "bus", "name_tc": "金峰南岸/金譽峰", "walk": { "home": 3 } },
@@ -365,105 +365,105 @@
       ]
     },
     {
-      "id": "home-guanqin-59", "from": "home", "to": "guanqin", "summary": "59路 C653 金峰南岸/金譽峰→M9/2 關閘廣場",
+      "id": "home-gate-59", "from": "home", "to": "gate", "summary": "59路 C653 金峰南岸/金譽峰→M9/2 關閘廣場",
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
         { "seq": 2, "kind": "bus", "routes": ["59", "25"], "from": "station:C653", "to": "station:M9/2", "minutes": null, "note": "59 雙向線 dir1 由石排灣往關閘（DSAT 站序 C653 在 dir1 idx1）", "routeMeta": { "59": { "to": "M9/2" }, "25": { "to": "M1/13" } } },
-        { "seq": 3, "kind": "walk", "from": "station:M9/2", "to": "place:guanqin", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
+        { "seq": 3, "kind": "walk", "from": "station:M9/2", "to": "place:gate", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
         { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
       ]
     },
     {
-      "id": "home-guanqin-25", "from": "home", "to": "guanqin", "summary": "25路 C653 金峰南岸/金譽峰→M1/13 關閘總站",
+      "id": "home-gate-25", "from": "home", "to": "gate", "summary": "25路 C653 金峰南岸/金譽峰→M1/13 關閘總站",
       "is_active": false,
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘總站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
         { "seq": 2, "kind": "bus", "routes": ["25"], "from": "station:C653", "to": "station:M1/13", "minutes": null, "note": "25 停關閘總站 M1/13" },
-        { "seq": 3, "kind": "walk", "from": "station:M1/13", "to": "place:guanqin", "minutes": null, "note": "显式口岸步行段：關閘總站→通關大廳，計入行程；分鐘待實測" },
+        { "seq": 3, "kind": "walk", "from": "station:M1/13", "to": "place:gate", "minutes": null, "note": "显式口岸步行段：關閘總站→通關大廳，計入行程；分鐘待實測" },
         { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
       ]
     },
     {
-      "id": "home-guanqin-51", "from": "home", "to": "guanqin", "summary": "51路 C690/3 蝴蝶谷大馬路總站→M9/4 關閘廣場",
+      "id": "home-gate-51", "from": "home", "to": "gate", "summary": "51路 C690/3 蝴蝶谷大馬路總站→M9/4 關閘廣場",
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/3", "minutes": 7 },
         { "seq": 2, "kind": "bus", "routes": ["51", "51B", "25AX"], "from": "station:C690/3", "to": "station:M9/4", "minutes": null, "note": "51 循環線；蝴蝶谷 C690/3 發車往關閘方向（DSAT 僅一套站序）", "routeMeta": { "51": { "board": ["C690/3", "C689/2"], "to": "M9/4" }, "51B": { "board": ["C690/2", "C689/2"], "to": "M9/4" }, "25AX": { "board": ["C690/2", "C689/2"], "to": "M9/3" } } },
-        { "seq": 3, "kind": "walk", "from": "station:M9/4", "to": "place:guanqin", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
+        { "seq": 3, "kind": "walk", "from": "station:M9/4", "to": "place:gate", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
         { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
       ]
     },
     {
-      "id": "home-guanqin-51b", "from": "home", "to": "guanqin", "summary": "51B路 C690/2 蝴蝶谷大馬路總站→M9/4 關閘廣場",
+      "id": "home-gate-51b", "from": "home", "to": "gate", "summary": "51B路 C690/2 蝴蝶谷大馬路總站→M9/4 關閘廣場",
       "is_active": false,
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/2", "minutes": 7 },
         { "seq": 2, "kind": "bus", "routes": ["51B"], "from": "station:C690/2", "to": "station:M9/4", "minutes": null, "note": "51B 循環線；蝴蝶谷 C690/2 發車往關閘方向（DSAT 僅一套站序）" },
-        { "seq": 3, "kind": "walk", "from": "station:M9/4", "to": "place:guanqin", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
+        { "seq": 3, "kind": "walk", "from": "station:M9/4", "to": "place:gate", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
         { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
       ]
     },
     {
-      "id": "home-guanqin-25ax", "from": "home", "to": "guanqin", "summary": "25AX路 C690/2 蝴蝶谷大馬路總站→M9/3 關閘廣場",
+      "id": "home-gate-25ax", "from": "home", "to": "gate", "summary": "25AX路 C690/2 蝴蝶谷大馬路總站→M9/3 關閘廣場",
       "is_active": false,
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/2", "minutes": 7 },
         { "seq": 2, "kind": "bus", "routes": ["25AX"], "from": "station:C690/2", "to": "station:M9/3", "minutes": null, "note": "25AX 高峰快線；蝴蝶谷 C690/2 發車往關閘（DSAT 僅一套站序）" },
-        { "seq": 3, "kind": "walk", "from": "station:M9/3", "to": "place:guanqin", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
+        { "seq": 3, "kind": "walk", "from": "station:M9/3", "to": "place:gate", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
         { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
       ]
     },
     {
-      "id": "guanqin-home-59", "from": "guanqin", "to": "home", "summary": "59路 M9/2 關閘廣場→C652 安順大廈",
+      "id": "gate-home-59", "from": "gate", "to": "home", "summary": "59路 M9/2 關閘廣場→C652 安順大廈",
       "note": "v0.13.0 回程（關閘→宿舍）；首步即通關（與去程對稱建模），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:guanqin", "to": "station:M9/2", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
+        { "seq": 2, "kind": "walk", "from": "place:gate", "to": "station:M9/2", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
         { "seq": 3, "kind": "bus", "routes": ["59"], "from": "station:M9/2", "to": "station:C652", "minutes": null, "note": "59 雙向線 dir0 由關閘往石排灣" },
         { "seq": 4, "kind": "walk", "from": "station:C652", "to": "place:home", "minutes": 3 }
       ]
     },
     {
-      "id": "guanqin-home-25", "from": "guanqin", "to": "home", "summary": "25路 M1/13 關閘總站→C652 安順大廈",
+      "id": "gate-home-25", "from": "gate", "to": "home", "summary": "25路 M1/13 關閘總站→C652 安順大廈",
       "note": "v0.13.0 回程（關閘→宿舍）；首步即通關（與去程對稱建模），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:guanqin", "to": "station:M1/13", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘總站，計入行程；分鐘待實測" },
+        { "seq": 2, "kind": "walk", "from": "place:gate", "to": "station:M1/13", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘總站，計入行程；分鐘待實測" },
         { "seq": 3, "kind": "bus", "routes": ["25"], "from": "station:M1/13", "to": "station:C652", "minutes": null, "note": "25 由關閘總站往石排灣" },
         { "seq": 4, "kind": "walk", "from": "station:C652", "to": "place:home", "minutes": 3 }
       ]
     },
     {
-      "id": "guanqin-home-51", "from": "guanqin", "to": "home", "summary": "51路 M9/4 關閘廣場→C690/3 蝴蝶谷大馬路總站",
+      "id": "gate-home-51", "from": "gate", "to": "home", "summary": "51路 M9/4 關閘廣場→C690/3 蝴蝶谷大馬路總站",
       "note": "v0.13.0 回程（關閘→宿舍）；首步即通關（與去程對稱建模），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:guanqin", "to": "station:M9/4", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
+        { "seq": 2, "kind": "walk", "from": "place:gate", "to": "station:M9/4", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
         { "seq": 3, "kind": "bus", "routes": ["51", "51B"], "from": "station:M9/4", "to": "station:C690/3", "minutes": null, "note": "51 循環線繞回蝴蝶谷總站", "routeMeta": { "51": { "to": "C690/3", "alight": ["C688/2", "C690/3"] }, "51B": { "to": "C690/2", "alight": ["C688/2", "C690/2"] } } },
         { "seq": 4, "kind": "walk", "from": "station:C690/3", "to": "place:home", "minutes": 7 }
       ]
     },
     {
-      "id": "guanqin-home-51b", "from": "guanqin", "to": "home", "summary": "51B路 M9/4 關閘廣場→C690/2 蝴蝶谷大馬路總站",
+      "id": "gate-home-51b", "from": "gate", "to": "home", "summary": "51B路 M9/4 關閘廣場→C690/2 蝴蝶谷大馬路總站",
       "is_active": false,
       "note": "v0.13.0 回程（關閘→宿舍）；首步即通關（與去程對稱建模），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:guanqin", "to": "station:M9/4", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
+        { "seq": 2, "kind": "walk", "from": "place:gate", "to": "station:M9/4", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
         { "seq": 3, "kind": "bus", "routes": ["51B"], "from": "station:M9/4", "to": "station:C690/2", "minutes": null, "note": "51B 循環線繞回蝴蝶谷總站" },
         { "seq": 4, "kind": "walk", "from": "station:C690/2", "to": "place:home", "minutes": 7 }
       ]
     },
     {
-      "id": "guanqin-home-25ax", "from": "guanqin", "to": "home", "summary": "25AX路 M9/3 關閘廣場→C690/2 蝴蝶谷大馬路總站",
+      "id": "gate-home-25ax", "from": "gate", "to": "home", "summary": "25AX路 M9/3 關閘廣場→C690/2 蝴蝶谷大馬路總站",
       "note": "v0.13.0 回程（關閘→宿舍）；首步即通關（與去程對稱建模），通關獨立計時",
       "legs": [
         { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:guanqin", "to": "station:M9/3", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
+        { "seq": 2, "kind": "walk", "from": "place:gate", "to": "station:M9/3", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
         { "seq": 3, "kind": "bus", "routes": ["25AX"], "from": "station:M9/3", "to": "station:C690/2", "minutes": null, "note": "25AX 高峰快線繞回蝴蝶谷總站" },
         { "seq": 4, "kind": "walk", "from": "station:C690/2", "to": "place:home", "minutes": 7 }
       ]

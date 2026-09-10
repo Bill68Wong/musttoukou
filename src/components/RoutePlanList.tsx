@@ -1,5 +1,6 @@
 "use client";
 
+import RouteStack from "./RouteStack";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PlanRow } from "@/lib/home-plans-shared";
@@ -32,13 +33,11 @@ function shade(hex: string, factor: number): string {
   const f = (v: number) => Math.max(0, Math.min(255, Math.round(v * factor)));
   return `rgb(${f(c.r)},${f(c.g)},${f(c.b)})`;
 }
+/** v0.20.0（主人第 1 条）：主题色卡片上的文字统一白色（含浅色轻轨线），不再按亮度切黑字 */
 function inkOf(colors: (string | null)[]): { color: string; shadow: string } {
   const segs = colors.filter((c): c is string => !!c);
   if (segs.length === 0) return { color: "", shadow: "" };
-  const lightest = Math.max(...segs.map(luma));
-  return lightest > 155
-    ? { color: "#101418", shadow: "0 1px 1px rgba(255,255,255,.22)" }
-    : { color: "#ffffff", shadow: "0 1px 2px rgba(0,0,0,.32)" };
+  return { color: "#ffffff", shadow: "0 1px 2px rgba(0,0,0,.38)" };
 }
 function solidGradient(colors: (string | null)[]): string {
   const segs = colors.filter((c): c is string => !!c);
@@ -106,10 +105,13 @@ export function readTestMode(): boolean {
 export default function RoutePlanList({
   plans,
   onStart,
+  routeColors,
 }: {
   plans: PlanRow[];
   /** 可选：启动回调（缺省走 /api/timer POST + 跳转） */
   onStart?: (planId: number) => void;
+  /** v0.20.0：全量线路色表（code → color），线路标签取色用 */
+  routeColors?: Record<string, string>;
 }) {
   const router = useRouter();
   const [starting, setStarting] = useState<number | null>(null);
@@ -177,7 +179,27 @@ export default function RoutePlanList({
               }}
             >
               <span style={{ flex: 1, minWidth: 0 }}>
-                {isStarting ? "启动中…" : p.summary}
+                {isStarting ? (
+                  "启动中…"
+                ) : p.board_name || p.alight_name ? (
+                  <>
+                    <span aria-hidden>
+                      {((p.route_codes?.[0] ?? "").startsWith("LRT-") ? "🚈" : "🚌")}
+                    </span>{" "}
+                    <span>
+                      {p.board_name || "—"}
+                      <span style={{ opacity: 0.6 }}> → </span>
+                      {p.alight_name || "—"}
+                    </span>{" "}
+                    <RouteStack
+                      codes={p.route_codes ?? []}
+                      colorOf={(c) => routeColors?.[c]}
+                      size="sm"
+                    />
+                  </>
+                ) : (
+                  p.summary
+                )}
               </span>
               <span
                 className="pc-count"

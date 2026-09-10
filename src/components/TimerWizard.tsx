@@ -12,6 +12,7 @@ import {
   stationCodesEq,
   type PlanLegLite,
 } from "@/lib/timer-flow";
+import RouteStack from "./RouteStack";
 import LiveEta from "./LiveEta";
 import LrtEta from "./LrtEta";
 import JourneyProgress from "./JourneyProgress";
@@ -101,16 +102,11 @@ function tryVibrate() {
   }
 }
 
-/* ---------- v0.7.0 主题色工具：徽章文字对比色 / 轻轨线名美化 ---------- */
-function textOn(hex: string): string {
-  const h = hex.replace("#", "");
-  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
-  const n = parseInt(full, 16);
-  if (Number.isNaN(n)) return "#fff";
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#101418" : "#fff";
+/* ---------- v0.7.0 主题色工具：徽章文字对比色 / 轻轨线名美化 ----------
+   v0.20.0（主人第 1 条）：所有主题色标签/卡片上的文字**统一白色**（含浅色轻轨线，
+   不再按亮度切黑字），与巴士标签保持一致 */
+function textOn(_hex: string): string {
+  return "#fff";
 }
 // v0.15.1：轻轨标签去掉「輕軌·」前缀（🚈 图标/乘车语境已标识载具，无需重复）
 //   LRT-石排湾线 → 石排灣線；LRT-横琴线 → 橫琴線；LRT-氹仔线 → 氹仔線
@@ -492,6 +488,21 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // v0.17.0：合并卡按「当前段生效线路」改写 legs（下车站/上车台/下车候选随所选线而变），
   // 之后的 buildSteps / applyBoardSteps / buildProgress / rideInfo 全部消费 metaLegs
   const metaLegs = applyRouteMeta(data.legs, effChoiceByVeh(data.legs));
+
+  // v0.20.0（主人第 6 条）：顶部结构化行程标题——每个载具段一行（换乘继续写下一程）：
+  // 图标 + 上车站（编号+全称）→ 下车站（编号+全称）+ 线路标签组（自然排序）
+  const planTitle = (metaLegs ?? data.legs)
+    .filter((l) => l.leg_kind === "bus" || l.leg_kind === "lrt")
+    .map((l) => {
+      const codes = sortRouteOptions(l.route_options ?? []);
+      const first = codes[0] ?? "";
+      return {
+        icon: first.startsWith("LRT-") ? "🚈" : "🚌",
+        board: l.from_station ? stationName(l.from_station) : "",
+        alight: l.to_station ? stationName(l.to_station) : "",
+        codes,
+      };
+    });
   const steps = buildSteps(metaLegs);
   // —— 去学校 51 系：上车点动态覆盖（用户选择 > 已打点事件恢复 > 默认站）——
   const effSteps = applyBoardSteps(steps, metaLegs, data.events, boardStation);
@@ -619,15 +630,20 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // v0.16.2：右上角标签随「当前段生效线路」联动（用户 chips 选择 > 会话已修正实乘线 > 段首选项），
   // 颜色取全量线路色表 routeColors（随选择切换线路色），无对应色回退步骤静态色
   const curRoute = effRoute;
-  const curLabel = curRoute
-    ? curRoute.startsWith("LRT-")
-      ? lrtLabelOf(curRoute)
-      : `${curRoute}路`
-    : step?.quickKind === "minutes"
-      ? "輕軌"
-      : step?.quickKind === "stops"
-        ? "巴士"
+  // v0.20.0（主人第 5 条）：同台多线/换乘段——**用户点了线路选择之后**右上角才出现线路标签；
+  // 未选择前（segChoice 为空）不显示，避免「还没选就替用户决定」的误导。
+  // v0.20.0：标签文字统一（巴士只写号「26」、轻轨「氹仔線」），与全站一致
+  const chosenRoute =
+    segChoice && step?.routeOptions?.includes(segChoice)
+      ? segChoice
+      : data.session.route_code && step?.routeOptions?.includes(data.session.route_code)
+        ? data.session.route_code
         : null;
+  const curLabel = chosenRoute
+    ? chosenRoute.startsWith("LRT-")
+      ? lrtLabelOf(chosenRoute)
+      : chosenRoute
+    : null;
   const curLine = (curRoute && routeColors[curRoute]) || step?.lineColor || null;
 
   /** 分区 chips（单选可取消；不选也不阻塞打点） */
@@ -887,7 +903,28 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             flexWrap: "wrap",
           }}
         >
-          <span style={{ flex: 1, minWidth: 0 }}>{data.session.summary}</span>
+          {/* v0.20.0（主人第 6 条）：顶部改为与首页卡片同款的结构化模板——
+              图标 + 上车站（编号+全称）+ 下车站（编号+全称）+ 线路标签；换乘继续写下一程 */}
+          <span style={{ flex: 1, minWidth: 0 }}>
+            {planTitle.length > 0 ? (
+              planTitle.map((t, i) => (
+                <span
+                  key={i}
+                  style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}
+                >
+                  <span aria-hidden>{t.icon}</span>
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {t.board || "—"}
+                    <span style={{ opacity: 0.6 }}> → </span>
+                    {t.alight || "—"}
+                  </span>
+                  <RouteStack codes={t.codes} colorOf={(c) => data.routeColors?.[c]} size="sm" />
+                </span>
+              ))
+            ) : (
+              data.session.summary
+            )}
+          </span>
           {curLine && curLabel && (
             <span className="route-chip" style={{ background: curLine, color: textOn(curLine) }}>
               {curLabel}
@@ -1145,7 +1182,8 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                           setCrowdDraft(crowdDraft === c.value ? null : c.value)
                         }
                       >
-                        {c.label} · {c.hint}
+                        <span style={{ fontWeight: 700 }}>{c.label}</span>
+                        <span style={{ fontSize: 11, opacity: 0.75, marginLeft: 4 }}>{c.hint}</span>
                       </button>
                     ))}
                   </div>
@@ -1229,8 +1267,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                   )}
                   {/* v0.18.5：忘记打卡——这站过了但没来得及点记站；推进到下一站但不留该站时刻 */}
                   <button
-                    className="btn btn--text t-muted"
-                    style={{ alignSelf: "center" }}
+                    className="btn btn--outline btn--block"
                     onClick={() =>
                       postEvent("station_skip", {
                         station_code: rideInfo?.nextCode ?? step.stationCode ?? null,
@@ -1304,8 +1341,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                     )}
                     {/* v0.18.5：忘记打卡（继续坐）——已过站未记时，推进但不留该站时刻 */}
                     <button
-                      className="btn btn--text t-muted"
-                      style={{ alignSelf: "center" }}
+                      className="btn btn--outline btn--block"
                       onClick={() =>
                         postEvent("station_skip", {
                           station_code: rideInfo?.nextCode ?? null,

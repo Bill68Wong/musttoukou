@@ -57,7 +57,7 @@ export default function HomeClient({
     );
   }
 
-  // 方向对行：擎天匯 ⇄ school / hengqin / guanqin（按 PAIR_ORDER；无任何方案的 place 不显示）
+  // 方向对行：擎天匯 ⇄ school / hengqin / gate（按 PAIR_ORDER；无任何方案的 place 不显示）
   const rows = PAIR_ORDER.map((other) => ({
     other,
     out: plans.filter((p) => p.from_slug === HOME_SLUG && p.to_slug === other),

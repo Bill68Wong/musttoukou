@@ -434,7 +434,8 @@ export default function FreeRideClient({
                     aria-pressed={crowdDraft === c.value}
                     onClick={() => setCrowdDraft(crowdDraft === c.value ? null : c.value)}
                   >
-                    {c.label} · {c.hint}
+                    <span style={{ fontWeight: 700 }}>{c.label}</span>
+                    <span style={{ fontSize: 11, opacity: 0.75, marginLeft: 4 }}>{c.hint}</span>
                   </button>
                 ))}
               </div>
@@ -498,8 +499,8 @@ export default function FreeRideClient({
                 </button>
               )}
               <button
-                className="btn btn--text t-muted"
-                style={{ alignSelf: "center" }}
+                className="btn btn--outline btn--block"
+                style={{ alignSelf: "stretch" }}
                 disabled={busy}
                 onClick={() => postEvent("stop_skip")}
               >

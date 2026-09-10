@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import RouteStack from "./RouteStack";
 
 export interface PlanStat {
   plan_id: number;
@@ -12,6 +13,12 @@ export interface PlanStat {
   route_code: string | null;
   /** v0.18.2：summary 剥掉线路前缀后的起讫描述（卡片副标题用） */
   route_summary: string;
+  /** v0.20.0：线路标签底色 */
+  route_color?: string | null;
+  /** v0.20.0：统一模板——上车站（编号+全称） */
+  board_name?: string | null;
+  /** v0.20.0：统一模板——下车站（编号+全称） */
+  alight_name?: string | null;
   n: number;
   avg_min: number | null;
   min_min: number | null;
@@ -137,10 +144,19 @@ export default function StatsClient({
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" }}>
                       <p className="t-body" style={{ lineHeight: 1.5 }}>
-                        {label ? (
+                        {p.route_code && (p.board_name || p.alight_name) ? (
                           <>
-                            <strong style={{ fontWeight: 700 }}>{label}</strong>
-                            <span className="t-muted"> · {p.route_summary || p.summary}</span>
+                            <span aria-hidden>{p.route_code.startsWith("LRT-") ? "🚈" : "🚌"}</span>{" "}
+                            <span>
+                              {p.board_name || "—"}
+                              <span className="t-muted"> → </span>
+                              {p.alight_name || "—"}
+                            </span>{" "}
+                            <RouteStack
+                              codes={[p.route_code]}
+                              colorOf={() => p.route_color ?? undefined}
+                              size="sm"
+                            />
                           </>
                         ) : (
                           p.summary
@@ -153,10 +169,20 @@ export default function StatsClient({
                       </p>
                     </div>
                     <span
-                      className={done ? "t-ok" : "t-muted"}
-                      style={{ fontSize: 12, flexShrink: 0, fontWeight: 700, paddingTop: 2 }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexShrink: 0,
+                        paddingTop: 2,
+                      }}
                     >
-                      {done ? "✓ 达标" : `${p.n}/${GOAL}`}
+                      <span
+                        className={done ? "t-ok" : "t-muted"}
+                        style={{ fontSize: 12, fontWeight: 700 }}
+                      >
+                        {done ? "✓ 达标" : `${p.n}/${GOAL}`}
+                      </span>
                     </span>
                   </div>
 

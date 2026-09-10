@@ -46,6 +46,13 @@ export default async function StatsPage() {
              -- 副标题：剥掉线路前缀（「50路 」/「輕軌 」）与合并提示尾巴（「｜…到站後任選」），
              -- 行首已有线路标签，避免重复
              regexp_replace(regexp_replace(cp.summary, '^[^ ]+\\s+', ''), '｜.*$', '') AS route_summary,
+             -- v0.20.0：线路标签底色（按实乘线路取主题色；横琴合并行 route_code 为 NULL → 无）
+             (SELECT rt.color FROM routes rt
+               WHERE rt.code = (CASE WHEN pf.slug = 'hengqin' OR pt.slug = 'hengqin'
+                                     THEN NULL ELSE s.route_code END)) AS route_color,
+             -- v0.20.0：统一模板用「上车站（编号+全称）→ 下车站（编号+全称）」，不再把线路名混进标题
+             (CASE WHEN sb.kind = 'bus' THEN sb.code || ' ' || sb.name_tc ELSE sb.name_tc END) AS board_name,
+             (CASE WHEN sa.kind = 'bus' THEN sa.code || ' ' || sa.name_tc ELSE sa.name_tc END) AS alight_name,
              count(s.id) FILTER (WHERE s.total_minutes IS NOT NULL)::int AS n,
              round(avg(s.total_minutes) FILTER (WHERE s.total_minutes IS NOT NULL), 1)::float8 AS avg_min,
              min(s.total_minutes) FILTER (WHERE s.total_minutes IS NOT NULL)::float8 AS min_min,
@@ -54,13 +61,37 @@ export default async function StatsPage() {
       FROM commute_plans cp
       JOIN places pf ON cp.from_place = pf.id
       JOIN places pt ON cp.to_place = pt.id
+      -- v0.20.0：首载具段（取 route_meta 供「按实乘线路」解析上/下车站）
+      LEFT JOIN LATERAL (
+        SELECT l.from_station, l.to_station, l.route_meta
+          FROM plan_legs l
+         WHERE l.plan_id = cp.id AND l.leg_kind IN ('bus','lrt')
+         ORDER BY l.seq LIMIT 1
+      ) fl ON true
+      -- 上车站：该线路的 meta.board[0]（同台多线各线站台可能不同），无则段级默认
+      LEFT JOIN stations sb ON sb.code = COALESCE(
+        CASE WHEN fl.route_meta IS NOT NULL AND s.route_code IS NOT NULL
+                  AND NOT (pf.slug = 'hengqin' OR pt.slug = 'hengqin')
+             THEN fl.route_meta -> s.route_code -> 'board' ->> 0 END,
+        fl.from_station)
+      -- 下车站：该线路的 meta.to
+      LEFT JOIN stations sa ON sa.code = COALESCE(
+        CASE WHEN fl.route_meta IS NOT NULL AND s.route_code IS NOT NULL
+                  AND NOT (pf.slug = 'hengqin' OR pt.slug = 'hengqin')
+             THEN fl.route_meta -> s.route_code ->> 'to' END,
+        fl.to_station)
       LEFT JOIN timer_sessions s ON s.plan_id = cp.id AND s.deleted_at IS NULL
         ${includeTest ? "" : "AND NOT COALESCE(s.is_test, false)"}
       WHERE cp.is_active
       GROUP BY cp.id, cp.plan_key, cp.summary, pf.slug, pt.slug,
                (CASE WHEN pf.slug = 'hengqin' OR pt.slug = 'hengqin'
                      THEN NULL ELSE s.route_code END),
-               regexp_replace(regexp_replace(cp.summary, '^[^ ]+\\s+', ''), '｜.*$', '')
+               regexp_replace(regexp_replace(cp.summary, '^[^ ]+\\s+', ''), '｜.*$', ''),
+               (SELECT rt.color FROM routes rt
+                 WHERE rt.code = (CASE WHEN pf.slug = 'hengqin' OR pt.slug = 'hengqin'
+                                       THEN NULL ELSE s.route_code END)),
+               (CASE WHEN sb.kind = 'bus' THEN sb.code || ' ' || sb.name_tc ELSE sb.name_tc END),
+               (CASE WHEN sa.kind = 'bus' THEN sa.code || ' ' || sa.name_tc ELSE sa.name_tc END)
       ORDER BY cp.id
     `);
     const plans = planRes.rows as PlanStat[];

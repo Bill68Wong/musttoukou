@@ -1025,6 +1025,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                     station={step.stationCode}
                     route={effLrtRoute}
                     dest={step.destStationCode}
+                    routeColors={data.routeColors ?? undefined}
                     refreshKey={etaTick}
                     onRemainChange={(ms) => {
                       lrtRemainMs.current = ms;
@@ -1039,6 +1040,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                     routes={etaRoutes!}
                     dir={data.session.dsat_dir ?? "0"}
                     dest={step.destStationCode}
+                    routeColors={data.routeColors ?? undefined}
                     refreshKey={etaTick}
                   />
                 ))}
@@ -1421,6 +1423,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                 station={lrtOnward.station}
                 route={lrtOnward.route}
                 dest={lrtOnward.dest}
+                routeColors={data.routeColors ?? undefined}
                 refreshKey={etaTick}
               />
             </div>

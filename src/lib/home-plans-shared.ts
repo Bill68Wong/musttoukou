@@ -23,7 +23,9 @@ export interface PlanRow {
    *  null/undefined = 不闪（单色静态色带）
    */
   blinkStyle?: "split" | "solid" | null;
-  /** v0.20.0：首载具段线路码列表（供统一卡片模板的线路标签组） */
+  /** v0.20.5：每个载具段的线路码（按 seq；换乘多程 → 卡片上用「→」连接各组标签） */
+  leg_routes?: string[][];
+  /** v0.20.0（兼容）：首载具段线路码 */
   route_codes?: string[];
   /** v0.20.0：统一模板——上车站（编号+全称，来自首载具段/默认线路 meta） */
   board_name?: string | null;

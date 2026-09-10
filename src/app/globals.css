@@ -551,8 +551,10 @@ button:disabled {
   padding-left: 9px;
 }
 .route-stack__seg:last-child {
+  /* 尾块只斜左边界、右侧保持竖直 → 右下角不被斜边削掉，保留容器圆角 */
   margin-right: 0;
   padding-right: 10px;
+  clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%);
 }
 .route-stack--sm .route-stack__seg {
   font-size: 11px;
@@ -567,6 +569,7 @@ button:disabled {
 .route-stack--sm .route-stack__seg:last-child {
   margin-right: 0;
   padding-right: 9px;
+  clip-path: polygon(6px 0, 100% 0, 100% 100%, 0 100%);
 }
 
 /* 图标徽标（小圆圈图标） */

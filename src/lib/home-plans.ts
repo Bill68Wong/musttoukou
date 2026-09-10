@@ -29,12 +29,14 @@ export async function queryPlans(opts: { from?: string; to?: string } = {}): Pro
       SELECT p.id, p.summary,
              pf.slug AS from_slug, pf.kind AS from_kind, pf.name AS from_name,
              pt.slug AS to_slug,   pt.kind AS to_kind,   pt.name AS to_name,
-             -- v0.20.0：统一卡片模板——首载具段线路码 + 上/下车站（编号+全称）
-             (SELECT CASE WHEN l.route_options IS NULL OR l.route_options = '' THEN '[]'::jsonb
-                          ELSE l.route_options::jsonb END
+             -- v0.20.5：卡片模板——**每个载具段**的线路码（换乘多程各一组，用 → 连接）
+             (SELECT COALESCE(
+                       jsonb_agg(CASE WHEN l.route_options IS NULL OR l.route_options = ''
+                                      THEN '[]'::jsonb ELSE l.route_options::jsonb END
+                                 ORDER BY l.seq),
+                       '[]'::jsonb)
                 FROM plan_legs l
-               WHERE l.plan_id = p.id AND l.leg_kind IN ('bus','lrt')
-               ORDER BY l.seq LIMIT 1) AS route_codes,
+               WHERE l.plan_id = p.id AND l.leg_kind IN ('bus','lrt')) AS leg_routes,
              -- 上车站：默认线路（route_options 首项）的 meta.board[0]，无则段级 from_station
              (SELECT (CASE WHEN sb.kind = 'bus' THEN sb.code || ' ' || sb.name_tc ELSE sb.name_tc END)
                 FROM plan_legs l

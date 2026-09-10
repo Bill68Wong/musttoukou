@@ -150,12 +150,8 @@ export default function RoutePlanList({
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {plans.map((p, pi) => {
         const isStarting = starting === p.id;
-        const hasColor = p.colors?.some(Boolean) ?? false;
-        // v0.17.0：两种闪烁样式都要求至少 2 种颜色
-        const blinkStyle =
-          hasColor && (p.colors!.filter(Boolean).length ?? 0) >= 2 ? (p.blinkStyle ?? null) : null;
-        const veil = hasColor ? solidGradient(p.colors!) : "";
-        const ink = hasColor ? inkOf(p.colors!) : { color: "", shadow: "" };
+        // v0.20.5（主人）：大卡片取消主题色背景与闪烁——底色与线路标签撞色、显脏；
+        // 颜色只保留在线路标签上（主题色底 + 白字）
         return (
           <button
             key={p.id}
@@ -165,37 +161,35 @@ export default function RoutePlanList({
             aria-busy={isStarting}
             style={{ animationDelay: `${pi * 30}ms` }}
           >
-            {veil && !blinkStyle && (
-              <span aria-hidden className="pc-veil" style={{ background: veil }} />
-            )}
-            {blinkStyle === "split" && <BlinkVeil colors={p.colors!} />}
-            {blinkStyle === "solid" && <BlinkSolid colors={p.colors!} />}
-            <span
-              className="pc-inner"
-              style={{
-                opacity: isStarting ? 0.75 : 1,
-                color: ink.color,
-                textShadow: ink.shadow,
-              }}
-            >
+            <span className="pc-inner" style={{ opacity: isStarting ? 0.75 : 1 }}>
               <span style={{ flex: 1, minWidth: 0 }}>
                 {isStarting ? (
                   "启动中…"
-                ) : p.board_name || p.alight_name ? (
+                ) : p.board_name ? (
                   <>
                     <span aria-hidden>
-                      {((p.route_codes?.[0] ?? "").startsWith("LRT-") ? "🚈" : "🚌")}
+                      {((p.leg_routes?.[0]?.[0] ?? p.route_codes?.[0] ?? "").startsWith("LRT-")
+                        ? "🚈"
+                        : "🚌")}
                     </span>{" "}
-                    <span>
-                      {p.board_name || "—"}
-                      <span style={{ opacity: 0.6 }}> → </span>
-                      {p.alight_name || "—"}
-                    </span>{" "}
-                    <RouteStack
-                      codes={p.route_codes ?? []}
-                      colorOf={(c) => routeColors?.[c]}
-                      size="sm"
-                    />
+                    {/* v0.20.5：只写上车站（各线下车站不同，写下车站会误导） */}
+                    <span>{p.board_name}</span>{" "}
+                    {/* 换乘：每程一组线路标签，用「→」连接（轻轨 石排灣線→氹仔線 同理） */}
+                    {(p.leg_routes?.length ? p.leg_routes : [p.route_codes ?? []]).map(
+                      (codes, i) => (
+                        <span
+                          key={i}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                        >
+                          {i > 0 && <span style={{ opacity: 0.6 }}>→</span>}
+                          <RouteStack
+                            codes={codes}
+                            colorOf={(c) => routeColors?.[c]}
+                            size="sm"
+                          />
+                        </span>
+                      ),
+                    )}
                   </>
                 ) : (
                   p.summary

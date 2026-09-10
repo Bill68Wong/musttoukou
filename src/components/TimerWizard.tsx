@@ -1156,7 +1156,12 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           {riding && rideInfo && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <p className="t-label t-muted">
-                乘车中 · {rideRouteLabel(rideInfo.routeCode)}
+                乘车中{" "}
+                <RouteStack
+                  codes={[rideInfo.routeCode]}
+                  colorOf={(c) => data.routeColors?.[c]}
+                  size="sm"
+                />
                 {rideInfo.stage === "plain" &&
                   rideInfo.remaining !== null &&
                   ` · 再过 ${rideInfo.remaining} 站到「${rideInfo.destName}」`}

@@ -15,6 +15,7 @@
  *   - 空态：首班前/已收车/无数据 文案与 LiveEta 空态同风格
  *   - 日切（澳门 0 点）自动重新拉取（服务班别/日期已变）
  */
+import RouteStack from "./RouteStack";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /** v0.15.1：轻轨线路展示名（与 TimerWizard lrtLabelOf 一致，无「輕軌·」前缀）：
@@ -87,6 +88,7 @@ export default function LrtEta({
   dest,
   refreshKey = 0,
   onRemainChange,
+  routeColors,
 }: {
   station: string;
   /** 本库线路码（LRT-氹仔线…）；调用方已按段解析好（effRoute 取 LRT 项） */
@@ -96,6 +98,8 @@ export default function LrtEta({
   refreshKey?: number;
   /** 下一班剩余毫秒变化回调（TimerWizard 自动写 wait_snapshot 用；null=无下一班） */
   onRemainChange?: (remainMs: number | null) => void;
+  /** v0.20.1：线路色（线路名标签取色） */
+  routeColors?: Record<string, string>;
 }) {
   const [data, setData] = useState<LrtEtaData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -253,7 +257,8 @@ export default function LrtEta({
             whiteSpace: "nowrap",
           }}
         >
-          🚈 实时到站 · {lineLabel(route)}
+          🚈 实时到站{" "}
+          <RouteStack codes={[route]} colorOf={(c) => routeColors?.[c]} size="sm" />
         </p>
         <button
           className="btn btn--text btn--sm"

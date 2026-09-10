@@ -31,6 +31,7 @@
  * 仅兜底 DSAT 数据自身的偶发回跳（换车/换向/毛刺）。
  */
 
+import RouteStack from "./RouteStack";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { smoothStopsAway, getSmoothMem } from "@/lib/eta-smooth";
 
@@ -74,11 +75,14 @@ export default function LiveEta({
   dir,
   dest,
   refreshKey = 0,
+  routeColors,
 }: {
   station: string;
   routes: string[];
   dir: string;
   dest?: string | null;
+  /** v0.20.1：全量线路色表（线路名标签取色） */
+  routeColors?: Record<string, string>;
   /** 打点成功后父组件递增 → 立即刷新（系统时刻，不受 10s 手动下限约束） */
   refreshKey?: number;
 }) {
@@ -170,6 +174,13 @@ export default function LiveEta({
       : data?.results.length === 1 && data.results[0].ok
         ? busLabel(data.results[0].route)
         : null;
+  // v0.20.1：标题里的线路名改为彩色标签
+  const titleRouteCodes =
+    routes.length === 1
+      ? routes
+      : data?.results.length === 1 && data.results[0].ok
+        ? [data.results[0].route]
+        : [];
 
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString("zh-CN", {
@@ -198,7 +209,13 @@ export default function LiveEta({
             whiteSpace: "nowrap",
           }}
         >
-          🚌 实时车距{titleRoute ? ` · ${titleRoute}` : ""}
+          🚌 实时车距
+          {titleRouteCodes.length > 0 && (
+            <>
+              {" "}
+              <RouteStack codes={titleRouteCodes} colorOf={(c) => routeColors?.[c]} size="sm" />
+            </>
+          )}
         </p>
         <button
           className="btn btn--text btn--sm"
@@ -221,7 +238,8 @@ export default function LiveEta({
           if (!r.ok) {
             return (
               <p key={r.route} className="t-body t-muted" style={{ lineHeight: 1.7 }}>
-                {busLabel(r.route)} · {r.error ?? "暂无数据"}
+                <RouteStack codes={[r.route]} colorOf={(c) => routeColors?.[c]} size="sm" />{" "}
+                {r.error ?? "暂无数据"}
               </p>
             );
           }
@@ -229,7 +247,7 @@ export default function LiveEta({
           const blockHead =
             data.results.length > 1 ? (
               <p className="t-label t-strong" style={{ margin: "2px 0 0" }}>
-                {busLabel(r.route)}
+                <RouteStack codes={[r.route]} colorOf={(c) => routeColors?.[c]} size="sm" />
               </p>
             ) : null;
           if (!r.nearest) {

@@ -5,6 +5,7 @@
  * 模式：setup（选线路/选站点 → 方向 → 上车站）→ riding（站序推进逐站打点）→ summary
  * 与乘车计时完全隔离（free_rides / free_ride_events 表，不入 stats/records）。
  */
+import RouteStack from "./RouteStack";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { freeLineLabel } from "@/lib/free-shared";
@@ -410,7 +411,7 @@ export default function FreeRideClient({
           >
             <p className="t-label t-muted" style={{ lineHeight: 1.5 }}>
               {isLrt(ride.route_code) ? "🚈" : "🚌"}{" "}
-              {isLrt(ride.route_code) ? freeLineLabel(ride.route_code) : `${ride.route_code} 路`}
+              <RouteStack codes={[ride.route_code]} colorOf={() => rideColor ?? undefined} size="sm" />
               {rideDirLabel ? ` · ${rideDirLabel}` : ""}
               {ride.vehicle_plate ? ` · 车 ${ride.vehicle_plate}` : ""}
             </p>
@@ -531,11 +532,11 @@ export default function FreeRideClient({
           <div className="card" style={{ padding: "13px 14px" }}>
             <p className="t-body" style={{ lineHeight: 1.5 }}>
               {isLrt(detail.ride.route_code) ? "🚈" : "🚌"}{" "}
-              <strong>
-                {isLrt(detail.ride.route_code)
-                  ? freeLineLabel(detail.ride.route_code)
-                  : `${detail.ride.route_code} 路`}
-              </strong>
+              <RouteStack
+                codes={[detail.ride.route_code]}
+                colorOf={() => rideColor ?? undefined}
+                size="sm"
+              />
               <span className="t-muted">
                 {" "}
                 · {detail.ride.board_station ? detail.nameOf(detail.ride.board_station) : "?"}
@@ -649,9 +650,7 @@ export default function FreeRideClient({
                       }}
                     >
                       {kindBadge(r.kind)}
-                      <span className="t-body t-strong" style={{ fontWeight: 700 }}>
-                        {r.code.startsWith("LRT-") ? freeLineLabel(r.code) : `${r.code} 路`}
-                      </span>
+                      <RouteStack codes={[r.code]} colorOf={() => r.color ?? undefined} size="sm" />
                       <span className="t-label t-muted" style={{ marginLeft: "auto" }}>
                         {r.dirs.length} 方向
                       </span>
@@ -788,7 +787,8 @@ export default function FreeRideClient({
                     ) : (
                       <div key={r.code} className="card" style={{ padding: "11px 13px", borderLeft: r.color ? `4px solid ${r.color}` : undefined }}>
                         <p className="t-body t-strong" style={{ marginBottom: 6 }}>
-                          {kindBadge(r.kind)} {r.code.startsWith("LRT-") ? freeLineLabel(r.code) : `${r.code} 路`}
+                          {kindBadge(r.kind)}{" "}
+                          <RouteStack codes={[r.code]} colorOf={() => r.color ?? undefined} size="sm" />
                         </p>
                         {r.dirs.map((dd) => {
                           const rr = { code: r.code, kind: r.kind, color: r.color, dirs: [] };

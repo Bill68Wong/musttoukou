@@ -18,15 +18,6 @@
 import RouteStack from "./RouteStack";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/** v0.15.1：轻轨线路展示名（与 TimerWizard lrtLabelOf 一致，无「輕軌·」前缀）：
- *  LRT-石排湾线 → 石排灣線；标题前的 🚈 已标识载具，无需重复 */
-const lineLabel = (code: string) =>
-  code
-    .replace(/^LRT-/, "")
-    .replace(/湾/g, "灣")
-    .replace(/横/g, "橫")
-    .replace(/线/g, "線");
-
 /** 秒级读秒线路：石排湾线/横琴线（班次稀疏，倒计时需精确到秒）；
  *  氹仔线班次密仍按整分显示。码内含简/繁写法兜底匹配 */
 const tickSecLine = (code: string) =>
@@ -141,7 +132,6 @@ export default function LrtEta({
   const prevKey = useRef(refreshKey);
   useEffect(() => {
     fetchEta();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchEta]);
   useEffect(() => {
     if (refreshKey !== prevKey.current) {

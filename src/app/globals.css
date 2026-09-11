@@ -53,7 +53,7 @@
   --dur-fast: 150ms;
   --dur-med: 250ms;
 
-  /* v0.13.x Spring 回弹（YouTube 式按压，主人定稿）：
+  /* v0.13.x Spring 回弹（YouTube 式按压，用户定稿）：
      按下 = 快速下沉（--dur-press，短）+ 明显变深；
      松开 = 带 overshoot 的回弹（--spring-release back-out，稍长）。
      CSS 机制：transition 声明在默认态用「释放曲线」，:active 态覆写为「按压曲线」——
@@ -376,63 +376,11 @@ button:disabled {
   background: var(--ok-container);
 }
 
-/* 首页方案卡主题色（v0.7.0+）：载具主题色作卡片背景；v0.8.0 起实色（主人指定原色），文字对比由组件算好内联 */
+/* 首页方案卡主题色（v0.7.0+）：载具主题色作卡片背景；v0.8.0 起实色（用户指定原色），文字对比由组件算好内联 */
 .plan-card {
   position: relative;
   overflow: hidden;
   border-color: transparent;
-}
-
-.pc-veil {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  transition: filter var(--dur-fast) var(--ease-em);
-}
-
-.press-card:hover:not(:disabled) .pc-veil {
-  filter: brightness(1.08);
-}
-
-.press-card:active:not(:disabled) .pc-veil {
-  filter: brightness(0.88);
-}
-
-/* v0.16.3：多车可选路线卡（去横琴巴士）——双色位置周期互换闪烁：
-   版本 A「左26右50」与版本 B「左50右26」整卡交替淡入淡出
-   v0.17.1：方波硬切 → 柔和呼吸——两色交叉缓入缓出（ease-in-out + 对称斜坡）：
-   各层 0→25% 缓入、25→50% 保持、50→75% 缓出、75→100% 熄灭；
-   b 层延迟半周期，淡出/淡入在 50% 交界重叠（同刻两层半透明 → 颜色自然融合，无空卡瞬间）。
-   周期 2.4s → 3.4s（主人 2026-09-08 反馈「快而尖锐，要柔和呼吸」） */
-.pc-swap {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-.pc-swap-a {
-  animation: pc-swap-phase 3.4s ease-in-out infinite;
-}
-.pc-swap-b {
-  animation: pc-swap-phase 3.4s ease-in-out infinite;
-  animation-delay: 1.7s;
-}
-@keyframes pc-swap-phase {
-  0% {
-    opacity: 0;
-  }
-  25% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 1;
-  }
-  75% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 0;
-  }
 }
 
 .pc-inner {
@@ -448,11 +396,7 @@ button:disabled {
 }
 
 /* 样本数小标签（实色底上以半透同色 pill 呈现，颜色随文字对比色） */
-.pc-count {
-  padding: 1px 9px;
-  border-radius: var(--r-pill);
-  background: color-mix(in srgb, currentColor 14%, transparent);
-}
+
 
 /* 乘车界面线路徽章（v0.7.0 主题色点缀） */
 .route-chip {

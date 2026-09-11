@@ -2,7 +2,7 @@
  * v0.17.1 迁移（db/migrate-v171.ts）
  * 用法：npm run db:migrate-v171 -- [local|cloud]
  *
- * 背景（主人 2026-09-08 拍板）：轻轨站名去掉尾部「站」字，要求数据库同步改——
+ * 背景（用户 2026-09-08 拍板）：轻轨站名去掉尾部「站」字，要求数据库同步改——
  * 「下一站：科大」而非「科大站」（报站文案统一的一部分）。
  *
  * 本迁移做三件事（全部幂等）：
@@ -10,7 +10,7 @@
  *      排角/路氹西/石排灣/協和醫院/東亞運/路氹東/科大/機場/氹仔碼頭/蓮花/橫琴）
  *   ② commute_plans.summary：含 LRT 站名 token 去站字（历史会话无 summary 列，
  *      展示实时 JOIN 本表 → 一处更新全局生效；「蓮花站」不会误伤 bus 站「蓮花路停車場」）
- *   ③ 清理主人 2026-09-08 晚手动开的测试会话（is_test=true 且未软删）
+ *   ③ 清理用户 2026-09-08 晚手动开的测试会话（is_test=true 且未软删）
  */
 import { Pool } from "pg";
 
@@ -78,7 +78,7 @@ async function main() {
   }
   if (!upd) console.log("② summary 无待改项（幂等）");
 
-  // ③ 清理主人 2026-09-08 晚手动开的测试会话（187-190 区间 + 更早未清测试会话统一扫一遍）
+  // ③ 清理用户 2026-09-08 晚手动开的测试会话（187-190 区间 + 更早未清测试会话统一扫一遍）
   const del = await q(
     `UPDATE timer_sessions SET deleted_at = now()
       WHERE is_test AND deleted_at IS NULL AND id >= 187

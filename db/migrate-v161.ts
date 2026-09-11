@@ -2,15 +2,15 @@
  * v0.16.1 迁移（db/migrate-v161.ts）
  * 用法：npm run db:migrate-v161 -- [local|cloud]
  *
- * 背景（2026-09-07 主人实测反馈，修复数据）：
+ * 背景（2026-09-07 用户实测反馈，修复数据）：
  *   1. 去横琴口岸莲花路停车场换乘：T355/1↔T355/2 同场相邻站台，跨台不计步行
  *      → home-hengqin-1 transfer 段显式 minutes=0（权威源 data/commute-network.json 同步）
  *   2. 到横琴/关闸「通关完即结束行程并结算」（无多余收尾步）
  *      → 代码层 border_end 自动结算（v0.16.1 events route）；
  *        历史真实会话尾部 arrive 对齐 border_end 时刻并重算 total
- *      （主人确认修复范围：sid=128 去拱北 + sid=155 去横琴，均 is_test=false）
+ *      （用户确认修复范围：sid=128 去拱北 + sid=155 去横琴，均 is_test=false）
  *
- * ⚠️ 本脚本动计时表属主人明确授权的历史数据修复（仅限指定真实会话、幂等可重复执行）；
+ * ⚠️ 本脚本动计时表属用户明确授权的历史数据修复（仅限指定真实会话、幂等可重复执行）；
  * 其余部分只按 JSON 权威源对齐静态方案数据。
  */
 import { readFileSync } from "fs";
@@ -67,7 +67,7 @@ async function main() {
     console.log(`1) home-hengqin-1 transfer minutes → ${r[0]?.minutes ?? null}（JSON: ${transferLeg.minutes ?? null}）`);
   }
 
-  // ========== 2. 历史真实会话修复（主人授权：128 去拱北 / 155 去横琴） ==========
+  // ========== 2. 历史真实会话修复（用户授权：128 去拱北 / 155 去横琴） ==========
   const sids = FIX_SIDS;
   const before = await q(
     `SELECT s.id, s.total_minutes, s.border_minutes, s.ended_at,

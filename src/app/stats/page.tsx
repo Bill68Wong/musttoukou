@@ -7,13 +7,11 @@ export const dynamic = "force-dynamic";
 
 /**
  * v0.18.2：分块口径改为「与首页一致」——宿舍 ⇄ 學校 / 橫琴口岸 / 關閘（拱北口岸）
- * 每块内再分「去程 / 回程」两个小块（主人定稿：块内分两块、不分列）。
+ * 每块内再分「去程 / 回程」两个小块（用户定稿：块内分两块、不分列）。
  * 旧口径按「目的地 kind」分四组（去学校/回宿舍/去横琴/去關閘），会把不同起点混进同组。
  */
 
-/** 横琴相关方案不按线路拆分（换乘方案、线路多样，合并一行更易读；主人定稿） */
-const isHengqin = (fromSlug: string, toSlug: string) =>
-  fromSlug === "hengqin" || toSlug === "hengqin";
+/** 横琴相关方案不按线路拆分（换乘方案、线路多样，合并一行更易读；SQL 内联 CASE 实现，无需 JS 判定） */
 
 // v0.23.0：测试模式已移除 → 一律排除测试会话（is_test=true），不再读 cookie
 export default async function StatsPage() {
@@ -56,6 +54,11 @@ export default async function StatsPage() {
          WHERE l.plan_id = cp.id AND l.leg_kind IN ('bus','lrt')
          ORDER BY l.seq LIMIT 1
       ) fl ON true
+      -- ⚠️ timer_sessions 必须排在 stations 之前：sb/sa 的 ON 条件引用 s.route_code，
+      --    而 Postgres 的 JOIN ON 只能引用「已在左侧 join 好」的表；
+      --    放到后面会直接报 missing FROM-clause entry for table "s"（v0.20.0~v0.23.0 的线上 bug）
+      LEFT JOIN timer_sessions s ON s.plan_id = cp.id AND s.deleted_at IS NULL
+        AND NOT COALESCE(s.is_test, false)
       -- 上车站：该线路的 meta.board[0]（同台多线各线站台可能不同），无则段级默认
       LEFT JOIN stations sb ON sb.code = COALESCE(
         CASE WHEN fl.route_meta IS NOT NULL AND s.route_code IS NOT NULL
@@ -68,8 +71,6 @@ export default async function StatsPage() {
                   AND NOT (pf.slug = 'hengqin' OR pt.slug = 'hengqin')
              THEN fl.route_meta -> s.route_code ->> 'to' END,
         fl.to_station)
-      LEFT JOIN timer_sessions s ON s.plan_id = cp.id AND s.deleted_at IS NULL
-        AND NOT COALESCE(s.is_test, false)
       WHERE cp.is_active
       GROUP BY cp.id, cp.plan_key, cp.summary, pf.slug, pt.slug,
                (CASE WHEN pf.slug = 'hengqin' OR pt.slug = 'hengqin'

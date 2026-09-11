@@ -302,7 +302,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     if (type === "border_end") {
       // v0.16.1：方案以 cross_border 结尾（去程口岸卡，border 即最后一步）→ 通关完成即结束行程并结算
-      // （主人 2026-09-07 实测口径：通关完即结束，无「到达」收尾步；回程口岸卡 border 在中段不收尾）
+      // （用户 2026-09-07 实测口径：通关完即结束，无「到达」收尾步；回程口岸卡 border 在中段不收尾）
       const lastLeg = await pool.query(
         `SELECT leg_kind FROM plan_legs WHERE plan_id = $1 ORDER BY seq DESC LIMIT 1`,
         [session.plan_id],

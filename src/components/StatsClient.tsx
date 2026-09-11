@@ -38,14 +38,6 @@ export interface GroupStat {
   dirs: DirStat[];
 }
 
-/** v0.18.2：线路展示名（轻轨「氹仔線」/ 巴士「26 路」） */
-function routeLabel(code: string | null): string {
-  if (!code) return "";
-  if (code.startsWith("LRT-"))
-    return code.replace(/^LRT-/, "").replace(/湾/g, "灣").replace(/横/g, "橫").replace(/线/g, "線");
-  return `${code} 路`;
-}
-
 export interface Summary {
   n: number;
   days: number;
@@ -115,7 +107,6 @@ export default function StatsClient({
                 {d.plans.map((p) => {
               const done = p.n >= GOAL;
               const has = p.n > 0;
-              const label = routeLabel(p.route_code);
               return (
                 <article
                   key={`${p.plan_id}:${p.route_code ?? "all"}`}

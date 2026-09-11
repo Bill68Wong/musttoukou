@@ -3,7 +3,7 @@
  * 纯函数、无依赖（类型除外），由方案 legs + 站序表生成「项目等分」序列，
  * 再由已打点 events 回放实时算出已推进项目数。
  *
- * 口径（主人定稿，2026-09-05 → 2026-09-08 v0.17.1 改版）：
+ * 口径（用户定稿，2026-09-05 → 2026-09-08 v0.17.1 改版）：
  *  - 项目 = 各载具段乘车中的每个停靠站，彼此等权等分；**只在交通工具上积累进度**：
  *    步行（出门/换乘/下车走）/ 等车 / 通关一律不占等分、不推进
  *  - 例：单程坐 12 站 → 12 等分；多载具方案 = 各段站数之和（每换一次车接续下一段各站）
@@ -85,7 +85,6 @@ export function buildProgress(
     return [{ kind: "walk", color: NEUTRAL, group: -1 }];
   }
 
-  const lastVeh = vehLegs[vehLegs.length - 1];
   let group = -1;
   for (let i = 0; i < legs.length; i++) {
     const leg = legs[i];

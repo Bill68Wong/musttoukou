@@ -13,14 +13,14 @@
  *      force 直查结果不一致导致界面横跳；现打点后两者同刻直查，口径一致）
  *  - 失败静默保留旧数据（不打断计时流程）
  *
- * v0.12.1（2026-09-05）刷新机制修正（主人定稿）：
+ * v0.12.1（2026-09-05）刷新机制修正（用户定稿）：
  *  - 自动刷新仅限关键动作：进入路线页（挂载）/ 出发 / 人到站 / 上车 / 下车
  *    （TimerWizard 收紧 AUTO_REFRESH_TYPES，pause/继续/记站不再触发）
  *  - 10s 冷却对「任何刷新」生效：点击刷新或自动刷新后按钮进入不可点读秒（↻ 9s → 0）
  *  - 自动刷新无视冷却照发（force 直查）；手动点击被冷却禁用（自动刷新 5s 后手动点不动）
  *  - 原「手动刷新 ≥10s 间隔」小字提示删除，改为按钮内读秒
  *
- * v0.12.2（2026-09-05）卡片重构（主人定稿 7 条之二/三/四/五）：
+ * v0.12.2（2026-09-05）卡片重构（用户定稿 7 条之二/三/四/五）：
  *  - 线路名并入标题行（「🚌 实时车距 · 26 路」）；卡片单线路（数据收集阶段）
  *  - 最近车站数大字突出显示；「再下一班车」（第二辆在途车）副行小字展示
  *  - 删除「另有 N 辆总站待发」展示（服务端已不再返回）
@@ -61,10 +61,6 @@ interface EtaData {
   fetchedAt: string;
   results: EtaResult[];
 }
-
-/** 巴士线路展示名（title/多线路 fallback 用）：26 → "26 路" */
-const busLabel = (code: string) =>
-  code.startsWith("LRT-") ? code.replace("LRT-", "輕軌·") : `${code} 路`;
 
 /** 手动刷新最小间隔（毫秒） */
 const MANUAL_MIN_MS = 10_000;
@@ -154,6 +150,9 @@ export default function LiveEta({
         if (id === reqId.current) setLoading(false);
       }
     },
+    // stationByRoute / routes 由 routesKey 派生（routesKey 已在依赖中）；直接把对象入依赖
+    // 会因每渲染新建导致回调反复重建 → 挂载 effect 重复拉取 ETA。故此处有意省略。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [station, routesKey, dir, dest, startCooldown],
   );
 
@@ -178,13 +177,6 @@ export default function LiveEta({
     fetchEta();
   };
 
-  // v0.12.2：单线路卡片——线路名并入标题行（数据收集阶段一张卡对应一趟车）
-  const titleRoute =
-    routes.length === 1
-      ? busLabel(routes[0])
-      : data?.results.length === 1 && data.results[0].ok
-        ? busLabel(data.results[0].route)
-        : null;
   // v0.20.1：标题里的线路名改为彩色标签
   const titleRouteCodes =
     routes.length === 1

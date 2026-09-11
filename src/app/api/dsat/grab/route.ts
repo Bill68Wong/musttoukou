@@ -12,7 +12,7 @@ export const preferredRegion = "sin1";
  * 打点（board：上车 / alight：下车）成功后由前端触发：抓"用户实际乘坐的那辆车"入库。
  *
  * v0.4.0：语义为上车那一刻；v0.14.1 起每段上/下车都抓（不再只首段一次）：
- *   - route：该段实乘线路（多线候选段主人所选的线，前端 chips 决定；单线段=唯一线）
+ *   - route：该段实乘线路（多线候选段用户所选的线，前端 chips 决定；单线段=唯一线）
  *   - station：该段上车站（服务端据此定位方案 bus 分段并推导实乘线方向）
  *   - stage：'board' | 'alight'
  *   - atStation：抓取候选站（board=上车站；alight=实际停靠台，如乘 50 落 T355/1）

@@ -102,7 +102,7 @@ function tryVibrate() {
 }
 
 /* ---------- v0.7.0 主题色工具：徽章文字对比色 / 轻轨线名美化 ----------
-   v0.20.0（主人第 1 条）：所有主题色标签/卡片上的文字**统一白色**（含浅色轻轨线，
+   v0.20.0（用户第 1 条）：所有主题色标签/卡片上的文字**统一白色**（含浅色轻轨线，
    不再按亮度切黑字），与巴士标签保持一致 */
 function textOn(_hex: string): string {
   return "#fff";
@@ -116,14 +116,10 @@ const lrtLabelOf = (code: string) =>
     .replace(/横/g, "橫")
     .replace(/线/g, "線");
 
-/** 乘车标题线路显示：轻轨 → 「石排灣線」；巴士 → 「51 路」 */
-const rideRouteLabel = (code: string) =>
-  code.startsWith("LRT-") ? lrtLabelOf(code) : `${code} 路`;
-
 /**
  * v0.17.1：报站大字单行自适应——按「宽度当量」缩档（全角≈1、ASCII≈0.52、空格/斜杠≈0.33）。
  * 卡内可用宽约 330px：24px 字号（h-headline 默认）可容 ≈13.5 当量，超长逐档缩至 18px
- * 并配合 whiteSpace:nowrap 保持站名完整显示在同一行（主人定稿版式：一行写不下就紧凑）。
+ * 并配合 whiteSpace:nowrap 保持站名完整显示在同一行（用户定稿版式：一行写不下就紧凑）。
  * 返回 undefined = 用默认字号。
  */
 const stopFs = (name: string): number | undefined => {
@@ -443,7 +439,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         router.replace(`/finish/${sessionId}`);
       } else if (type === "border_end" && curIdx >= curSteps.length - 1) {
         // v0.16.1：去程口岸卡（border 为最后一步，无兜底 arrive）→「通关完成」即服务端自动结算
-        // → 直接进结束页（主人 2026-09-07 口径：通关完即结束行程并结算）
+        // → 直接进结束页（用户 2026-09-07 口径：通关完即结束行程并结算）
         router.replace(`/finish/${sessionId}`);
       }
     } catch (e) {
@@ -488,7 +484,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // 之后的 buildSteps / applyBoardSteps / buildProgress / rideInfo 全部消费 metaLegs
   const metaLegs = applyRouteMeta(data.legs, effChoiceByVeh(data.legs));
 
-  // v0.20.0（主人第 6 条）：顶部结构化行程标题——每个载具段一行（换乘继续写下一程）：
+  // v0.20.0（用户第 6 条）：顶部结构化行程标题——每个载具段一行（换乘继续写下一程）：
   // 图标 + 上车站（编号+全称）→ 下车站（编号+全称）+ 线路标签组（自然排序）
   // ⚠️ 必须惰性求值：stationName 定义在下方（const 有 TDZ），此处若立即调用会抛
   //    「Cannot access … before initialization」（v0.20.1 线上崩溃根因）
@@ -597,7 +593,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // v0.10.0 A11：多候选线路段「乘哪一路」（chips 选中 > 会话已修正实乘线 > 首选项）
   // board 提交带实乘线 → 服务端把 route_code/dsat_dir 修正到实乘线（首个载具段）
   // v0.17.1：chips 只出现在「上车」步（到站等车界面、上车按钮上方）——
-  // depart/wait_start 不再出现（主人实测反馈：出现在太多界面）
+  // depart/wait_start 不再出现（用户实测反馈：出现在太多界面）
   const isRouteMulti =
     step?.eventType === "board" && (step.routeOptions?.length ?? 0) > 1 && step.quickKind === "stops";
   // v0.12.0：step?. 保护 —— arrive 打点后 idx 越界 step 为 undefined，而 routeChoices/
@@ -648,7 +644,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   }
 
   const curRoute = effRoute;
-  // v0.20.0（主人第 5 条）：同台多线/换乘段——**用户点了线路选择之后**右上角才出现线路标签；
+  // v0.20.0（用户第 5 条）：同台多线/换乘段——**用户点了线路选择之后**右上角才出现线路标签；
   // 未选择前（segChoice 为空）不显示，避免「还没选就替用户决定」的误导。
   // v0.20.0：标签文字统一（巴士只写号「26」、轻轨「氹仔線」），与全站一致
   // v0.20.3：session.route_code 仅在「已上车（board 打点修正为实乘线）」后才算用户的选择；
@@ -694,14 +690,14 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // ===== 乘车进度推算（下一站 / 剩余站数）=====
   // 目标站解析（v0.14.1 起统一走 station-match.resolveRideDestIdx）：
   //   ① 循环线首尾同站码（25 路 M1/13 = seq1 起点 & seq50 终点）→ 沿行驶方向环距最近命中，
-  //      避免「要下的终点关闸」被认成起点关闸（主人 2026-09-05 实测：接近终点显示还有 2 站）；
+  //      避免「要下的终点关闸」被认成起点关闸（用户 2026-09-05 实测：接近终点显示还有 2 站）；
   //   ② 同场分台（26/50 分停莲花路停车场 T355/2 / T355/1，站名同为「蓮花路停車場」）→ 按站名
   //      聚合，取沿方向第一次到达该场站的那次停靠 —— 乘 50 时下车站自动落 T355/1、乘 26 落
-  //      T355/2（主人 2026-09-06 确认按实际站台记录）。
+  //      T355/2（用户 2026-09-06 确认按实际站台记录）。
   // 候选码的站名取自 timer 接口 stationNames（查不到时退回站码匹配）
   const destNameOf = (code: string) => data.stationNames[code] ?? null;
 
-  /** v0.16.0 逐站按钮阶段（主人拍板三段式）：
+  /** v0.16.0 逐站按钮阶段（用户拍板三段式）：
    *   plain（普通中间站）→ 只有 记站/甩站；
    *   candidate（非末位可选下车站）→ 下车 / 记站 / 甩站 三钮；
    *   final（终点/末位候选）→ 只有 下车 */
@@ -849,7 +845,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
   // ===== v0.17.0 → v0.17.1：轻轨换乘前预览 =====
   // v0.17.1：只在「下一站就是换乘站」（stage final，下车按钮出现）时才显示，
   // 位置在「下车」按钮正下方（渲染块位于乘车卡之后）——不再提前一站出现
-  //（主人实测反馈：出现太早）。卡片与正常轻轨报站卡完全相同（同一 LrtEta 组件）。
+  //（用户实测反馈：出现太早）。卡片与正常轻轨报站卡完全相同（同一 LrtEta 组件）。
   const lrtOnward =
     riding && rideInfo && rideInfo.stage === "final"
       ? findLrtOnward(metaLegs, step?.vehIndex, rideInfo.destCode)
@@ -924,7 +920,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             flexWrap: "wrap",
           }}
         >
-          {/* v0.20.0（主人第 6 条）：顶部改为与首页卡片同款的结构化模板——
+          {/* v0.20.0（用户第 6 条）：顶部改为与首页卡片同款的结构化模板——
               图标 + 上车站（编号+全称）+ 下车站（编号+全称）+ 线路标签；换乘继续写下一程 */}
           <span
             style={{
@@ -1058,7 +1054,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           {showToZone && renderZones("到了哪个座？", toZone, setToZone)}
 
           {/* 上车点选择（多上车点线路：到站前一步选定去哪站，如 51 系总站/沿途、轻轨科大/路氹東）。
-              v0.17.1：仅「到站，开始等车」步显示；depart/board 不再出现（主人实测反馈收敛） */}
+              v0.17.1：仅「到站，开始等车」步显示；depart/board 不再出现（用户实测反馈收敛） */}
           {boardCands && atWaitStart && (
             <div className="card" style={{ padding: "12px 14px" }}>
               <p className="t-label" style={{ marginBottom: 8 }}>

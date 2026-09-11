@@ -43,7 +43,7 @@ export interface ActiveSession {
 /** 起点 place（宿舍/擎天匯）slug */
 export const HOME_SLUG = "home";
 
-/** place slug → 首页/选择页展示短名（v0.9.0 校名「澳科大」；口岸名沿用主人定稿口径） */
+/** place slug → 首页/选择页展示短名（v0.9.0 校名「澳科大」；口岸名沿用用户定稿口径） */
 export const PLACE_SHORT: Record<string, string> = {
   home: "擎天匯",
   school: "澳科大",

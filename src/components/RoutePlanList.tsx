@@ -5,90 +5,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PlanRow } from "@/lib/home-plans-shared";
 
-/* ---------- v0.8.0 主题色工具：卡片背景 = 线路原色（实色），文字按亮度自动对比 ---------- */
-function rgbOf(hex: string): { r: number; g: number; b: number } | null {
-  const h = hex.replace("#", "");
-  const full =
-    h.length === 3
-      ? h
-          .split("")
-          .map((c) => c + c)
-          .join("")
-      : h;
-  const n = parseInt(full, 16);
-  if (Number.isNaN(n)) return null;
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-function luma(hex: string): number {
-  const c = rgbOf(hex);
-  if (!c) return 128;
-  return (c.r * 299 + c.g * 587 + c.b * 114) / 1000;
-}
-function shade(hex: string, factor: number): string {
-  const c = rgbOf(hex);
-  if (!c) return hex;
-  const f = (v: number) => Math.max(0, Math.min(255, Math.round(v * factor)));
-  return `rgb(${f(c.r)},${f(c.g)},${f(c.b)})`;
-}
-/** v0.20.0（主人第 1 条）：主题色卡片上的文字统一白色（含浅色轻轨线），不再按亮度切黑字 */
-function inkOf(colors: (string | null)[]): { color: string; shadow: string } {
-  const segs = colors.filter((c): c is string => !!c);
-  if (segs.length === 0) return { color: "", shadow: "" };
-  return { color: "#ffffff", shadow: "0 1px 2px rgba(0,0,0,.38)" };
-}
-function solidGradient(colors: (string | null)[]): string {
-  const segs = colors.filter((c): c is string => !!c);
-  if (segs.length === 0) return "";
-  if (segs.length === 1) {
-    return `linear-gradient(135deg, ${segs[0]} 0%, ${shade(segs[0], 0.9)} 100%)`;
-  }
-  const w = 100 / segs.length;
-  const stops = segs
-    .map((c, i) => `${c} ${(i * w).toFixed(2)}% ${((i + 1) * w).toFixed(2)}%`)
-    .join(", ");
-  return `linear-gradient(to right, ${stops})`;
-}
-
-/**
- * v0.16.2→v0.16.3：多车可选方案（去横琴巴士：同程可乘 26/50 等不同线路）的卡面——
- * 双色位置周期互换闪烁：「一会左 26 右 50，一会左 50 右 26」，
- * 表达「这几路车都可以乘」，而非静态左右分区被误读成固定公司顺序
- */
-function BlinkVeil({ colors }: { colors: (string | null)[] }) {
-  const segs = colors.filter((c): c is string => !!c);
-  const [c1, c2] = segs.length >= 2 ? [segs[0], segs[1]] : [segs[0] ?? "#888", segs[0] ?? "#888"];
-  return (
-    <>
-      <span
-        aria-hidden
-        className="pc-veil pc-swap pc-swap-a"
-        style={{ background: `linear-gradient(90deg, ${c1} 0%, ${c1} 50%, ${c2} 50%, ${c2} 100%)` }}
-      />
-      <span
-        aria-hidden
-        className="pc-veil pc-swap pc-swap-b"
-        style={{ background: `linear-gradient(90deg, ${c2} 0%, ${c2} 50%, ${c1} 50%, ${c1} 100%)` }}
-      />
-    </>
-  );
-}
-
-/**
- * v0.17.0：同起点合并卡（如擎天匯→澳科大 25/26/26A/50 含新福利+澳巴）——
- * **整张卡**两种颜色周期交替（横琴是左右分色互换，这里是整体换色）。
- * 直接复用 .pc-swap-a/.pc-swap-b 的交替动画，只是把渐变换成纯色，无需新增 keyframes。
- */
-function BlinkSolid({ colors }: { colors: (string | null)[] }) {
-  const segs = colors.filter((c): c is string => !!c);
-  const [c1, c2] = segs.length >= 2 ? [segs[0], segs[1]] : [segs[0] ?? "#888", segs[0] ?? "#888"];
-  return (
-    <>
-      <span aria-hidden className="pc-veil pc-swap pc-swap-a" style={{ background: c1 }} />
-      <span aria-hidden className="pc-veil pc-swap pc-swap-b" style={{ background: c2 }} />
-    </>
-  );
-}
-
 /**
  * 方案卡列表（首页方向卡点入 /routes 后展示，v0.13.x 从 HomeClient 拆出共用）
  * 每张卡 = 一条具体乘车方案；点击直接启动计时。
@@ -141,7 +57,7 @@ export default function RoutePlanList({
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {plans.map((p, pi) => {
         const isStarting = starting === p.id;
-        // v0.20.5（主人）：大卡片取消主题色背景与闪烁——底色与线路标签撞色、显脏；
+        // v0.20.5（用户）：大卡片取消主题色背景与闪烁——底色与线路标签撞色、显脏；
         // 颜色只保留在线路标签上（主题色底 + 白字）
         return (
           <button

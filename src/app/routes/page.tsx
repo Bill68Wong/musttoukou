@@ -42,7 +42,7 @@ export default async function RoutesPage({
         >
           ‹ 首页
         </Link>
-        {/* v0.20.9（主人）：页头写「出发地 → 目的地」（如 擎天匯 → 橫琴口岸）；
+        {/* v0.20.9（用户）：页头写「出发地 → 目的地」（如 擎天匯 → 橫琴口岸）；
             卡片右侧的地点名与「路线 N 份」已删除，避免重复 */}
         <h1 className="h-headline" style={{ marginTop: 6 }}>
           {valid ? dirLabel(from, to) : "选择路线"}

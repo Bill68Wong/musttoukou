@@ -11,7 +11,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     const pool = getPool();
     const ride = await pool.query(
       `SELECT id, route_code, dsat_dir, board_station, alight_station,
-              vehicle_plate, vehicle_code, crowd_level, started_at, ended_at, total_ms, is_test
+              vehicle_plate, vehicle_code, crowd_level, started_at, ended_at, total_ms
          FROM free_rides WHERE id = $1 AND deleted_at IS NULL`,
       [rideId],
     );
@@ -26,5 +26,30 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ ok: true, ride: ride.rows[0], events: events.rows });
   } catch (err) {
     return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 500 });
+  }
+}
+
+/** DELETE /api/free/[id]：软删除行程（v0.23.0，历史记录页单条删除用） */
+export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await ctx.params;
+    const rideId = Number(id);
+    if (!Number.isInteger(rideId)) {
+      return NextResponse.json({ ok: false, error: "无效的行程 ID" }, { status: 400 });
+    }
+    const pool = getPool();
+    const res = await pool.query(
+      `UPDATE free_rides SET deleted_at = now()
+        WHERE id = $1 AND deleted_at IS NULL
+        RETURNING id`,
+      [rideId],
+    );
+    if (res.rowCount === 0) {
+      return NextResponse.json({ ok: false, error: "行程不存在或已删除" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[free] 删除行程失败：", (err as Error).message);
+    return NextResponse.json({ ok: false, error: "删除行程失败" }, { status: 500 });
   }
 }

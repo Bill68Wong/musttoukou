@@ -1,19 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 
 export const preferredRegion = "sin1";
 
-/** GET /api/free/rides —— 自由记站历史行程列表（v0.22.0，/free 页「历史记录」用） */
+/**
+ * GET /api/free/rides —— 自由记站历史行程列表（v0.22.0，/free/history 页用）
+ * v0.23.0：测试模式已移除 → 一律排除 is_test=true（测试数据不再展示），不再读 cookie
+ */
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const includeTest = req.cookies.get("mtk_include_test")?.value === "1";
     const pool = getPool();
     const res = await pool.query(
       `SELECT fr.id, fr.route_code, fr.dsat_dir, fr.board_station, fr.alight_station,
               fr.vehicle_plate, fr.crowd_level, fr.started_at, fr.ended_at, fr.total_ms,
-              COALESCE(fr.is_test, false) AS is_test,
               (SELECT color FROM routes r WHERE r.code = fr.route_code LIMIT 1) AS route_color,
               -- 站名：自由记站的站码带站台后缀（T373/2），stations 表存主码 → 三段式回退
               (SELECT name_tc FROM stations s
@@ -29,10 +30,9 @@ export async function GET(req: NextRequest) {
                   AND e.event_type IN ('stop_arrive','stop_pass')) AS timed_count
          FROM free_rides fr
         WHERE fr.deleted_at IS NULL
-          AND ($1::boolean OR NOT COALESCE(fr.is_test, false))
+          AND NOT COALESCE(fr.is_test, false)
         ORDER BY fr.started_at DESC
-        LIMIT 60`,
-      [includeTest],
+        LIMIT 200`,
     );
     return NextResponse.json({ ok: true, rides: res.rows });
   } catch (err) {

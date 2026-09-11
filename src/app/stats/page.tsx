@@ -1,4 +1,3 @@
-import { cookies } from "next/headers";
 import { getPool } from "@/lib/db";
 import { sortRouteOptions } from "@/lib/timer-flow";
 import { HOME_SLUG, PAIR_ORDER, PLACE_SHORT, dirLabel } from "@/lib/home-plans-shared";
@@ -16,22 +15,11 @@ export const dynamic = "force-dynamic";
 const isHengqin = (fromSlug: string, toSlug: string) =>
   fromSlug === "hengqin" || toSlug === "hengqin";
 
-// v0.10.0：默认排除测试会话（is_test=true），「含测试」偏好存 cookie（mtk_include_test=1）
-async function includeTestPref(): Promise<boolean> {
-  try {
-    const store = await cookies();
-    return store.get("mtk_include_test")?.value === "1";
-  } catch {
-    return false;
-  }
-}
-
+// v0.23.0：测试模式已移除 → 一律排除测试会话（is_test=true），不再读 cookie
 export default async function StatsPage() {
   let groups: GroupStat[] = [];
   let summary: Summary | null = null;
   let dbError: string | null = null;
-  const includeTest = await includeTestPref();
-  const testFilter = includeTest ? "" : "AND NOT COALESCE(s.is_test, false)";
 
   try {
     const pool = getPool();
@@ -81,7 +69,7 @@ export default async function StatsPage() {
              THEN fl.route_meta -> s.route_code ->> 'to' END,
         fl.to_station)
       LEFT JOIN timer_sessions s ON s.plan_id = cp.id AND s.deleted_at IS NULL
-        ${includeTest ? "" : "AND NOT COALESCE(s.is_test, false)"}
+        AND NOT COALESCE(s.is_test, false)
       WHERE cp.is_active
       GROUP BY cp.id, cp.plan_key, cp.summary, pf.slug, pt.slug,
                (CASE WHEN pf.slug = 'hengqin' OR pt.slug = 'hengqin'
@@ -101,7 +89,8 @@ export default async function StatsPage() {
              count(DISTINCT travel_date)::int AS days,
              round(avg(total_minutes), 1)::float8 AS avg_min
       FROM timer_sessions s
-      WHERE s.deleted_at IS NULL AND s.total_minutes IS NOT NULL ${testFilter}
+      WHERE s.deleted_at IS NULL AND s.total_minutes IS NOT NULL
+        AND NOT COALESCE(s.is_test, false)
     `);
     const s = sumRes.rows[0] as { n: number; days: number; avg_min: number | null };
     summary = {
@@ -160,11 +149,6 @@ export default async function StatsPage() {
   }
 
   return (
-    <StatsClient
-      groups={groups}
-      summary={summary}
-      dbError={dbError}
-      includeTest={includeTest}
-    />
+    <StatsClient groups={groups} summary={summary} dbError={dbError} />
   );
 }

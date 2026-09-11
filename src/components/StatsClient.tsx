@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import RouteStack from "./RouteStack";
 
 export interface PlanStat {
@@ -61,21 +60,12 @@ export default function StatsClient({
   groups,
   summary,
   dbError,
-  includeTest,
 }: {
   groups: GroupStat[];
   summary: Summary | null;
   dbError: string | null;
-  includeTest?: boolean;
 }) {
-  const router = useRouter();
   const width = (n: number) => Math.min(100, Math.round((n / GOAL) * 100));
-
-  // v0.10.0「含测试」偏好：写 cookie 后刷新（服务端按偏好过滤）
-  function toggleIncludeTest() {
-    document.cookie = `mtk_include_test=${includeTest ? "0" : "1"}; path=/; max-age=31536000; samesite=lax`;
-    router.refresh();
-  }
 
   return (
     <main className="page">
@@ -84,18 +74,9 @@ export default function StatsClient({
           <h1 className="h-headline" style={{ margin: 0 }}>
             通勤统计
           </h1>
-          <button
-            role="switch"
-            aria-checked={!!includeTest}
-            className={`chip${includeTest ? " chip--on" : ""}`}
-            onClick={toggleIncludeTest}
-            style={{ marginLeft: "auto" }}
-          >
-            🧪 含测试 {includeTest ? "开" : "关"}
-          </button>
           <a
             className="btn btn--outline btn--sm"
-            style={{ fontWeight: 500 }}
+            style={{ fontWeight: 500, marginLeft: "auto" }}
             href="/api/export"
             download
           >
@@ -230,7 +211,7 @@ export default function StatsClient({
         className="t-label t-muted t-center"
         style={{ marginTop: "auto", paddingTop: 20, opacity: 0.8 }}
       >
-        统计范围：已完成（非删除{includeTest ? "，含测试" : "，不含测试"}）的计时 · 数据来源：澳门交通事务局
+        统计范围：已完成（非删除）的计时 · 数据来源：澳门交通事务局
       </p>
     </main>
   );

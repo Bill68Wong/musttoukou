@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { getPool } from "@/lib/db";
 import { freeStopsOf, grabFreeVehicle } from "@/lib/free-ride";
 
@@ -9,7 +8,7 @@ export const preferredRegion = "sin1";
  * POST /api/free/start { route, dir, boardStation }
  * 创建自由记站会话 = 上车（board）打点一步完成：
  *   写 free_rides 行（含方向/上车站/开始时刻）+ board 事件 + 抓实际车牌（巴士；轻轨无）。
- * is_test 取自 cookie mtk_include_test=1（与全站一致）。
+ * v0.23.0：测试模式已移除 → is_test 恒 false（不再读 cookie）
  */
 export async function POST(req: NextRequest) {
   try {
@@ -24,15 +23,12 @@ export async function POST(req: NextRequest) {
     if (!route || !boardStation) {
       return NextResponse.json({ ok: false, error: "缺少 route / boardStation" }, { status: 400 });
     }
-    const store = await cookies();
-    const isTest = store.get("mtk_include_test")?.value === "1";
-
     const pool = getPool();
     const now = new Date();
     const ins = await pool.query(
       `INSERT INTO free_rides (route_code, dsat_dir, board_station, started_at, is_test)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [route, dir, boardStation, now.toISOString(), isTest],
+       VALUES ($1, $2, $3, $4, false) RETURNING id`,
+      [route, dir, boardStation, now.toISOString()],
     );
     const id = (ins.rows[0] as { id: number }).id;
     // v0.22.0：回传 board 的 event_id —— riding 页「本程已记」从上车那条就开始列，
@@ -58,7 +54,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       id,
-      isTest,
       vehiclePlate: veh?.plate ?? null,
       vehicleCode: veh?.code ?? null,
       boardIdx,

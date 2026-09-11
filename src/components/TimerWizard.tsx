@@ -30,7 +30,6 @@ interface SessionData {
     total_minutes: number | null;
     dsat_dir: string | null;
     route_code: string | null;
-    is_test: boolean;
     from_slug: string | null;
     to_slug: string | null;
     from_zone: string | null;
@@ -965,19 +964,6 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           第 {Math.min(idx + 1, steps.length)} / {steps.length} 步
           {data.session.missed_count > 0 && (
             <span className="t-error"> · 没挤上 ×{data.session.missed_count}</span>
-          )}
-          {data.session.is_test && (
-            <span
-              className="t-label"
-              style={{
-                marginLeft: 6,
-                padding: "1px 8px",
-                borderRadius: 999,
-                background: "var(--surface-dim, #eef1f4)",
-              }}
-            >
-              🧪 测试中（不计统计）
-            </span>
           )}
         </p>
       </header>

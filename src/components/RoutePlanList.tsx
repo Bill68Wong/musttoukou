@@ -5,9 +5,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PlanRow } from "@/lib/home-plans-shared";
 
-/** 测试模式 localStorage 键（首页开关与路线选择页共用） */
-export const TEST_MODE_KEY = "mtk_test_mode";
-
 /* ---------- v0.8.0 主题色工具：卡片背景 = 线路原色（实色），文字按亮度自动对比 ---------- */
 function rgbOf(hex: string): { r: number; g: number; b: number } | null {
   const h = hex.replace("#", "");
@@ -92,15 +89,9 @@ function BlinkSolid({ colors }: { colors: (string | null)[] }) {
   );
 }
 
-/** 读测试模式偏好（浏览器端；服务端渲染首帧返回 false 无碍） */
-export function readTestMode(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(TEST_MODE_KEY) === "1";
-}
-
 /**
  * 方案卡列表（首页方向卡点入 /routes 后展示，v0.13.x 从 HomeClient 拆出共用）
- * 每张卡 = 一条具体乘车方案；点击直接启动计时（is_test 跟随首页测试模式开关）。
+ * 每张卡 = 一条具体乘车方案；点击直接启动计时。
  */
 export default function RoutePlanList({
   plans,
@@ -126,7 +117,7 @@ export default function RoutePlanList({
       const res = await fetch("/api/timer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId, is_test: readTestMode() }),
+        body: JSON.stringify({ planId }),
       });
       if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? "启动失败");
       const body = (await res.json()) as { sessionId?: number };

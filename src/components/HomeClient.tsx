@@ -1,15 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { readTestMode, TEST_MODE_KEY } from "@/components/RoutePlanList";
 import { HOME_SLUG, PAIR_ORDER, PLACE_SHORT, dirLabel, type PlanRow, type ActiveSession } from "@/lib/home-plans-shared";
 
 /**
  * 首页（v0.13.x 改版：按方向对分行）
  * 每行一对方向卡：左 = 擎天匯 → 目的地（去程），右 = 目的地 → 擎天匯（回程）；
  * 点方向卡进入 /routes?from=&to= 独立路线选择页，不再把具体方案堆在首页。
- * 测试模式偏好存 localStorage（首页开关 ⇄ 路线选择页 start 共用）。
  */
 export default function HomeClient({
   plans,
@@ -21,23 +18,6 @@ export default function HomeClient({
   dbError: string | null;
 }) {
   const router = useRouter();
-  // v0.10.0 测试模式：开 → 新建会话标 is_test=true（不计入统计/记录/导出）
-  const [testMode, setTestMode] = useState(false);
-
-  // 首帧后同步 localStorage 偏好（SSR 首帧恒为 false，避免 hydration 不一致）
-  useEffect(() => {
-    setTestMode(readTestMode());
-  }, []);
-
-  function toggleTestMode() {
-    const next = !testMode;
-    setTestMode(next);
-    try {
-      window.localStorage.setItem(TEST_MODE_KEY, next ? "1" : "0");
-    } catch {
-      /* 隐私模式等场景忽略 */
-    }
-  }
 
   if (dbError) {
     return (
@@ -110,35 +90,6 @@ export default function HomeClient({
           选方向 → 选路线 → 开始计时
         </p>
       </header>
-
-      {/* v0.10.0 测试模式开关：测试运行标 is_test，不计入统计/记录（默认关） */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 16,
-          padding: "10px 14px",
-          borderRadius: 16,
-          background: "var(--surface-dim, #eef1f4)",
-        }}
-      >
-        <span className="t-label" style={{ fontWeight: 600 }}>
-          🧪 测试模式
-        </span>
-        <button
-          role="switch"
-          aria-checked={testMode}
-          className={`chip${testMode ? " chip--on" : ""}`}
-          onClick={toggleTestMode}
-          style={{ marginLeft: "auto", minWidth: 76, justifyContent: "center" }}
-        >
-          {testMode ? "开" : "关"}
-        </button>
-        <span className="t-label t-muted" style={{ flexShrink: 0 }}>
-          {testMode ? "· 测试记录" : "· 真实记录"}
-        </span>
-      </div>
 
       {active && (
         <button

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 
 /** 就近部署：Supabase 新加坡池化器 → sin1 */
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
  * GET /api/export —— 通勤记录 CSV 导出（T2.4）
  * - UTF-8 BOM（Excel 直接打开不乱码）
  * - 行数 = 导出范围 session 数（非软删的全部会话，含进行中）
- * - v0.10.0：默认排除测试会话（is_test=true）；浏览器带 mtk_include_test=1 偏好 cookie 时包含
+ * - v0.23.0：测试模式已移除 → 一律排除测试会话（is_test=true），不再读 cookie
  * - 每行带关键事件时间列（depart/wait_start/board/alight/border_start/border_end/arrive，
  *   取自 timer_events 最早一次对应事件，Asia/Macau HH:MM）
  */
@@ -29,10 +29,9 @@ function csvCell(v: unknown): string {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const pool = getPool();
-    const includeTest = req.cookies.get("mtk_include_test")?.value === "1";
     const res = await pool.query(`
       SELECT s.id,
              to_char(s.travel_date, 'YYYY-MM-DD') AS travel_date,
@@ -71,7 +70,7 @@ export async function GET(req: NextRequest) {
         WHERE te.session_id = s.id
       ) ev ON true
       WHERE s.deleted_at IS NULL
-        ${includeTest ? "" : "AND NOT COALESCE(s.is_test, false)"}
+        AND NOT COALESCE(s.is_test, false)
       ORDER BY s.started_at DESC
       LIMIT 2000
     `);

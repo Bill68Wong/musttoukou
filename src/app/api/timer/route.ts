@@ -6,13 +6,13 @@ import { deriveRouteDir } from "@/lib/dsat/eta";
 export const preferredRegion = "sin1";
 
 /**
- * POST /api/timer：创建计时会话 {planId, is_test?}
+ * POST /api/timer：创建计时会话 {planId}
  * 自动填充：日期/星期/时段（GMT+8）、主线路、DSAT 方向（由 route_stations 推导，未同步则为 null）
- * is_test（v0.10.0）：测试模式运行标 true，统计/记录/导出默认排除
+ * v0.23.0：测试模式已移除 → is_test 恒 false（请求体若仍带该字段一律忽略）
  */
 export async function POST(req: NextRequest) {
   try {
-    const { planId, is_test } = (await req.json()) as { planId?: number; is_test?: boolean };
+    const { planId } = (await req.json()) as { planId?: number };
     if (!planId) {
       return NextResponse.json({ error: "缺少 planId" }, { status: 400 });
     }
@@ -69,9 +69,9 @@ export async function POST(req: NextRequest) {
     const ins = await pool.query(
       `INSERT INTO timer_sessions
          (plan_id, route_code, dsat_dir, travel_date, weekday, started_at, is_test)
-       VALUES ($1, $2, $3, $4, $5, now(), $6)
+       VALUES ($1, $2, $3, $4, $5, now(), false)
        RETURNING id`,
-      [planId, routeCode, dsatDir, travelDate, weekday, !!is_test],
+      [planId, routeCode, dsatDir, travelDate, weekday],
     );
     const sessionId = (ins.rows[0] as { id: number }).id;
     return NextResponse.json({ sessionId });

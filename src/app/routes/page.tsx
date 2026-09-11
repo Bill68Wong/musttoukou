@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 /**
  * 路线选择页（v0.13.x 新增）
  * 首页点方向卡进入：/routes?from=home&to=school —— 列出该方向下的所有乘车方案，
- * 点击任一方案直接启动计时（测试模式跟随首页开关的 localStorage 偏好）。
+ * 点击任一方案直接启动计时。
  */
 export default async function RoutesPage({
   searchParams,

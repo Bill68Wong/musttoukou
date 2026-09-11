@@ -8,13 +8,9 @@
 import RouteStack from "./RouteStack";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { freeLineLabel } from "@/lib/free-shared";
+import { FREE_CROWD as CROWD, freeLineLabel } from "@/lib/free-shared";
+import type { FreeStop, RideDetail, RideEventRow } from "@/lib/free-shared";
 
-interface FreeStop {
-  seq: number;
-  code: string;
-  name: string;
-}
 interface RouteOpt {
   code: string;
   kind: string;
@@ -26,52 +22,6 @@ interface StationOpt {
   name: string;
   kind: string;
 }
-interface RideDetail {
-  route_code: string;
-  dsat_dir: string;
-  board_station: string | null;
-  alight_station: string | null;
-  vehicle_plate: string | null;
-  vehicle_code: string | null;
-  crowd_level: number | null;
-  started_at: string;
-  ended_at: string | null;
-  total_ms: number | null;
-}
-interface RideEventRow {
-  id: number;
-  seq: number;
-  event_type: "board" | "stop_arrive" | "stop_pass" | "stop_skip" | "alight";
-  station_code: string | null;
-  recorded_at: string;
-}
-/** v0.22.0：历史记录行（/api/free/rides） */
-interface HistoryRow {
-  id: number;
-  route_code: string;
-  dsat_dir: string;
-  board_station: string | null;
-  alight_station: string | null;
-  vehicle_plate: string | null;
-  crowd_level: number | null;
-  started_at: string;
-  ended_at: string | null;
-  total_ms: number | null;
-  is_test: boolean;
-  route_color: string | null;
-  board_name: string | null;
-  alight_name: string | null;
-  event_count: number;
-  timed_count: number;
-}
-
-const CROWD = [
-  { value: 0, label: "空", hint: "随便坐" },
-  { value: 1, label: "正常", hint: "有座" },
-  { value: 2, label: "饱和", hint: "没座位但站稳" },
-  { value: 3, label: "挤", hint: "贴着站" },
-  { value: 4, label: "爆满", hint: "前胸贴后背" },
-];
 const EVENT_TC: Record<string, string> = {
   board: "上车",
   stop_arrive: "到站",
@@ -111,13 +61,7 @@ function matchStation(s: StationOpt, kw: string): boolean {
 
 type Stage = "setup" | "riding" | "done";
 
-export default function FreeRideClient({
-  includeTest,
-  restoreRideId,
-}: {
-  includeTest: boolean;
-  restoreRideId: number | null;
-}) {
+export default function FreeRideClient({ restoreRideId }: { restoreRideId: number | null }) {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>(restoreRideId ? "riding" : "setup");
   const [error, setError] = useState<string | null>(null);
@@ -164,14 +108,6 @@ export default function FreeRideClient({
   // v0.22.0：本程已打的点（riding 页展示 + 撤销最近一条）
   const [rideEvents, setRideEvents] = useState<RideEventRow[]>([]);
   const [undoing, setUndoing] = useState(false);
-  // v0.22.0：历史记录（setup 页内嵌）——⚠️ 不可命名 history：会遮蔽 window.history
-  const [rideHistory, setRideHistory] = useState<HistoryRow[] | null>(null);
-  const [historyOpen, setHistoryOpen] = useState<number | null>(null);
-  const [historyDetail, setHistoryDetail] = useState<{
-    ride: RideDetail;
-    events: RideEventRow[];
-    stops: FreeStop[];
-  } | null>(null);
 
   // —— 汇总 ——
   const [detail, setDetail] = useState<{
@@ -200,61 +136,8 @@ export default function FreeRideClient({
         })
         .catch(() => {});
     }
-    // v0.22.0：历史记录（自由记站此前没有查看记录的地方）
-    void loadHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  /** 拉取历史行程列表（采集完成 / 切换测试开关后刷新） */
-  async function loadHistory() {
-    try {
-      const d = (await (await fetch("/api/free/rides", { cache: "no-store" })).json()) as {
-        ok: boolean;
-        rides?: HistoryRow[];
-      };
-      if (d.ok) setRideHistory(d.rides ?? []);
-    } catch {
-      /* 静默：历史加载失败不阻塞主流程 */
-    }
-  }
-
-  /** 展开某条历史 → 拉逐站事件 + 该线站序（用于把站码显示成站名） */
-  async function toggleHistory(id: number) {
-    if (historyOpen === id) {
-      setHistoryOpen(null);
-      setHistoryDetail(null);
-      return;
-    }
-    setHistoryOpen(id);
-    setHistoryDetail(null);
-    try {
-      const d = (await (await fetch(`/api/free/${id}`, { cache: "no-store" })).json()) as {
-        ok: boolean;
-        ride?: RideDetail;
-        events?: RideEventRow[];
-      };
-      if (!d.ok || !d.ride) return;
-      let stopList: FreeStop[] = [];
-      try {
-        const sd = (await (
-          await fetch(
-            `/api/free/stops?route=${encodeURIComponent(d.ride.route_code)}&dir=${d.ride.dsat_dir}`,
-            { cache: "no-store" },
-          )
-        ).json()) as { ok: boolean; stops?: FreeStop[] };
-        stopList = sd.stops ?? [];
-      } catch {
-        /* 站序拉不到时退回显示站码 */
-      }
-      setHistoryDetail({ ride: d.ride, events: d.events ?? [], stops: stopList });
-    } catch {
-      /* 静默 */
-    }
-  }
-
-  /** 历史详情里的站名查询 */
-  const histName = (code: string | null) =>
-    code ? (historyDetail?.stops.find((s) => s.code === code)?.name ?? code) : "—";
 
   // —— 恢复进行中的会话（refresh 后回到 riding）——
   useEffect(() => {
@@ -533,7 +416,6 @@ export default function FreeRideClient({
       }
       if (d.ended) {
         history.replaceState(null, "", "/free");
-        void loadHistory();
         await finishLoad(rideId);
         return;
       }
@@ -625,7 +507,6 @@ export default function FreeRideClient({
       if (last.station_code) setXCode(last.station_code);
       history.replaceState(null, "", `/free?ride=${rideId}`);
       setStage("riding");
-      void loadHistory();
     } catch {
       setError("网络异常");
     } finally {
@@ -660,12 +541,6 @@ export default function FreeRideClient({
 
   const fmtClock = (iso: string) =>
     new Date(iso).toLocaleTimeString("zh-CN", { timeZone: "Asia/Macau", hour12: false });
-  /** 固定模板 MM/DD HH:mm（澳门时间）——toLocaleString 在 iOS/安卓会输出长格式把行挤爆 */
-  const fmtDateTime = (iso: string) => {
-    const m = new Date(new Date(iso).getTime() + 8 * 3600 * 1000);
-    const p = (n: number) => String(n).padStart(2, "0");
-    return `${p(m.getUTCMonth() + 1)}/${p(m.getUTCDate())} ${p(m.getUTCHours())}:${p(m.getUTCMinutes())}`;
-  };
   const fmtDur = (ms: number) => {
     const s = Math.floor(ms / 1000);
     const m = Math.floor(s / 60);
@@ -673,11 +548,6 @@ export default function FreeRideClient({
   };
   const fmtGap = (sec: number | null) =>
     sec === null ? "—" : sec >= 60 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}` : `${sec}s`;
-  const toggleTest = () => {
-    document.cookie = `mtk_include_test=${includeTest ? "0" : "1"}; path=/; max-age=31536000; samesite=lax`;
-    router.refresh();
-    void loadHistory(); // v0.22.0：测试开关变化 → 历史列表同步增减
-  };
   const isLrt = (code: string) => code.startsWith("LRT-");
 
   return (
@@ -688,13 +558,11 @@ export default function FreeRideClient({
             ⏱ 自由记站
           </h1>
           <button
-            role="switch"
-            aria-checked={includeTest}
-            className={`chip${includeTest ? " chip--on" : ""}`}
-            onClick={toggleTest}
+            className="btn btn--text btn--sm t-muted"
             style={{ marginLeft: "auto" }}
+            onClick={() => router.push("/free/history")}
           >
-            🧪 测试 {includeTest ? "开" : "关"}
+            📋 采集记录
           </button>
         </div>
         <p className="t-label t-muted" style={{ marginTop: 6, lineHeight: 1.6 }}>
@@ -1187,108 +1055,6 @@ export default function FreeRideClient({
             </>
           )}
 
-          {/* v0.22.0：历史记录（自由记站此前没有查看记录的地方） */}
-          <div style={{ marginTop: 12 }}>
-            <p className="t-label t-muted" style={{ margin: "0 2px 8px" }}>
-              历史记录{rideHistory ? `（${rideHistory.length} 趟）` : ""}
-            </p>
-            {!rideHistory && <p className="t-body t-muted">加载中…</p>}
-            {rideHistory?.length === 0 && (
-              <p className="t-body t-muted" style={{ margin: "0 2px" }}>
-                还没有采集记录 —— 上面选好线路和上车站就能开始
-              </p>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {(rideHistory ?? []).map((h) => (
-                <div
-                  key={h.id}
-                  className="card"
-                  style={{
-                    padding: "11px 13px",
-                    borderLeft: h.route_color ? `4px solid ${h.route_color}` : undefined,
-                  }}
-                >
-                  <button
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      textAlign: "left",
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      color: "inherit",
-                      font: "inherit",
-                    }}
-                    onClick={() => void toggleHistory(h.id)}
-                  >
-                    <p className="t-body" style={{ margin: 0, lineHeight: 1.5 }}>
-                      {h.route_code.startsWith("LRT-") ? "🚈" : "🚌"}{" "}
-                      <RouteStack
-                        codes={[h.route_code]}
-                        colorOf={() => h.route_color ?? undefined}
-                        size="sm"
-                      />
-                      {h.is_test && <span className="t-muted" style={{ fontSize: 12 }}> · 🧪 测试</span>}
-                      {!h.ended_at && <span className="t-accent"> · 进行中</span>}
-                    </p>
-                    <p className="t-label t-muted" style={{ marginTop: 4, lineHeight: 1.5 }}>
-                      {fmtDateTime(h.started_at)} · {h.board_name ?? h.board_station ?? "?"}
-                      {" → "}
-                      {h.alight_name ?? h.alight_station ?? "—"}
-                      {h.total_ms != null ? ` · ${fmtDur(h.total_ms)}` : ""}
-                      {h.crowd_level != null
-                        ? ` · ${CROWD.find((c) => c.value === h.crowd_level)?.label ?? "?"}`
-                        : ""}
-                      {` · ${h.timed_count} 个时刻点`}
-                    </p>
-                    <p className="t-label t-muted" style={{ marginTop: 2, marginBottom: 0 }}>
-                      {historyOpen === h.id ? "收起逐站时刻 ▲" : "展开逐站时刻 ▼"}
-                    </p>
-                  </button>
-                  {historyOpen === h.id && (
-                    <div style={{ marginTop: 8 }}>
-                      {!historyDetail ? (
-                        <p className="t-label t-muted">加载中…</p>
-                      ) : (
-                        <div className="timeline">
-                          {historyDetail.events.map((e) => (
-                            <div key={e.id} className="timeline-item">
-                              <span className="timeline-dot" />
-                              <span className={e.event_type === "stop_skip" ? "t-muted" : undefined}>
-                                {e.event_type === "stop_skip"
-                                  ? "（无时刻） "
-                                  : `${fmtClock(e.recorded_at)} `}
-                                {EVENT_TC[e.event_type] ?? e.event_type}（{histName(e.station_code)}）
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {!h.ended_at && (
-                        <button
-                          className="btn btn--outline btn--sm"
-                          style={{ marginTop: 8 }}
-                          onClick={() => router.push(`/free?ride=${h.id}`)}
-                        >
-                          继续这趟
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            {!!rideHistory?.length && (
-              <button
-                className="btn btn--text t-muted btn--sm"
-                style={{ marginTop: 8 }}
-                onClick={() => void loadHistory()}
-              >
-                刷新
-              </button>
-            )}
-          </div>
         </div>
       )}
     </main>

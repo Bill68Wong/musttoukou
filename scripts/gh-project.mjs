@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * GitHub Project 管理工具（scripts/gh-project.mjs，v0.21.1）
+ * GitHub Project 管理工具（scripts/gh-project.mjs，v0.23.2）
  * 通过 GitHub API 管理「MUST登校」项目板（user project #2）与仓库 issue。
  *
  * 用法：
@@ -8,6 +8,8 @@
  *       列出项目板卡片（内容 + 状态）
  *   node scripts/gh-project.mjs backlog "<标题>" ["<正文>"]
  *       建 issue → 入板 → 状态 Backlog（待办）
+ *   node scripts/gh-project.mjs release "<标题>" ["<正文>"]
+ *       建 issue → 立即关闭 → 入板 Done（发版留档，一步到位）
  *   node scripts/gh-project.mjs done <issue编号> [<issue编号>...]
  *       把已有 issue 入板并设为 Done（发版留档）
  *   node scripts/gh-project.mjs review <pr编号> [<pr编号>...]
@@ -23,16 +25,23 @@ const PROJECT_NUMBER = 2;
 function token() {
   if (process.env.GHT) return process.env.GHT;
   try {
-    const out = execSync(
-      'printf "protocol=https\\nhost=github.com\\n\\n" | git credential fill 2>/dev/null',
-      { encoding: "utf8", shell: "bash" },
-    );
+    // 经 stdin 喂入、不走 shell：免去 bash 依赖（cmd/PowerShell 直接跑也行），
+    // 也避开 printf/重定向在不同 shell 下的转义坑
+    const out = execSync("git credential fill", {
+      encoding: "utf8",
+      input: "protocol=https\nhost=github.com\n\n",
+    });
     const m = out.match(/^password=(.+)$/m);
     if (m) return m[1].trim();
   } catch {
     /* ignore */
   }
-  throw new Error("未找到 GitHub token（设置 GHT 环境变量，或确保本机 git 凭据含 project scope）");
+  throw new Error(
+    "未找到 GitHub token。三种办法任选：\n" +
+      "  ① 在 Git Bash 里跑本脚本（凭据助手在 Git Bash 下最稳）\n" +
+      "  ② 先取凭据再传环境变量：GHT=<token> node scripts/gh-project.mjs ...\n" +
+      "  ③ 若报 PROGRAM BLOCKED ... wsl.exe：git 凭据助手会拉起 wsl，请到「安全中心 → 命令安全 → 程序黑名单」移除 wsl.exe",
+  );
 }
 const T = token();
 
@@ -86,6 +95,17 @@ async function setStatus(ctx, contentId, statusName) {
 const [cmd, ...args] = process.argv.slice(2);
 const ctx = await projectCtx();
 
+/** 建 issue（返回 REST 原始对象，含 number / node_id） */
+const createIssue = (title, body) => rest(`/repos/${REPO}/issues`, "POST", { title, body });
+
+/** 关闭 issue 并置入 Done（backlog/done/release 共用的收尾动作） */
+async function closeAndDone(n) {
+  const iss = await rest(`/repos/${REPO}/issues/${n}`);
+  if (iss.state !== "closed") await rest(`/repos/${REPO}/issues/${n}`, "PATCH", { state: "closed" });
+  await setStatus(ctx, iss.node_id, "Done");
+  return iss;
+}
+
 if (cmd === "list") {
   const d = await gql(
     `query($pid:ID!){ node(id:$pid){ ... on ProjectV2 { items(first:50){ nodes{ id fieldValues(first:20){ nodes{ __typename ... on ProjectV2ItemFieldSingleSelectValue { name field{ ... on ProjectV2SingleSelectField { name } } } } } content{ __typename ... on Issue{ number title state } ... on PullRequest{ number title state } } } } } } }`,
@@ -101,14 +121,19 @@ if (cmd === "list") {
 } else if (cmd === "backlog") {
   const [title, body = ""] = args;
   if (!title) throw new Error("缺少标题");
-  const iss = await rest(`/repos/${REPO}/issues`, "POST", { title, body });
+  const iss = await createIssue(title, body);
   await setStatus(ctx, iss.node_id, "Backlog");
   console.log(`✅ #${iss.number} 入板 Backlog：${title}`);
+} else if (cmd === "release") {
+  // 发版留档：建卡即关闭并进 Done（等价于 backlog + done 两步，省一次复制编号）
+  const [title, body = ""] = args;
+  if (!title) throw new Error("缺少标题");
+  const iss = await createIssue(title, body);
+  const done = await closeAndDone(iss.number);
+  console.log(`✅ #${done.number} 建卡即归档 Done：${done.title}`);
 } else if (cmd === "done") {
   for (const n of args) {
-    const iss = await rest(`/repos/${REPO}/issues/${n}`);
-    if (iss.state !== "closed") await rest(`/repos/${REPO}/issues/${n}`, "PATCH", { state: "closed" });
-    await setStatus(ctx, iss.node_id, "Done");
+    const iss = await closeAndDone(n);
     console.log(`✅ #${n} 已关闭并入板 Done：${iss.title}`);
   }
 } else if (cmd === "review") {
@@ -118,5 +143,7 @@ if (cmd === "list") {
     console.log(`✅ PR#${n} 入板 In review：${pr.title}`);
   }
 } else {
-  console.log("用法：list | backlog <标题> [正文] | done <issue编号...> | review <PR编号...>");
+  console.log(
+    "用法：list | backlog <标题> [正文] | release <标题> [正文] | done <issue编号...> | review <PR编号...>",
+  );
 }

@@ -275,11 +275,16 @@ CREATE TABLE IF NOT EXISTS segment_stats (
     to_station    TEXT NOT NULL,
     weekday       SMALLINT NOT NULL,
     time_bucket   TEXT NOT NULL,
+    -- v0.22.0：起点站的到站类型——决定该段时长是否含停站时间
+    --   stop = 起点是停靠（段时长 = 停站 + 行驶，乘客感知的实际到站间隔）
+    --   pass = 起点是甩站（车没停，≈纯行驶时长；两档相减可反推停站耗时）
+    --   all  = 两者合并，样本不足时的兜底
+    arrive_kind   TEXT NOT NULL DEFAULT 'all',
     avg_minutes   NUMERIC(5,1) NOT NULL,
     p50_minutes   NUMERIC(5,1),
     samples       INT NOT NULL,
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (route_code, from_station, to_station, weekday, time_bucket)
+    UNIQUE (route_code, from_station, to_station, weekday, time_bucket, arrive_kind)
 );
 
 -- 2.12 轻轨 API 站点映射（motransportinfo getLrtStations 站 id ↔ DB 站码）

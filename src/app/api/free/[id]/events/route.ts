@@ -39,11 +39,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     );
     const seq = (seqRes.rows[0] as { next: number }).next;
     const now = new Date();
-    await pool.query(
+    // v0.22.0：回传真实 event_id —— 前端「撤销最近一条」依赖它（同 timer 事件路由口径）
+    const ins = await pool.query(
       `INSERT INTO free_ride_events (free_ride_id, seq, event_type, station_code, recorded_at)
-       VALUES ($1, $2, $3, $4, $5)`,
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
       [rideId, seq, type, station, now.toISOString()],
     );
+    const eventId = Number(ins.rows[0].id);
 
     if (type === "alight") {
       const totalMs = Math.max(0, Math.round(now.getTime() - started.getTime()));
@@ -53,9 +56,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           WHERE id = $1`,
         [rideId, now.toISOString(), station, totalMs],
       );
-      return NextResponse.json({ ok: true, ended: true, totalMs });
+      return NextResponse.json({ ok: true, ended: true, totalMs, event_id: eventId, seq });
     }
-    return NextResponse.json({ ok: true, seq, recordedAt: now.toISOString() });
+    return NextResponse.json({
+      ok: true,
+      seq,
+      event_id: eventId,
+      station_code: station,
+      recordedAt: now.toISOString(),
+    });
   } catch (err) {
     console.error("[free/events] 失败：", (err as Error).message);
     return NextResponse.json({ ok: false, error: "打点失败" }, { status: 500 });

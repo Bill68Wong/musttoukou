@@ -45,6 +45,25 @@ interface RideEventRow {
   station_code: string | null;
   recorded_at: string;
 }
+/** v0.22.0：历史记录行（/api/free/rides） */
+interface HistoryRow {
+  id: number;
+  route_code: string;
+  dsat_dir: string;
+  board_station: string | null;
+  alight_station: string | null;
+  vehicle_plate: string | null;
+  crowd_level: number | null;
+  started_at: string;
+  ended_at: string | null;
+  total_ms: number | null;
+  is_test: boolean;
+  route_color: string | null;
+  board_name: string | null;
+  alight_name: string | null;
+  event_count: number;
+  timed_count: number;
+}
 
 const CROWD = [
   { value: 0, label: "空", hint: "随便坐" },
@@ -71,6 +90,13 @@ const kindBadge = (kind: string) =>
     </span>
   );
 const lrtName = (name: string) => name.replace(/站$/, "");
+
+/** 站区码三段式定位：站点方式传主码（C688），站序里可能是带后缀的分台码（C688/2） */
+function findStationIdx(list: FreeStop[], code: string): number {
+  return list.findIndex(
+    (s) => s.code === code || s.code.startsWith(code + "/") || code.startsWith(s.code + "/"),
+  );
+}
 
 /** 站点搜索匹配（code 或 站名） */
 function matchStation(s: StationOpt, kw: string): boolean {
@@ -135,6 +161,17 @@ export default function FreeRideClient({
   const [crowdEdit, setCrowdEdit] = useState(false);
   const [crowdBusy, setCrowdBusy] = useState(false);
   const [rideColor, setRideColor] = useState<string | null>(null);
+  // v0.22.0：本程已打的点（riding 页展示 + 撤销最近一条）
+  const [rideEvents, setRideEvents] = useState<RideEventRow[]>([]);
+  const [undoing, setUndoing] = useState(false);
+  // v0.22.0：历史记录（setup 页内嵌）——⚠️ 不可命名 history：会遮蔽 window.history
+  const [rideHistory, setRideHistory] = useState<HistoryRow[] | null>(null);
+  const [historyOpen, setHistoryOpen] = useState<number | null>(null);
+  const [historyDetail, setHistoryDetail] = useState<{
+    ride: RideDetail;
+    events: RideEventRow[];
+    stops: FreeStop[];
+  } | null>(null);
 
   // —— 汇总 ——
   const [detail, setDetail] = useState<{
@@ -163,8 +200,61 @@ export default function FreeRideClient({
         })
         .catch(() => {});
     }
+    // v0.22.0：历史记录（自由记站此前没有查看记录的地方）
+    void loadHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** 拉取历史行程列表（采集完成 / 切换测试开关后刷新） */
+  async function loadHistory() {
+    try {
+      const d = (await (await fetch("/api/free/rides", { cache: "no-store" })).json()) as {
+        ok: boolean;
+        rides?: HistoryRow[];
+      };
+      if (d.ok) setRideHistory(d.rides ?? []);
+    } catch {
+      /* 静默：历史加载失败不阻塞主流程 */
+    }
+  }
+
+  /** 展开某条历史 → 拉逐站事件 + 该线站序（用于把站码显示成站名） */
+  async function toggleHistory(id: number) {
+    if (historyOpen === id) {
+      setHistoryOpen(null);
+      setHistoryDetail(null);
+      return;
+    }
+    setHistoryOpen(id);
+    setHistoryDetail(null);
+    try {
+      const d = (await (await fetch(`/api/free/${id}`, { cache: "no-store" })).json()) as {
+        ok: boolean;
+        ride?: RideDetail;
+        events?: RideEventRow[];
+      };
+      if (!d.ok || !d.ride) return;
+      let stopList: FreeStop[] = [];
+      try {
+        const sd = (await (
+          await fetch(
+            `/api/free/stops?route=${encodeURIComponent(d.ride.route_code)}&dir=${d.ride.dsat_dir}`,
+            { cache: "no-store" },
+          )
+        ).json()) as { ok: boolean; stops?: FreeStop[] };
+        stopList = sd.stops ?? [];
+      } catch {
+        /* 站序拉不到时退回显示站码 */
+      }
+      setHistoryDetail({ ride: d.ride, events: d.events ?? [], stops: stopList });
+    } catch {
+      /* 静默 */
+    }
+  }
+
+  /** 历史详情里的站名查询 */
+  const histName = (code: string | null) =>
+    code ? (historyDetail?.stops.find((s) => s.code === code)?.name ?? code) : "—";
 
   // —— 恢复进行中的会话（refresh 后回到 riding）——
   useEffect(() => {
@@ -197,6 +287,8 @@ export default function FreeRideClient({
       const ro = opts.routes?.find((x) => x.code === r.route_code);
       setRideColor(ro?.color ?? null);
       setRideDirLabel(ro?.dirs.find((dd) => dd.dir === r.dsat_dir)?.label ?? "");
+      // v0.22.0：已打点事件回填（riding 页「本程已记」+ 撤销）
+      setRideEvents(d.events ?? []);
       // 计算当前推进
       const passed = (d.events ?? []).filter(
         (e) => e.event_type !== "board" && e.event_type !== "alight",
@@ -237,6 +329,9 @@ export default function FreeRideClient({
         rel.push(null);
       }
     }
+    // v0.22.0：站序与事件回填到 riding 级 state——「撤销下车·继续记录」要从 done 退回 riding
+    setRideStops(stops);
+    setRideEvents(evs);
     setDetail({ ride: d.ride, events: evs, nameOf, relSecs: rel });
     setStage("done");
   }
@@ -261,36 +356,72 @@ export default function FreeRideClient({
     setStationKw("");
   };
 
-  const startRide = async () => {
-    if (!selRoute || !selDir || !boardCode || busy) return;
+  /**
+   * v0.22.0：启动采集（「按线路选」与「按站点选」共用）。
+   * 参数全部显式传入 —— setState 是异步的，站点方式「选完线路直接开始」
+   * 若在闭包里读 state 会拿到旧值（这正是此前按站点选打不开的同类问题）。
+   */
+  const beginRide = async (p: {
+    route: string;
+    dir: string;
+    board: string;
+    dirLabel: string;
+    color: string | null;
+    stopList: FreeStop[];
+  }) => {
+    if (busy) return;
     setBusy(true);
+    setError(null);
     try {
       const d = (await (
         await fetch("/api/free/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ route: selRoute.code, dir: selDir, boardStation: boardCode }),
+          body: JSON.stringify({ route: p.route, dir: p.dir, boardStation: p.board }),
         })
-      ).json()) as { ok: boolean; id?: number; error?: string; vehiclePlate?: string | null };
+      ).json()) as {
+        ok: boolean;
+        id?: number;
+        error?: string;
+        vehiclePlate?: string | null;
+        boardEventId?: number;
+        startedAt?: string;
+      };
       if (!d.ok || !d.id) {
         setError(d.error ?? "启动失败");
         return;
       }
-      const bi = stops.findIndex((s) => s.code === boardCode);
+      const startedAt = d.startedAt ?? new Date().toISOString();
+      // 上车站按站区码三段式定位：站点方式传的是主码（C688），站序里可能是分台码（C688/2）
+      const bi = findStationIdx(p.stopList, p.board);
       setRide({
-        route_code: selRoute.code,
-        dsat_dir: selDir,
-        board_station: boardCode,
+        route_code: p.route,
+        dsat_dir: p.dir,
+        board_station: p.board,
         vehicle_plate: d.vehiclePlate ?? null,
         vehicle_code: null,
         crowd_level: null,
-        started_at: new Date().toISOString(),
+        started_at: startedAt,
       });
       setRideId(d.id);
-      setRideStops(stops);
-      setRideDirLabel(selDirLabel);
-      setRideColor(selRoute.color ?? null);
-      setXCode(stops[(bi + 1) % stops.length].code);
+      setRideStops(p.stopList);
+      setRideDirLabel(p.dirLabel);
+      setRideColor(p.color);
+      // 「本程已记」从上车那条开始（撤销按钮也随之立即可用）
+      setRideEvents(
+        d.boardEventId
+          ? [
+              {
+                id: d.boardEventId,
+                seq: 1,
+                event_type: "board",
+                station_code: p.board,
+                recorded_at: startedAt,
+              },
+            ]
+          : [],
+      );
+      if (bi >= 0 && p.stopList.length) setXCode(p.stopList[(bi + 1) % p.stopList.length].code);
       history.replaceState(null, "", `/free?ride=${d.id}`);
       setCrowdDraft(null);
       setCrowdEdit(false);
@@ -300,6 +431,60 @@ export default function FreeRideClient({
     } finally {
       setBusy(false);
     }
+  };
+
+  const startRide = async () => {
+    if (!selRoute || !selDir || !boardCode || busy) return;
+    await beginRide({
+      route: selRoute.code,
+      dir: selDir,
+      board: boardCode,
+      dirLabel: selDirLabel,
+      color: selRoute.color ?? null,
+      stopList: stops,
+    });
+  };
+
+  /**
+   * v0.22.0：「按站点选」选完线路 → 直接开始。
+   * 站点已确定就是上车站，无需再选一遍；多方向时由调用方先给 dir。
+   * ⚠️ 此前只 setSelRoute/setSelDir，而站点方式的渲染条件只认 selStation →
+   *    界面原地不动，表现为「点了没反应 / 打不开」。
+   */
+  const pickFromStation = async (
+    r: { code: string; kind: string; color: string | null },
+    dir: string,
+  ) => {
+    if (!selStation || busy) return;
+    const board = selStation.code;
+    // 方向 label：station-routes 只回 dir 值，label 需从线路选项补全
+    let optList = routes;
+    if (!optList) {
+      try {
+        const o = (await (await fetch("/api/free/options", { cache: "no-store" })).json()) as {
+          ok: boolean;
+          routes?: RouteOpt[];
+        };
+        optList = o.routes ?? null;
+        if (optList) setRoutes(optList);
+      } catch {
+        /* 拿不到 label 不影响开始 */
+      }
+    }
+    const dirLabel = optList?.find((x) => x.code === r.code)?.dirs.find((d) => d.dir === dir)?.label ?? "";
+    const sd = (await (
+      await fetch(`/api/free/stops?route=${encodeURIComponent(r.code)}&dir=${dir}`, { cache: "no-store" })
+    ).json()) as { ok: boolean; stops?: FreeStop[] };
+    const stopList = sd.stops ?? [];
+    if (!stopList.length) {
+      setError(`${r.code} 路该方向没有可用的站序`);
+      return;
+    }
+    if (findStationIdx(stopList, board) < 0) {
+      setError(`${r.code} 路该方向不经停「${selStation.name}」`);
+      return;
+    }
+    await beginRide({ route: r.code, dir, board, dirLabel, color: r.color, stopList });
   };
 
   // ================= riding：逐站打点 =================
@@ -315,19 +500,40 @@ export default function FreeRideClient({
     if (!rideId || busy || !xCode) return;
     setBusy(true);
     try {
+      const station = xCode;
       const d = (await (
         await fetch(`/api/free/${rideId}/events`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type, station: xCode }),
+          body: JSON.stringify({ type, station }),
         })
-      ).json()) as { ok: boolean; ended?: boolean; totalMs?: number; error?: string };
+      ).json()) as {
+        ok: boolean;
+        ended?: boolean;
+        totalMs?: number;
+        error?: string;
+        event_id?: number;
+        seq?: number;
+        recordedAt?: string;
+      };
       if (!d.ok) {
         setError(d.error ?? "打点失败");
         return;
       }
+      // v0.22.0：记录本地事件（riding 页「本程已记」与撤销依赖；event_id 来自服务端）
+      if (d.event_id) {
+        const row: RideEventRow = {
+          id: d.event_id,
+          seq: d.seq ?? rideEvents.length + 1,
+          event_type: type,
+          station_code: station,
+          recorded_at: d.recordedAt ?? new Date().toISOString(),
+        };
+        setRideEvents((prev) => [...prev, row]);
+      }
       if (d.ended) {
         history.replaceState(null, "", "/free");
+        void loadHistory();
         await finishLoad(rideId);
         return;
       }
@@ -340,6 +546,90 @@ export default function FreeRideClient({
       setError("网络异常");
     } finally {
       setBusy(false);
+    }
+  };
+
+  /**
+   * v0.22.0：撤销最近一条打点。
+   * 与通勤计时 /api/timer/[id]/undo 同口径——只能撤最新一条（可连续撤），
+   * 撤完把提示站退回被撤的那一站，避免站序推进错位。
+   */
+  const undoLatest = async () => {
+    if (!rideId || undoing) return;
+    const last = rideEvents[rideEvents.length - 1];
+    if (!last) return;
+    if (
+      !window.confirm(
+        `撤销「${EVENT_TC[last.event_type] ?? last.event_type}（${rideName(last.station_code)}）」？`,
+      )
+    )
+      return;
+    setUndoing(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/free/${rideId}/undo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_id: last.id }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !d.ok) {
+        setError(d.error ?? "撤销失败");
+        return;
+      }
+      setRideEvents((prev) => prev.filter((e) => e.id !== last.id));
+      if (last.station_code) setXCode(last.station_code);
+    } catch {
+      setError("网络异常");
+    } finally {
+      setUndoing(false);
+    }
+  };
+
+  /**
+   * v0.22.0：撤销「下车」—— 行程复活回 riding 继续打点（误触「在此下车」的补救）。
+   * 服务端会把 ended_at / alight_station / total_ms 清空。
+   */
+  const undoAlight = async () => {
+    if (!rideId || undoing || !detail) return;
+    const last = detail.events[detail.events.length - 1];
+    if (!last || last.event_type !== "alight") return;
+    if (!window.confirm("撤销「下车」并继续记录？本趟将恢复为进行中。")) return;
+    setUndoing(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/free/${rideId}/undo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_id: last.id }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !d.ok) {
+        setError(d.error ?? "撤销失败");
+        return;
+      }
+      // 从 ?ride= 直接进来的「已结束」行程，ride state 可能为空 → 用详情补上
+      if (!ride) {
+        setRide({
+          route_code: detail.ride.route_code,
+          dsat_dir: detail.ride.dsat_dir,
+          board_station: detail.ride.board_station,
+          vehicle_plate: detail.ride.vehicle_plate,
+          vehicle_code: detail.ride.vehicle_code,
+          crowd_level: detail.ride.crowd_level,
+          started_at: detail.ride.started_at,
+        });
+      }
+      setRideEvents(detail.events.slice(0, -1));
+      setDetail(null);
+      if (last.station_code) setXCode(last.station_code);
+      history.replaceState(null, "", `/free?ride=${rideId}`);
+      setStage("riding");
+      void loadHistory();
+    } catch {
+      setError("网络异常");
+    } finally {
+      setUndoing(false);
     }
   };
 
@@ -364,8 +654,18 @@ export default function FreeRideClient({
     }
   };
 
+  /** riding / done 阶段站名查询（优先用本程站序，查不到退回站码） */
+  const rideName = (code: string | null) =>
+    code ? (rideStops.find((s) => s.code === code)?.name ?? code) : "—";
+
   const fmtClock = (iso: string) =>
     new Date(iso).toLocaleTimeString("zh-CN", { timeZone: "Asia/Macau", hour12: false });
+  /** 固定模板 MM/DD HH:mm（澳门时间）——toLocaleString 在 iOS/安卓会输出长格式把行挤爆 */
+  const fmtDateTime = (iso: string) => {
+    const m = new Date(new Date(iso).getTime() + 8 * 3600 * 1000);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${p(m.getUTCMonth() + 1)}/${p(m.getUTCDate())} ${p(m.getUTCHours())}:${p(m.getUTCMinutes())}`;
+  };
   const fmtDur = (ms: number) => {
     const s = Math.floor(ms / 1000);
     const m = Math.floor(s / 60);
@@ -376,6 +676,7 @@ export default function FreeRideClient({
   const toggleTest = () => {
     document.cookie = `mtk_include_test=${includeTest ? "0" : "1"}; path=/; max-age=31536000; samesite=lax`;
     router.refresh();
+    void loadHistory(); // v0.22.0：测试开关变化 → 历史列表同步增减
   };
   const isLrt = (code: string) => code.startsWith("LRT-");
 
@@ -521,6 +822,47 @@ export default function FreeRideClient({
               在此站下车结束；不指定终点，可随时下车
             </p>
           </div>
+
+          {/* v0.22.0：本程已记（逐条时刻 + 撤销最近一条）——此前 riding 页看不到已打的点 */}
+          {rideEvents.length > 0 && (
+            <div className="card" style={{ padding: "12px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <p className="t-label t-muted" style={{ margin: 0 }}>
+                  本程已记 {rideEvents.length} 点
+                </p>
+                <button
+                  className="btn btn--danger-outline btn--sm"
+                  style={{ marginLeft: "auto" }}
+                  disabled={undoing || busy}
+                  onClick={() => void undoLatest()}
+                >
+                  {undoing ? "撤销中…" : "撤销最近一条"}
+                </button>
+              </div>
+              <div className="timeline">
+                {[...rideEvents]
+                  .reverse()
+                  .slice(0, 6)
+                  .map((e) => (
+                    <div key={e.id} className="timeline-item">
+                      <span className="timeline-dot" />
+                      <span className={e.event_type === "stop_skip" ? "t-muted" : undefined}>
+                        {e.event_type === "stop_skip"
+                          ? "（无时刻） "
+                          : `${fmtClock(e.recorded_at)} `}
+                        {EVENT_TC[e.event_type] ?? e.event_type}（{rideName(e.station_code)}）
+                      </span>
+                    </div>
+                  ))}
+              </div>
+              {rideEvents.length > 6 && (
+                <p className="t-label t-muted" style={{ marginTop: 6 }}>
+                  仅显示最近 6 点，共 {rideEvents.length} 点
+                </p>
+              )}
+            </div>
+          )}
+
           <button className="btn btn--text t-muted" onClick={() => router.push(`/free?ride=${rideId}`)} style={{ alignSelf: "center" }}>
             暂离（回来可继续）
           </button>
@@ -575,6 +917,17 @@ export default function FreeRideClient({
             })}
           </div>
 
+          {/* v0.22.0：误触「下车」的补救——撤销后回到 riding 继续记录 */}
+          {detail.events[detail.events.length - 1]?.event_type === "alight" && (
+            <button
+              className="btn btn--danger-outline btn--block"
+              disabled={undoing}
+              onClick={() => void undoAlight()}
+            >
+              {undoing ? "撤销中…" : "撤销「下车」· 继续记录"}
+            </button>
+          )}
+
           <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
             <button
               className="btn btn--primary btn--block"
@@ -582,6 +935,7 @@ export default function FreeRideClient({
               onClick={() => {
                 resetSetup();
                 setDetail(null);
+                setRideEvents([]);
                 history.replaceState(null, "", "/free");
                 setStage("setup");
               }}
@@ -779,7 +1133,9 @@ export default function FreeRideClient({
                       返回
                     </button>
                   </p>
-                  <p className="t-label t-muted">在{selStation.name}上车 · 选坐哪路（多方向选完方向继续）</p>
+                  <p className="t-label t-muted">
+                    在{selStation.name}上车 · 选坐哪路（点线路即开始，多方向先选方向）
+                  </p>
                   {!stationRoutes && <p className="t-body t-muted">加载该站线路…</p>}
                   {stationRoutes?.map((r) =>
                     r.dirs.length <= 1 ? (
@@ -794,10 +1150,7 @@ export default function FreeRideClient({
                           borderLeft: r.color ? `4px solid ${r.color}` : undefined,
                           textAlign: "left",
                         }}
-                        onClick={() => {
-                          setSelRoute({ code: r.code, kind: r.kind, color: r.color, dirs: [] });
-                          void pickDir({ code: r.code, kind: r.kind, color: r.color, dirs: [] }, r.dirs[0] ?? "0");
-                        }}
+                        onClick={() => void pickFromStation(r, r.dirs[0] ?? "0")}
                       >
                         {kindBadge(r.kind)}
                         <span className="t-body t-strong">
@@ -811,10 +1164,18 @@ export default function FreeRideClient({
                           <RouteStack codes={[r.code]} colorOf={() => r.color ?? undefined} size="sm" />
                         </p>
                         {r.dirs.map((dd) => {
-                          const rr = { code: r.code, kind: r.kind, color: r.color, dirs: [] };
+                          const dl = (routes ?? [])
+                            .find((x) => x.code === r.code)
+                            ?.dirs.find((d) => d.dir === dd)?.label;
                           return (
-                            <button key={dd} className="btn btn--outline btn--sm" style={{ margin: "0 6px 6px 0" }} onClick={() => void pickDir(rr, dd)}>
-                              坐这路
+                            <button
+                              key={dd}
+                              className="btn btn--outline btn--sm"
+                              style={{ margin: "0 6px 6px 0" }}
+                              disabled={busy}
+                              onClick={() => void pickFromStation(r, dd)}
+                            >
+                              {dl ?? `方向 ${dd}`} · 坐这路
                             </button>
                           );
                         })}
@@ -825,6 +1186,109 @@ export default function FreeRideClient({
               )}
             </>
           )}
+
+          {/* v0.22.0：历史记录（自由记站此前没有查看记录的地方） */}
+          <div style={{ marginTop: 12 }}>
+            <p className="t-label t-muted" style={{ margin: "0 2px 8px" }}>
+              历史记录{rideHistory ? `（${rideHistory.length} 趟）` : ""}
+            </p>
+            {!rideHistory && <p className="t-body t-muted">加载中…</p>}
+            {rideHistory?.length === 0 && (
+              <p className="t-body t-muted" style={{ margin: "0 2px" }}>
+                还没有采集记录 —— 上面选好线路和上车站就能开始
+              </p>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(rideHistory ?? []).map((h) => (
+                <div
+                  key={h.id}
+                  className="card"
+                  style={{
+                    padding: "11px 13px",
+                    borderLeft: h.route_color ? `4px solid ${h.route_color}` : undefined,
+                  }}
+                >
+                  <button
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      color: "inherit",
+                      font: "inherit",
+                    }}
+                    onClick={() => void toggleHistory(h.id)}
+                  >
+                    <p className="t-body" style={{ margin: 0, lineHeight: 1.5 }}>
+                      {h.route_code.startsWith("LRT-") ? "🚈" : "🚌"}{" "}
+                      <RouteStack
+                        codes={[h.route_code]}
+                        colorOf={() => h.route_color ?? undefined}
+                        size="sm"
+                      />
+                      {h.is_test && <span className="t-muted" style={{ fontSize: 12 }}> · 🧪 测试</span>}
+                      {!h.ended_at && <span className="t-accent"> · 进行中</span>}
+                    </p>
+                    <p className="t-label t-muted" style={{ marginTop: 4, lineHeight: 1.5 }}>
+                      {fmtDateTime(h.started_at)} · {h.board_name ?? h.board_station ?? "?"}
+                      {" → "}
+                      {h.alight_name ?? h.alight_station ?? "—"}
+                      {h.total_ms != null ? ` · ${fmtDur(h.total_ms)}` : ""}
+                      {h.crowd_level != null
+                        ? ` · ${CROWD.find((c) => c.value === h.crowd_level)?.label ?? "?"}`
+                        : ""}
+                      {` · ${h.timed_count} 个时刻点`}
+                    </p>
+                    <p className="t-label t-muted" style={{ marginTop: 2, marginBottom: 0 }}>
+                      {historyOpen === h.id ? "收起逐站时刻 ▲" : "展开逐站时刻 ▼"}
+                    </p>
+                  </button>
+                  {historyOpen === h.id && (
+                    <div style={{ marginTop: 8 }}>
+                      {!historyDetail ? (
+                        <p className="t-label t-muted">加载中…</p>
+                      ) : (
+                        <div className="timeline">
+                          {historyDetail.events.map((e) => (
+                            <div key={e.id} className="timeline-item">
+                              <span className="timeline-dot" />
+                              <span className={e.event_type === "stop_skip" ? "t-muted" : undefined}>
+                                {e.event_type === "stop_skip"
+                                  ? "（无时刻） "
+                                  : `${fmtClock(e.recorded_at)} `}
+                                {EVENT_TC[e.event_type] ?? e.event_type}（{histName(e.station_code)}）
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {!h.ended_at && (
+                        <button
+                          className="btn btn--outline btn--sm"
+                          style={{ marginTop: 8 }}
+                          onClick={() => router.push(`/free?ride=${h.id}`)}
+                        >
+                          继续这趟
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {!!rideHistory?.length && (
+              <button
+                className="btn btn--text t-muted btn--sm"
+                style={{ marginTop: 8 }}
+                onClick={() => void loadHistory()}
+              >
+                刷新
+              </button>
+            )}
+          </div>
         </div>
       )}
     </main>

@@ -35,9 +35,11 @@ export async function POST(req: NextRequest) {
       [route, dir, boardStation, now.toISOString(), isTest],
     );
     const id = (ins.rows[0] as { id: number }).id;
-    await pool.query(
+    // v0.22.0：回传 board 的 event_id —— riding 页「本程已记」从上车那条就开始列，
+    // 撤销按钮也随之立即可用（此前首次打点前看不到任何已记条目）
+    const bEvt = await pool.query(
       `INSERT INTO free_ride_events (free_ride_id, seq, event_type, station_code, recorded_at)
-       VALUES ($1, 1, 'board', $2, $3)`,
+       VALUES ($1, 1, 'board', $2, $3) RETURNING id`,
       [id, boardStation, now.toISOString()],
     );
 
@@ -61,6 +63,8 @@ export async function POST(req: NextRequest) {
       vehicleCode: veh?.code ?? null,
       boardIdx,
       stopCount: stops.length,
+      boardEventId: Number(bEvt.rows[0].id),
+      startedAt: now.toISOString(),
     });
   } catch (err) {
     console.error("[free/start] 失败：", (err as Error).message);

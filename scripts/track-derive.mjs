@@ -4,15 +4,24 @@
  * 作用：把 scripts/track-collect.mjs 落盘的**原始帧**还原成站间时长样本。
  *
  * ── 两个口径都算（本脚本的核心价值）────────────────────────────────
- *   离开口径  t(离 B) − t(离 A) = run + dwell_B   ← **与手动打点同口径**
- *   到达口径  t(到 B) − t(到 A) = dwell_A + run   ← 与现有 segment_stats 同口径
+ *   离开口径  t(离 B) − t(离 A) = run + dwell_B   ← **与手动打点 / 现有 segment_stats 同口径（主口径）**
+ *   到达口径  t(到 B) − t(到 A) = dwell_A + run   ← 仅供对照，无消费方
  *   两者相差 dwell_B − dwell_A。原始帧同时含 `status='1'`（停靠）与 `'0'`（已离站），
  *   所以一次采集两种都能算，**口径定案前不需要重采**。
+ *
+ *   实测口径定案（2026-09-13 首轮 30 分钟，与云端 segment_stats 对照 227~239 段）：
+ *   离开口径 平均绝对差 **34 秒**（σ45）＜ 到达 39 秒（σ57）＜ 纯行驶 63 秒（σ53）
+ *   → 主口径 = 离开口径。
  *
  * ── 状态机（status 语义）──────────────────────────────────────────
  *   '1' = 停靠挂载站；'0' = 已离站、驶向下一站
  *   到达时刻 = 该站首次出现 status='1' 的时刻
  *   离开时刻 = 该站首次由 '1' 翻成 '0' 的时刻
+ *   ⚠️ **压缩键必须含 `idx`**：车辆驻站期间 idx 会「静默重锚」（终点掉头换方向 / API 重定位车辆），
+ *      只按 (status, main) 合并会把重锚前后的帧并成一组、组的 idx 停在**首帧** →
+ *      随后的 depart 事件带过期 idx → 骗过下面「严格相邻」过滤 → 造出横跨驻留期的**假区间**。
+ *      （2026-09-13 首轮实测：σ 75.7 秒 / 最大 960 秒的假样本，修后 σ 33 秒 / 最大 370 秒）
+ *      另加护栏：只接受 `s0 帧 idx === s1 帧 idx` 的 depart。
  *   状态缺口 = s1@X → s1@Y（跨站且**没有** s0 帧）→ X 的离开时刻不可测，
  *              X→Y 这一段必须整段丢弃（这是「长驻站/总站待发」的典型症状）。
  *
@@ -106,12 +115,15 @@ function loadFrames(files) {
 
 /** 单辆车（一条 series）→ 到达序列 / 离开序列 / 状态缺口 */
 function extractEvents(series) {
-  // 压缩连续同状态
+  // 压缩连续同状态。
+  // ⚠️ 键必须含 idx（详见文件头「状态机」注）：只按 (status, main) 合并会把 idx 重锚前后的帧
+  //    并成一组、组的 idx 停在首帧 → 后续 depart 带过期 idx → 造出横跨驻留期的假区间。
   const comp = [];
   for (const s of series) {
     const last = comp[comp.length - 1];
-    if (last && last.status === s.status && last.main === s.main) { last.lastT = s.t; last.n++; }
-    else comp.push({ status: s.status, main: s.main, sta: s.sta, idx: s.idx, firstT: s.t, lastT: s.t, n: 1 });
+    if (last && last.status === s.status && last.main === s.main && String(last.idx) === String(s.idx)) {
+      last.lastT = s.t; last.n++;
+    } else comp.push({ status: s.status, main: s.main, sta: s.sta, idx: s.idx, firstT: s.t, lastT: s.t, n: 1 });
   }
   const arrive = [], depart = [], gaps = [];
   let lastS1 = null, departed = false;
@@ -121,7 +133,9 @@ function extractEvents(series) {
       lastS1 = c;
       departed = false;
     } else if (c.status === "0") {
-      if (lastS1 && !departed && lastS1.main === c.main) {
+      // 护栏：只接受「同一 idx」上的 1→0。idx 变了 = 车辆被重锚（掉头 / 换方向），
+      // 该站的离开时刻不可信 → 丢弃该 depart（否则会生成跨驻留期的假区间）。
+      if (lastS1 && !departed && lastS1.main === c.main && String(lastS1.idx) === String(c.idx)) {
         depart.push({ main: lastS1.main, sta: lastS1.sta, idx: lastS1.idx, t: c.firstT, holdMs: lastS1.lastT - lastS1.firstT + (c.firstT - lastS1.lastT) });
         departed = true;
       }

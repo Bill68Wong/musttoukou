@@ -39,8 +39,19 @@
  * ── 安全机制（渐变启动 + 降级阶梯 + 硬熔断）──
  *   渐变：档0(8条)→档1(24)→档2(48)→档3(92)，每档须「失败率=0 且延迟稳定」才放行
  *   降级：滑动窗口失败率 > 5% → 降一档（单向，不再自动回升）
- *         滑动窗口 p50 延迟 > 3× 基线 → 间隔 5s→10s→20s（单向）
+ *         滑动窗口 p50 延迟异常 → 间隔 5s→10s→20s（单向）
  *   熔断：连续失败 ≥ 10 次 → 立即中止整轮并落盘收尾
+ *
+ * ── 延迟降级的防误触发（2026-09-13 首轮实测踩坑后加固）──
+ *   首轮现象：升档后仅 40 秒就触发「p50 52ms > 3× 基线 16ms」→ 间隔单向放宽到 10s，
+ *             后 158 轮全部 10s 跑完，**样本量直接砍半**（而档3 单请求 p50 只有 12~21ms，
+ *             5s 间隔每请求预算 44ms，完全跑得动 → 这次降级纯属误判）。
+ *   根因：升档瞬间请求数翻倍，延迟自然抬升（16ms→26~31ms），叠一个 p95 尖峰就把窗口 p50 拉过 3×。
+ *   现加固为**三个条件同时满足**才放宽间隔：
+ *     ① 倍数阈值 3× → **5×**，且窗口 p50 必须 > 80ms（绝对地板，防低基线放大噪声）
+ *     ② 必须**连续 3 个窗口**都超阈值（单次尖峰不再触发）
+ *     ③ 升档后 **90 秒冷静期**内不因延迟降级（给延迟重新收敛的时间）
+ *   ⚠️ 「放宽间隔」仍是单向的（不自动回升）——宁可少采也不要来回震荡。
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -478,7 +489,13 @@ async function main() {
   const baseInterval = intervalMs;
   let intervalStep = 0;               // 0=5s 1=10s 2=20s
   let baselineP50 = 0;                // ★ 每个档位单独取基线（低负载档的延迟不能当全速档的基准，
-  let baselineStage = -1;             //    否则升档后延迟自然上升会误触发 3× 降级 —— 自检 B 暴露）
+  let baselineStage = -1;             //    否则升档后延迟自然上升会误触发降级 —— 自检 B 暴露）
+  // ★ 延迟降级防误触发（详见文件头「延迟降级的防误触发」）
+  const LATENCY_MULT = 5;             //   倍数阈值（原 3× 太松）
+  const LATENCY_FLOOR_MS = 80;        //   绝对地板：p50 必须超过它才可能是真异常
+  const LATENCY_STRIKES_NEEDED = 3;   //   需连续 N 个窗口都超阈值
+  const STAGE_COOLDOWN_MS = 90 * 1000;//   升档后冷静期，期间不因延迟降级
+  let latencyStrikes = 0;             //   连续超阈值计数（一恢复就清零）
   let degraded = false;
   let aborted = null;
   let lastSignalTs = "";
@@ -508,6 +525,7 @@ async function main() {
           LOG(`⬆️ 升档 → 档${curStage}（${Math.min(STAGE_ROUTE_COUNT[curStage], ordered.length)} 条）`);
           health.win.length = 0;
           health._heldOnce = false;
+          latencyStrikes = 0;
           stageStartMs = Date.now();
         } else if (!health._heldOnce) {
           health._heldOnce = true;
@@ -578,6 +596,8 @@ async function main() {
         stageLog.push({ stage: curStage, at: new Date().toISOString(), reason: `窗失败率 ${(health.winFailRate * 100).toFixed(1)}% > 5%，从档${prev}降档` });
         LOG(`🔻 降档 档${prev} → 档${curStage}（窗失败率 ${(health.winFailRate * 100).toFixed(1)}%）`);
         health.win.length = 0;
+        latencyStrikes = 0;
+        stageStartMs = Date.now();
       } else if (intervalStep < 2) {
         intervalStep++;
         intervalMs = baseInterval * 2 ** intervalStep;
@@ -590,13 +610,26 @@ async function main() {
         break;
       }
     }
-    if (health.win.length >= 50 && baselineP50 > 0 && health.winP50 > baselineP50 * 3 && intervalStep < 2) {
-      intervalStep++;
-      intervalMs = baseInterval * 2 ** intervalStep;
-      stageLog.push({ stage: curStage, at: new Date().toISOString(), reason: `p50 ${health.winP50}ms > 3× 基线 ${baselineP50}ms，间隔放宽至 ${intervalMs / 1000}s` });
-      LOG(`🐌 延迟异常 → 间隔放宽 ${intervalMs / 1000}s（p50 ${health.winP50}ms vs 基线 ${baselineP50}ms）`);
-      health.win.length = 0;
-    }
+    // ★ 延迟异常 → 放宽间隔（三层加固，2026-09-13 首轮误降级后修订）
+    //    ① 5× 基线 + 绝对地板 80ms  ② 连续 3 个窗口  ③ 升档后 90 秒冷静期
+    if (health.win.length >= 50 && baselineP50 > 0 && intervalStep < 2) {
+      const overMult = health.winP50 > baselineP50 * LATENCY_MULT;
+      const overFloor = health.winP50 > LATENCY_FLOOR_MS;
+      const cooled = Date.now() - stageStartMs >= STAGE_COOLDOWN_MS;
+      if (overMult && overFloor && cooled) {
+        latencyStrikes++;
+        if (latencyStrikes < LATENCY_STRIKES_NEEDED)
+          LOG(`⋯ 延迟偏高第 ${latencyStrikes}/${LATENCY_STRIKES_NEEDED} 个窗口（p50 ${health.winP50}ms vs 基线 ${baselineP50}ms），暂不放宽`);
+      } else latencyStrikes = 0;
+      if (latencyStrikes >= LATENCY_STRIKES_NEEDED) {
+        intervalStep++;
+        intervalMs = baseInterval * 2 ** intervalStep;
+        stageLog.push({ stage: curStage, at: new Date().toISOString(), reason: `连续 ${LATENCY_STRIKES_NEEDED} 个窗口 p50 ${health.winP50}ms > ${LATENCY_MULT}× 基线 ${baselineP50}ms（且 >${LATENCY_FLOOR_MS}ms），间隔放宽至 ${intervalMs / 1000}s` });
+        LOG(`🐌 延迟异常（连续 ${LATENCY_STRIKES_NEEDED} 窗口）→ 间隔放宽 ${intervalMs / 1000}s（p50 ${health.winP50}ms vs 基线 ${baselineP50}ms）`);
+        latencyStrikes = 0;
+        health.win.length = 0;
+      }
+    } else latencyStrikes = 0;
 
     // ── 下一轮起点 ──
     roundStart += intervalMs;

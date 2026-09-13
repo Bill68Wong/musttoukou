@@ -20,7 +20,6 @@ interface StationSeed {
   code: string | null;
   kind: "bus" | "lrt";
   name_tc: string;
-  walk: Record<string, number | null>;
   note?: string;
 }
 interface LegSeed {
@@ -30,7 +29,6 @@ interface LegSeed {
   from?: string; // "place:home" | "station:C653"
   to?: string;
   at?: string; // transfer/cross_border 的位置
-  minutes: number | null;
   note?: string;
   /** v0.13.0 cross_border 段口岸显示名（'橫琴口岸' / '關閘（拱北口岸）'） */
   label?: string;
@@ -86,7 +84,9 @@ async function main() {
   const q = pool.query.bind(pool);
 
   try {
-    await q(`TRUNCATE plan_legs, commute_plans, route_stations, walk_times, routes, stations, places
+    // v0.24.0：不再清空 walk_times —— 该表只存实测值，由 npm run db:walktimes 维护，
+    // 导入静态母本不应将其抹掉
+    await q(`TRUNCATE plan_legs, commute_plans, route_stations, routes, stations, places
              RESTART IDENTITY CASCADE`);
 
     // 1. places
@@ -117,20 +117,8 @@ async function main() {
     }
     console.log(`✅ stations：${net.stations.length} 条`);
 
-    // 3. walk_times（只导非空实测值）
-    let walkCount = 0;
-    for (const s of net.stations) {
-      for (const [placeSlug, minutes] of Object.entries(s.walk)) {
-        if (minutes === null || minutes === undefined) continue;
-        await q(
-          `INSERT INTO walk_times (place_id, station_code, minutes, source, measured_at)
-           VALUES ($1,$2,$3,'manual','2026-09-01')`,
-          [placeIds.get(placeSlug), stationCode(s), minutes],
-        );
-        walkCount++;
-      }
-    }
-    console.log(`✅ walk_times：${walkCount} 条实测值`);
+    // 3. walk_times：v0.24.0 起不在此导入
+    //    （手工估算值已全面剔除；实测值由 npm run db:walktimes 从计时数据回写）
 
     // 4. routes
     const routeIds = new Map<string, number>();
@@ -210,9 +198,9 @@ async function main() {
 
         await q(
           `INSERT INTO plan_legs (plan_id, seq, leg_kind, route_id, route_options,
-                                  from_station, to_station, minutes, note,
+                                  from_station, to_station, note,
                                   border_label, board_candidates, alight_candidates, route_meta)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
           [
             planId,
             leg.seq,
@@ -225,7 +213,6 @@ async function main() {
             leg.kind === "transfer" || leg.kind === "cross_border"
               ? atStation
               : resolveStation(leg.to),
-            leg.minutes,
             leg.note ?? null,
             leg.kind === "cross_border" ? (leg.label ?? null) : null,
             boardCands.length ? boardCands : null,

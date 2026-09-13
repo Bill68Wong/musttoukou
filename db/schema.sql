@@ -28,15 +28,17 @@ CREATE TABLE IF NOT EXISTS stations (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 2.3 地点↔站点步行耗时（实测值，可被计时器数据刷新）
+-- 2.3 地点↔站点步行耗时（v0.24.0：仅存实测值，由 db:walktimes 重灌；手工估算值已全部剔除）
 CREATE TABLE IF NOT EXISTS walk_times (
     id          SERIAL PRIMARY KEY,
     place_id    INT NOT NULL REFERENCES places(id),
     station_code TEXT NOT NULL REFERENCES stations(code),
-    minutes     NUMERIC(5,1),              -- NULL = 尚未实测
-    source      TEXT NOT NULL DEFAULT 'manual',  -- 'manual' | 'timer'
-    measured_at DATE,
-    UNIQUE (place_id, station_code)
+    zone        TEXT,                      -- 澳科大校区 'B/C' | 'N/O' | 'R'；非澳科大 place 为 NULL
+    minutes     NUMERIC(5,1),              -- 实测均值；NULL = 尚未实测
+    samples     INT NOT NULL DEFAULT 0,    -- 实测样本数（1~2 次也写入，靠此列体现可信度）
+    source      TEXT NOT NULL DEFAULT 'timer',  -- v0.24.0 起只有 'timer'
+    measured_at DATE,                      -- 最近一次样本日期
+    UNIQUE (place_id, station_code, zone)
 );
 
 -- 2.4 线路

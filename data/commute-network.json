@@ -6,466 +6,2112 @@
     "api_verified": "标注 ✔ 的线路已用 DSAT 接口验证站点存在"
   },
   "places": [
-    { "id": "home", "name": "擎天匯 T8", "type": "dorm", "area": "路環石排灣" },
-    { "id": "school", "name": "澳科大", "type": "school", "area": "氹仔偉龍馬路" },
-    { "id": "hengqin", "name": "橫琴口岸（澳方口岸 / 橫琴）", "type": "border", "area": "橫琴" },
-    { "id": "gate", "name": "關閘（拱北口岸）", "type": "border", "area": "澳門半島" }
+    {
+      "id": "home",
+      "name": "擎天匯 T8",
+      "type": "dorm",
+      "area": "路環石排灣"
+    },
+    {
+      "id": "school",
+      "name": "澳科大",
+      "type": "school",
+      "area": "氹仔偉龍馬路"
+    },
+    {
+      "id": "hengqin",
+      "name": "橫琴口岸（澳方口岸 / 橫琴）",
+      "type": "border",
+      "area": "橫琴"
+    },
+    {
+      "id": "gate",
+      "name": "關閘（拱北口岸）",
+      "type": "border",
+      "area": "澳門半島"
+    }
   ],
   "stations": [
-    { "code": "C653", "kind": "bus", "name_tc": "金峰南岸/金譽峰", "walk": { "home": 3 } },
-    { "code": "C652", "kind": "bus", "name_tc": "安順大廈", "walk": { "home": 3 } },
-    { "code": "C688", "kind": "bus", "name_tc": "和諧廣場/興業大廈", "walk": { "home": 9 }, "note": "旧无分台写法；DSAT 实际分台为 C688/2（和諧廣場/業興大廈）" },
-    { "code": "C688/2", "kind": "bus", "name_tc": "和諧廣場/業興大廈", "walk": { "home": 9 }, "note": "DSAT 分台码（51/51A/51B 回宿舍停靠）；对侧 C688/1" },
-    { "code": "C690", "kind": "bus", "name_tc": "蝴蝶谷大馬路總站", "walk": { "home": 7 }, "note": "旧无分台写法；DSAT 实际分台：C690/1=51A、C690/2=51B、C690/3=51" },
-    { "code": "C690/1", "kind": "bus", "name_tc": "蝴蝶谷大馬路總站", "walk": { "home": 7 }, "note": "51A 总站台" },
-    { "code": "C690/2", "kind": "bus", "name_tc": "蝴蝶谷大馬路總站", "walk": { "home": 7 }, "note": "51B 总站台" },
-    { "code": "C690/3", "kind": "bus", "name_tc": "蝴蝶谷大馬路總站", "walk": { "home": 7 }, "note": "51 总站台" },
-    { "code": "C689/2", "kind": "bus", "name_tc": "和諧廣場/樂群樓", "walk": { "home": null }, "note": "DSAT 分台码（51/51A/51B 去学校方向经停）；步行分钟待实测" },
-    { "code": "C651", "kind": "bus", "name_tc": "和諧廣場/樂群樓", "walk": { "home": null }, "note": "幽灵码（三线站序均无）；乐群楼真实分台为 C689/2" },
-    { "code": "C691", "kind": "bus", "name_tc": "樂居大馬路/居雅大廈", "walk": { "home": null }, "note": "26/26A/50 經停；DSAT 已核对" },
-    { "code": "T358", "kind": "bus", "name_tc": "偉龍/科大醫院", "walk": { "school": null }, "note": "途经站（非回宿舍上車站）；26/51A/51B/N6 停靠；與正門站 T373/2 相鄰一站" },
-    { "code": "T373/2", "kind": "bus", "name_tc": "偉龍/科技大學", "walk": { "school": null }, "note": "回宿舍上車站（正門）；26/51A/51B 停靠；N6 停對面 T373/1" },
-    { "code": "T374", "kind": "bus", "name_tc": "澳門土木工程實驗室", "walk": { "school": 6 } },
-    { "code": "T417", "kind": "bus", "name_tc": "科大/機場貨運站", "walk": { "school": 8 } },
-    { "code": "T429", "kind": "bus", "name_tc": "機場大馬路/科大醫院", "walk": { "school": null }, "note": "DSAT 已核对；P座側門方向" },
-    { "code": "T400", "kind": "bus", "name_tc": "路氹東/新濠天地", "walk": { "school": null }, "note": "DSAT 已核对" },
-    { "code": "T363/1", "kind": "bus", "name_tc": "連貫公路/威尼斯人", "walk": { "school": null }, "note": "51B 分台码（51B 停靠）；去学校下车步行分钟待实测" },
-    { "code": "T363/2", "kind": "bus", "name_tc": "連貫公路/威尼斯人", "walk": { "school": null }, "note": "25/25AX 分台码（同 T363/1 对面站台）；去学校下车步行分钟待实测；v0.16.0 新增" },
-    { "code": "T367", "kind": "bus", "name_tc": "望德聖母灣馬路/連貫公路", "walk": { "school": null }, "note": "DSAT 已核对；威尼斯人方向" },
-    { "code": "T355/2", "kind": "bus", "name_tc": "蓮花路停車場", "walk": {}, "note": "換乘站（往橫琴）；六條過境線共用的站台（T355/2），對面 T355/1 為 26/50 往澳門方向" },
-    { "code": "T560/4", "kind": "bus", "name_tc": "橫琴澳方口岸", "walk": { "hengqin": 0 }, "note": "DSAT 已核对；50 路站台 T560/4，25B 停 T560/2、102 停 T560/6、701X/N6 停 T560/5 與 T560/7（同站區不同台）" },
-    { "code": "M1/13", "kind": "bus", "name_tc": "關閘總站", "walk": {}, "note": "25 路站台（關閘總站；DSAT 已核对，v0.13.0）" },
-    { "code": "M9/2", "kind": "bus", "name_tc": "關閘廣場", "walk": {}, "note": "59 路站台（關閘廣場巴士站群 M9 分台；DSAT 已核对，v0.13.0）" },
-    { "code": "M9/3", "kind": "bus", "name_tc": "關閘廣場", "walk": {}, "note": "25AX 路站台（關閘廣場巴士站群 M9 分台；DSAT 已核对，v0.13.0）" },
-    { "code": "M9/4", "kind": "bus", "name_tc": "關閘廣場", "walk": {}, "note": "51/51B 路站台（關閘廣場巴士站群 M9 分台；DSAT 已核对，v0.13.0）" },
-    { "code": "LRT-BAR", "kind": "lrt", "no": "12", "name_tc": "媽閣", "name_pt": "Barra", "name_en": "Barra", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線西端總站（澳門半島）；v0.8.0 補齊全線" },
-    { "code": "LRT-OCH", "kind": "lrt", "no": "13", "name_tc": "海洋", "name_pt": "Oceano", "name_en": "Ocean", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
-    { "code": "LRT-JCK", "kind": "lrt", "no": "14", "name_tc": "馬會", "name_pt": "Jockey Clube", "name_en": "Jockey Club", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
-    { "code": "LRT-STD", "kind": "lrt", "no": "15", "name_tc": "運動場", "name_pt": "Estádio", "name_en": "Stadium", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
-    { "code": "LRT-PAK", "kind": "lrt", "no": "16", "name_tc": "排角", "name_pt": "Pai Kok", "name_en": "Pai Kok", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
-    { "code": "LRT-CWE", "kind": "lrt", "no": "17", "name_tc": "路氹西", "name_pt": "Cotai Oeste", "name_en": "Cotai West", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站；v0.8.0 補齊全線" },
-    { "code": "LRT-SPW", "kind": "lrt", "no": null, "name_tc": "石排灣", "name_pt": "Seac Pai Van", "name_en": "Seac Pai Van", "lines": ["LRT-石排湾线"], "walk": { "home": 4 } },
-    { "code": "LRT-UH", "kind": "lrt", "no": "18A", "name_tc": "協和醫院", "name_pt": "Hospital Union", "name_en": "Union Hospital", "lines": ["LRT-氹仔线", "LRT-石排湾线"], "walk": {}, "note": "石排灣線↔氹仔線換乘站（編號 18A 沿氹仔線）" },
-    { "code": "LRT-EAG", "kind": "lrt", "no": "19", "name_tc": "東亞運", "name_pt": "Jogos da Ásia Oriental", "name_en": "East Asian Games", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線中間站（協和醫院↔路氹東之間）；v0.7.0 補齊中間站" },
-    { "code": "LRT-LDE", "kind": "lrt", "no": "20", "name_tc": "路氹東", "name_pt": "Cotai Leste", "name_en": "Cotai East", "lines": ["LRT-氹仔线"], "walk": { "school": null }, "note": "步行分鐘數待測" },
-    { "code": "LRT-MUST", "kind": "lrt", "no": "21", "name_tc": "科大", "name_pt": "UCTM", "name_en": "MUST", "lines": ["LRT-氹仔线"], "walk": { "school": 8 } },
-    { "code": "LRT-AP", "kind": "lrt", "no": "22", "name_tc": "機場", "name_pt": "Aeroporto", "name_en": "Airport", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線站（科大之後；備用全網絡資料）" },
-    { "code": "LRT-TFT", "kind": "lrt", "no": "23", "name_tc": "氹仔碼頭", "name_pt": "Terminal Marítimo da Taipa", "name_en": "Taipa Ferry Terminal", "lines": ["LRT-氹仔线"], "walk": {}, "note": "氹仔線終點站（備用全網絡資料）" },
-    { "code": "LRT-LOT", "kind": "lrt", "no": "18", "name_tc": "蓮花", "name_pt": "Lótus", "name_en": "Lotus", "lines": ["LRT-氹仔线", "LRT-横琴线"], "walk": {}, "note": "氹仔線↔橫琴線換乘站（編號 18 沿氹仔線）" },
-    { "code": "LRT-HQ", "kind": "lrt", "no": null, "name_tc": "橫琴", "name_pt": "Hengqin", "name_en": "Hengqin", "lines": ["LRT-横琴线"], "walk": { "hengqin": 0 } }
+    {
+      "code": "C653",
+      "kind": "bus",
+      "name_tc": "金峰南岸/金譽峰"
+    },
+    {
+      "code": "C652",
+      "kind": "bus",
+      "name_tc": "安順大廈"
+    },
+    {
+      "code": "C688",
+      "kind": "bus",
+      "name_tc": "和諧廣場/興業大廈",
+      "note": "旧无分台写法；DSAT 实际分台为 C688/2（和諧廣場/業興大廈）"
+    },
+    {
+      "code": "C688/2",
+      "kind": "bus",
+      "name_tc": "和諧廣場/業興大廈",
+      "note": "DSAT 分台码（51/51A/51B 回宿舍停靠）；对侧 C688/1"
+    },
+    {
+      "code": "C690",
+      "kind": "bus",
+      "name_tc": "蝴蝶谷大馬路總站",
+      "note": "旧无分台写法；DSAT 实际分台：C690/1=51A、C690/2=51B、C690/3=51"
+    },
+    {
+      "code": "C690/1",
+      "kind": "bus",
+      "name_tc": "蝴蝶谷大馬路總站",
+      "note": "51A 总站台"
+    },
+    {
+      "code": "C690/2",
+      "kind": "bus",
+      "name_tc": "蝴蝶谷大馬路總站",
+      "note": "51B 总站台"
+    },
+    {
+      "code": "C690/3",
+      "kind": "bus",
+      "name_tc": "蝴蝶谷大馬路總站",
+      "note": "51 总站台"
+    },
+    {
+      "code": "C689/2",
+      "kind": "bus",
+      "name_tc": "和諧廣場/樂群樓",
+      "note": "DSAT 分台码（51/51A/51B 去学校方向经停）；步行分钟待实测"
+    },
+    {
+      "code": "C651",
+      "kind": "bus",
+      "name_tc": "和諧廣場/樂群樓",
+      "note": "幽灵码（三线站序均无）；乐群楼真实分台为 C689/2"
+    },
+    {
+      "code": "C691",
+      "kind": "bus",
+      "name_tc": "樂居大馬路/居雅大廈",
+      "note": "26/26A/50 經停；DSAT 已核对"
+    },
+    {
+      "code": "T358",
+      "kind": "bus",
+      "name_tc": "偉龍/科大醫院",
+      "note": "途经站（非回宿舍上車站）；26/51A/51B/N6 停靠；與正門站 T373/2 相鄰一站"
+    },
+    {
+      "code": "T373/2",
+      "kind": "bus",
+      "name_tc": "偉龍/科技大學",
+      "note": "回宿舍上車站（正門）；26/51A/51B 停靠；N6 停對面 T373/1"
+    },
+    {
+      "code": "T374",
+      "kind": "bus",
+      "name_tc": "澳門土木工程實驗室"
+    },
+    {
+      "code": "T417",
+      "kind": "bus",
+      "name_tc": "科大/機場貨運站"
+    },
+    {
+      "code": "T429",
+      "kind": "bus",
+      "name_tc": "機場大馬路/科大醫院",
+      "note": "DSAT 已核对；P座側門方向"
+    },
+    {
+      "code": "T400",
+      "kind": "bus",
+      "name_tc": "路氹東/新濠天地",
+      "note": "DSAT 已核对"
+    },
+    {
+      "code": "T363/1",
+      "kind": "bus",
+      "name_tc": "連貫公路/威尼斯人",
+      "note": "51B 分台码（51B 停靠）；去学校下车步行分钟待实测"
+    },
+    {
+      "code": "T363/2",
+      "kind": "bus",
+      "name_tc": "連貫公路/威尼斯人",
+      "note": "25/25AX 分台码（同 T363/1 对面站台）；去学校下车步行分钟待实测；v0.16.0 新增"
+    },
+    {
+      "code": "T367",
+      "kind": "bus",
+      "name_tc": "望德聖母灣馬路/連貫公路",
+      "note": "DSAT 已核对；威尼斯人方向"
+    },
+    {
+      "code": "T355/2",
+      "kind": "bus",
+      "name_tc": "蓮花路停車場",
+      "note": "換乘站（往橫琴）；六條過境線共用的站台（T355/2），對面 T355/1 為 26/50 往澳門方向"
+    },
+    {
+      "code": "T560/4",
+      "kind": "bus",
+      "name_tc": "橫琴澳方口岸",
+      "note": "DSAT 已核对；50 路站台 T560/4，25B 停 T560/2、102 停 T560/6、701X/N6 停 T560/5 與 T560/7（同站區不同台）"
+    },
+    {
+      "code": "M1/13",
+      "kind": "bus",
+      "name_tc": "關閘總站",
+      "note": "25 路站台（關閘總站；DSAT 已核对，v0.13.0）"
+    },
+    {
+      "code": "M9/2",
+      "kind": "bus",
+      "name_tc": "關閘廣場",
+      "note": "59 路站台（關閘廣場巴士站群 M9 分台；DSAT 已核对，v0.13.0）"
+    },
+    {
+      "code": "M9/3",
+      "kind": "bus",
+      "name_tc": "關閘廣場",
+      "note": "25AX 路站台（關閘廣場巴士站群 M9 分台；DSAT 已核对，v0.13.0）"
+    },
+    {
+      "code": "M9/4",
+      "kind": "bus",
+      "name_tc": "關閘廣場",
+      "note": "51/51B 路站台（關閘廣場巴士站群 M9 分台；DSAT 已核对，v0.13.0）"
+    },
+    {
+      "code": "LRT-BAR",
+      "kind": "lrt",
+      "no": "12",
+      "name_tc": "媽閣",
+      "name_pt": "Barra",
+      "name_en": "Barra",
+      "lines": [
+        "LRT-氹仔线"
+      ],
+      "note": "氹仔線西端總站（澳門半島）；v0.8.0 補齊全線"
+    },
+    {
+      "code": "LRT-OCH",
+      "kind": "lrt",
+      "no": "13",
+      "name_tc": "海洋",
+      "name_pt": "Oceano",
+      "name_en": "Ocean",
+      "lines": [
+        "LRT-氹仔线"
+      ],
+      "note": "氹仔線站；v0.8.0 補齊全線"
+    },
+    {
+      "code": "LRT-JCK",
+      "kind": "lrt",
+      "no": "14",
+      "name_tc": "馬會",
+      "name_pt": "Jockey Clube",
+      "name_en": "Jockey Club",
+      "lines": [
+        "LRT-氹仔线"
+      ],
+      "note": "氹仔線站；v0.8.0 補齊全線"
+    },
+    {
+      "code": "LRT-STD",
+      "kind": "lrt",
+      "no": "15",
+      "name_tc": "運動場",
+      "name_pt": "Estádio",
+      "name_en": "Stadium",
+      "lines": [
+        "LRT-氹仔线"
+      ],
+      "note": "氹仔線站；v0.8.0 補齊全線"
+    },
+    {
+      "code": "LRT-PAK",
+      "kind": "lrt",
+      "no": "16",
+      "name_tc": "排角",
+      "name_pt": "Pai Kok",
+      "name_en": "Pai Kok",
+      "lines": [
+        "LRT-氹仔线"
+      ],
+      "note": "氹仔線站；v0.8.0 補齊全線"
+    },
+    {
+      "code": "LRT-CWE",
+      "kind": "lrt",
+      "no": "17",
+      "name_tc": "路氹西",
+      "name_pt": "Cotai Oeste",
+      "name_en": "Cotai West",
+      "lines": [
+        "LRT-氹仔线"
+      ],
+      "note": "氹仔線站；v0.8.0 補齊全線"
+    },
+    {
+      "code": "LRT-SPW",
+      "kind": "lrt",
+      "no": null,
+      "name_tc": "石排灣",
+      "name_pt": "Seac Pai Van",
+      "name_en": "Seac Pai Van",
+      "lines": [
+        "LRT-石排湾线"
+      ]
+    },
+    {
+      "code": "LRT-UH",
+      "kind": "lrt",
+      "no": "18A",
+      "name_tc": "協和醫院",
+      "name_pt": "Hospital Union",
+      "name_en": "Union Hospital",
+      "lines": [
+        "LRT-氹仔线",
+        "LRT-石排湾线"
+      ],
+      "note": "石排灣線↔氹仔線換乘站（編號 18A 沿氹仔線）"
+    },
+    {
+      "code": "LRT-EAG",
+      "kind": "lrt",
+      "no": "19",
+      "name_tc": "東亞運",
+      "name_pt": "Jogos da Ásia Oriental",
+      "name_en": "East Asian Games",
+      "lines": [
+        "LRT-氹仔线"
+      ],
+      "note": "氹仔線中間站（協和醫院↔路氹東之間）；v0.7.0 補齊中間站"
+    },
+    {
+      "code": "LRT-LDE",
+      "kind": "lrt",
+      "no": "20",
+      "name_tc": "路氹東",
+      "name_pt": "Cotai Leste",
+      "name_en": "Cotai East",
+      "lines": [
+        "LRT-氹仔线"
+      ],
+      "note": "步行分鐘數待測"
+    },
+    {
+      "code": "LRT-MUST",
+      "kind": "lrt",
+      "no": "21",
+      "name_tc": "科大",
+      "name_pt": "UCTM",
+      "name_en": "MUST",
+      "lines": [
+        "LRT-氹仔线"
+      ]
+    },
+    {
+      "code": "LRT-AP",
+      "kind": "lrt",
+      "no": "22",
+      "name_tc": "機場",
+      "name_pt": "Aeroporto",
+      "name_en": "Airport",
+      "lines": [
+        "LRT-氹仔线"
+      ],
+      "note": "氹仔線站（科大之後；備用全網絡資料）"
+    },
+    {
+      "code": "LRT-TFT",
+      "kind": "lrt",
+      "no": "23",
+      "name_tc": "氹仔碼頭",
+      "name_pt": "Terminal Marítimo da Taipa",
+      "name_en": "Taipa Ferry Terminal",
+      "lines": [
+        "LRT-氹仔线"
+      ],
+      "note": "氹仔線終點站（備用全網絡資料）"
+    },
+    {
+      "code": "LRT-LOT",
+      "kind": "lrt",
+      "no": "18",
+      "name_tc": "蓮花",
+      "name_pt": "Lótus",
+      "name_en": "Lotus",
+      "lines": [
+        "LRT-氹仔线",
+        "LRT-横琴线"
+      ],
+      "note": "氹仔線↔橫琴線換乘站（編號 18 沿氹仔線）"
+    },
+    {
+      "code": "LRT-HQ",
+      "kind": "lrt",
+      "no": null,
+      "name_tc": "橫琴",
+      "name_pt": "Hengqin",
+      "name_en": "Hengqin",
+      "lines": [
+        "LRT-横琴线"
+      ]
+    }
   ],
   "routes": [
-    { "code": "26", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "循環線（DSAT 僅一套站序）；DSAT 官方歸屬=新福利" },
-    { "code": "50", "kind": "bus", "company": "澳巴", "color": "#C26D32", "api_verified": true, "note": "循環線：蓮花路→橫琴口岸→石排灣→澳門→繞回" },
-    { "code": "51", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "循環線；DSAT 官方歸屬=新福利" },
-    { "code": "51A", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "DSAT 官方歸屬=新福利" },
-    { "code": "51B", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "循環線：石排灣→連貫公路→科大→蓮花→石排灣；DSAT 官方歸屬=新福利" },
-    { "code": "26A", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "DSAT 官方歸屬=新福利" },
-    { "code": "56", "kind": "bus", "company": "澳巴", "color": "#C26D32", "api_verified": true, "note": "循環線" },
-    { "code": "25B", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true },
-    { "code": "25BS", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "循環線" },
-    { "code": "102", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true },
-    { "code": "701X", "kind": "bus", "company": "澳巴", "color": "#C26D32", "api_verified": true, "note": "循環線" },
-    { "code": "N6", "kind": "bus", "company": "澳巴", "color": "#C26D32", "api_verified": true, "note": "夜班線；循環線" },
-    { "code": "25", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "關閘總站 M1/13 ⇄ 路環；DSAT 官方歸屬=新福利；v0.13.0 起宿舍⇄關閘卡使用" },
-    { "code": "25AX", "kind": "bus", "company": "新福利", "color": "#276299", "api_verified": true, "note": "高峰快線；DSAT 官方歸屬=新福利；v0.13.0 起宿舍⇄關閘卡使用" },
-    { "code": "59", "kind": "bus", "company": "澳巴", "color": "#C26D32", "api_verified": true, "note": "雙向線（dir0/dir1 獨立站序）；DSAT 官方歸屬=澳巴；v0.13.0 起宿舍⇄關閘卡使用" },
-    { "code": "LRT-石排湾线", "kind": "lrt", "company": "輕軌", "color": "#8a66c3", "note": "石排灣線官方主題色" },
-    { "code": "LRT-氹仔线", "kind": "lrt", "company": "輕軌", "color": "#93d50a", "note": "氹仔線官方主題色" },
-    { "code": "LRT-横琴线", "kind": "lrt", "company": "輕軌", "color": "#bd273a", "note": "橫琴線官方主題色" }
+    {
+      "code": "26",
+      "kind": "bus",
+      "company": "新福利",
+      "color": "#276299",
+      "api_verified": true,
+      "note": "循環線（DSAT 僅一套站序）；DSAT 官方歸屬=新福利"
+    },
+    {
+      "code": "50",
+      "kind": "bus",
+      "company": "澳巴",
+      "color": "#C26D32",
+      "api_verified": true,
+      "note": "循環線：蓮花路→橫琴口岸→石排灣→澳門→繞回"
+    },
+    {
+      "code": "51",
+      "kind": "bus",
+      "company": "新福利",
+      "color": "#276299",
+      "api_verified": true,
+      "note": "循環線；DSAT 官方歸屬=新福利"
+    },
+    {
+      "code": "51A",
+      "kind": "bus",
+      "company": "新福利",
+      "color": "#276299",
+      "api_verified": true,
+      "note": "DSAT 官方歸屬=新福利"
+    },
+    {
+      "code": "51B",
+      "kind": "bus",
+      "company": "新福利",
+      "color": "#276299",
+      "api_verified": true,
+      "note": "循環線：石排灣→連貫公路→科大→蓮花→石排灣；DSAT 官方歸屬=新福利"
+    },
+    {
+      "code": "26A",
+      "kind": "bus",
+      "company": "新福利",
+      "color": "#276299",
+      "api_verified": true,
+      "note": "DSAT 官方歸屬=新福利"
+    },
+    {
+      "code": "56",
+      "kind": "bus",
+      "company": "澳巴",
+      "color": "#C26D32",
+      "api_verified": true,
+      "note": "循環線"
+    },
+    {
+      "code": "25B",
+      "kind": "bus",
+      "company": "新福利",
+      "color": "#276299",
+      "api_verified": true
+    },
+    {
+      "code": "25BS",
+      "kind": "bus",
+      "company": "新福利",
+      "color": "#276299",
+      "api_verified": true,
+      "note": "循環線"
+    },
+    {
+      "code": "102",
+      "kind": "bus",
+      "company": "新福利",
+      "color": "#276299",
+      "api_verified": true
+    },
+    {
+      "code": "701X",
+      "kind": "bus",
+      "company": "澳巴",
+      "color": "#C26D32",
+      "api_verified": true,
+      "note": "循環線"
+    },
+    {
+      "code": "N6",
+      "kind": "bus",
+      "company": "澳巴",
+      "color": "#C26D32",
+      "api_verified": true,
+      "note": "夜班線；循環線"
+    },
+    {
+      "code": "25",
+      "kind": "bus",
+      "company": "新福利",
+      "color": "#276299",
+      "api_verified": true,
+      "note": "關閘總站 M1/13 ⇄ 路環；DSAT 官方歸屬=新福利；v0.13.0 起宿舍⇄關閘卡使用"
+    },
+    {
+      "code": "25AX",
+      "kind": "bus",
+      "company": "新福利",
+      "color": "#276299",
+      "api_verified": true,
+      "note": "高峰快線；DSAT 官方歸屬=新福利；v0.13.0 起宿舍⇄關閘卡使用"
+    },
+    {
+      "code": "59",
+      "kind": "bus",
+      "company": "澳巴",
+      "color": "#C26D32",
+      "api_verified": true,
+      "note": "雙向線（dir0/dir1 獨立站序）；DSAT 官方歸屬=澳巴；v0.13.0 起宿舍⇄關閘卡使用"
+    },
+    {
+      "code": "LRT-石排湾线",
+      "kind": "lrt",
+      "company": "輕軌",
+      "color": "#8a66c3",
+      "note": "石排灣線官方主題色"
+    },
+    {
+      "code": "LRT-氹仔线",
+      "kind": "lrt",
+      "company": "輕軌",
+      "color": "#93d50a",
+      "note": "氹仔線官方主題色"
+    },
+    {
+      "code": "LRT-横琴线",
+      "kind": "lrt",
+      "company": "輕軌",
+      "color": "#bd273a",
+      "note": "橫琴線官方主題色"
+    }
   ],
   "lrtLineStops": [
     {
       "code": "LRT-氹仔线",
       "note": "13 站全線；dir0=編號遞增向（媽閣→氹仔碼頭）；18A 協和醫院為換乘站",
       "dirs": {
-        "0": ["LRT-BAR", "LRT-OCH", "LRT-JCK", "LRT-STD", "LRT-PAK", "LRT-CWE", "LRT-LOT", "LRT-UH", "LRT-EAG", "LRT-LDE", "LRT-MUST", "LRT-AP", "LRT-TFT"],
-        "1": ["LRT-TFT", "LRT-AP", "LRT-MUST", "LRT-LDE", "LRT-EAG", "LRT-UH", "LRT-LOT", "LRT-CWE", "LRT-PAK", "LRT-STD", "LRT-JCK", "LRT-OCH", "LRT-BAR"]
+        "0": [
+          "LRT-BAR",
+          "LRT-OCH",
+          "LRT-JCK",
+          "LRT-STD",
+          "LRT-PAK",
+          "LRT-CWE",
+          "LRT-LOT",
+          "LRT-UH",
+          "LRT-EAG",
+          "LRT-LDE",
+          "LRT-MUST",
+          "LRT-AP",
+          "LRT-TFT"
+        ],
+        "1": [
+          "LRT-TFT",
+          "LRT-AP",
+          "LRT-MUST",
+          "LRT-LDE",
+          "LRT-EAG",
+          "LRT-UH",
+          "LRT-LOT",
+          "LRT-CWE",
+          "LRT-PAK",
+          "LRT-STD",
+          "LRT-JCK",
+          "LRT-OCH",
+          "LRT-BAR"
+        ]
       }
     },
     {
       "code": "LRT-石排湾线",
       "note": "2 站直达（協和醫院⇄石排灣）",
       "dirs": {
-        "0": ["LRT-UH", "LRT-SPW"],
-        "1": ["LRT-SPW", "LRT-UH"]
+        "0": [
+          "LRT-UH",
+          "LRT-SPW"
+        ],
+        "1": [
+          "LRT-SPW",
+          "LRT-UH"
+        ]
       }
     },
     {
       "code": "LRT-横琴线",
       "note": "2 站直达（蓮花⇄橫琴）",
       "dirs": {
-        "0": ["LRT-LOT", "LRT-HQ"],
-        "1": ["LRT-HQ", "LRT-LOT"]
+        "0": [
+          "LRT-LOT",
+          "LRT-HQ"
+        ],
+        "1": [
+          "LRT-HQ",
+          "LRT-LOT"
+        ]
       }
     }
   ],
   "plans": [
     {
-      "id": "home-school-1", "from": "home", "to": "school", "summary": "50路 C653 金峰南岸/金譽峰→T400 路氹東/新濠天地",
+      "id": "home-school-1",
+      "from": "home",
+      "to": "school",
+      "summary": "50路 C653 金峰南岸/金譽峰→T400 路氹東/新濠天地",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
-        { "seq": 2, "kind": "bus", "routes": ["50", "26", "26A", "25"], "from": "station:C653", "to": "station:T400", "minutes": null, "routeMeta": { "50": { "to": "T400" }, "26": { "to": "T374" }, "26A": { "to": "T367", "alight": ["T363/1", "T367"] }, "25": { "to": "T363/2" } } },
-        { "seq": 3, "kind": "walk", "from": "station:T400", "to": "place:school", "minutes": null }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C653"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "50",
+            "26",
+            "26A",
+            "25"
+          ],
+          "from": "station:C653",
+          "to": "station:T400",
+          "routeMeta": {
+            "25": {
+              "to": "T363/2"
+            },
+            "26": {
+              "to": "T374"
+            },
+            "50": {
+              "to": "T400"
+            },
+            "26A": {
+              "to": "T367",
+              "alight": [
+                "T363/1",
+                "T367"
+              ]
+            }
+          }
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:T400",
+          "to": "place:school"
+        }
       ]
     },
     {
-      "id": "home-school-2", "from": "home", "to": "school", "summary": "26路 C653 金峰南岸/金譽峰→T374 澳門土木工程實驗室",
+      "id": "home-school-2",
+      "from": "home",
+      "to": "school",
+      "summary": "26路 C653 金峰南岸/金譽峰→T374 澳門土木工程實驗室",
       "is_active": false,
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
-        { "seq": 2, "kind": "bus", "routes": ["26"], "from": "station:C653", "to": "station:T374", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:T374", "to": "place:school", "minutes": 6 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C653"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "26"
+          ],
+          "from": "station:C653",
+          "to": "station:T374"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:T374",
+          "to": "place:school"
+        }
       ]
     },
     {
-      "id": "home-school-3", "from": "home", "to": "school", "summary": "26A路 C653 金峰南岸/金譽峰→T363/1 連貫公路/威尼斯人 或 T367 望德聖母灣馬路/連貫公路（動態下車）",
+      "id": "home-school-3",
+      "from": "home",
+      "to": "school",
+      "summary": "26A路 C653 金峰南岸/金譽峰→T363/1 連貫公路/威尼斯人 或 T367 望德聖母灣馬路/連貫公路（動態下車）",
       "is_active": false,
       "note": "v0.16.0：26A 去学校方向先到 T363/1 威尼斯人（可提前下）再 T367 望德聖母灣（末位强制下）；末位与 bus to 一致",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
-        { "seq": 2, "kind": "bus", "routes": ["26A"], "from": "station:C653", "to": "station:T367", "alight_candidates": ["T363/1", "T367"], "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:T367", "to": "place:school", "minutes": null }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C653"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "26A"
+          ],
+          "from": "station:C653",
+          "to": "station:T367",
+          "alight_candidates": [
+            "T363/1",
+            "T367"
+          ]
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:T367",
+          "to": "place:school"
+        }
       ]
     },
     {
-      "id": "home-school-4", "from": "home", "to": "school", "summary": "51路 C690/3 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T429 機場大馬路/科大醫院",
-      "board_candidates": ["C690/3", "C689/2"],
+      "id": "home-school-4",
+      "from": "home",
+      "to": "school",
+      "summary": "51路 C690/3 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T429 機場大馬路/科大醫院",
+      "board_candidates": [
+        "C690/3",
+        "C689/2"
+      ],
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/3", "minutes": 7 },
-        { "seq": 2, "kind": "bus", "routes": ["51", "51A", "51B", "25AX"], "from": "station:C690/3", "to": "station:T429", "minutes": null, "routeMeta": { "51": { "board": ["C690/3", "C689/2"], "to": "T429" }, "51A": { "board": ["C690/1", "C689/2"], "to": "T374" }, "51B": { "board": ["C690/2", "C689/2"], "to": "T363/1" }, "25AX": { "board": ["C690/2", "C689/2"], "to": "T363/2" } } },
-        { "seq": 3, "kind": "walk", "from": "station:T429", "to": "place:school", "minutes": null }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C690/3"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51",
+            "51A",
+            "51B",
+            "25AX"
+          ],
+          "from": "station:C690/3",
+          "to": "station:T429",
+          "routeMeta": {
+            "51": {
+              "board": [
+                "C690/3",
+                "C689/2"
+              ],
+              "to": "T429"
+            },
+            "51A": {
+              "board": [
+                "C690/1",
+                "C689/2"
+              ],
+              "to": "T374"
+            },
+            "51B": {
+              "board": [
+                "C690/2",
+                "C689/2"
+              ],
+              "to": "T363/1"
+            },
+            "25AX": {
+              "board": [
+                "C690/2",
+                "C689/2"
+              ],
+              "to": "T363/2"
+            }
+          }
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:T429",
+          "to": "place:school"
+        }
       ]
     },
     {
-      "id": "home-school-5", "from": "home", "to": "school", "summary": "51路（已併入 home-school-4，上車站 C651 為 DSAT 空碼）", "is_active": false,
-      "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C651", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["51"], "from": "station:C651", "to": "station:T429", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:T429", "to": "place:school", "minutes": null }
-      ]
-    },
-    {
-      "id": "home-school-6", "from": "home", "to": "school", "summary": "51A路 C690/1 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T374 澳門土木工程實驗室",
+      "id": "home-school-5",
+      "from": "home",
+      "to": "school",
+      "summary": "51路（已併入 home-school-4，上車站 C651 為 DSAT 空碼）",
       "is_active": false,
-      "board_candidates": ["C690/1", "C689/2"],
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/1", "minutes": 7 },
-        { "seq": 2, "kind": "bus", "routes": ["51A"], "from": "station:C690/1", "to": "station:T374", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:T374", "to": "place:school", "minutes": 6 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C651"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51"
+          ],
+          "from": "station:C651",
+          "to": "station:T429"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:T429",
+          "to": "place:school"
+        }
       ]
     },
     {
-      "id": "home-school-7", "from": "home", "to": "school", "summary": "51A路（已併入 home-school-6，上車站 C651 為 DSAT 空碼）", "is_active": false,
-      "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C651", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["51A"], "from": "station:C651", "to": "station:T374", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:T374", "to": "place:school", "minutes": 6 }
-      ]
-    },
-    {
-      "id": "home-school-10", "from": "home", "to": "school", "summary": "51B路 C690/2 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T363/1 連貫公路/威尼斯人",
+      "id": "home-school-6",
+      "from": "home",
+      "to": "school",
+      "summary": "51A路 C690/1 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T374 澳門土木工程實驗室",
       "is_active": false,
-      "board_candidates": ["C690/2", "C689/2"],
+      "board_candidates": [
+        "C690/1",
+        "C689/2"
+      ],
+      "legs": [
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C690/1"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51A"
+          ],
+          "from": "station:C690/1",
+          "to": "station:T374"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:T374",
+          "to": "place:school"
+        }
+      ]
+    },
+    {
+      "id": "home-school-7",
+      "from": "home",
+      "to": "school",
+      "summary": "51A路（已併入 home-school-6，上車站 C651 為 DSAT 空碼）",
+      "is_active": false,
+      "legs": [
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C651"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51A"
+          ],
+          "from": "station:C651",
+          "to": "station:T374"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:T374",
+          "to": "place:school"
+        }
+      ]
+    },
+    {
+      "id": "home-school-10",
+      "from": "home",
+      "to": "school",
+      "summary": "51B路 C690/2 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T363/1 連貫公路/威尼斯人",
+      "is_active": false,
+      "board_candidates": [
+        "C690/2",
+        "C689/2"
+      ],
       "note": "51B 循环线第 5 站即 T363/1 連貫公路/威尼斯人（近路，不绕澳门半岛）；下车步行到校，分钟数待实测",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/2", "minutes": 7 },
-        { "seq": 2, "kind": "bus", "routes": ["51B"], "from": "station:C690/2", "to": "station:T363/1", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:T363/1", "to": "place:school", "minutes": null }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C690/2"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51B"
+          ],
+          "from": "station:C690/2",
+          "to": "station:T363/1"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:T363/1",
+          "to": "place:school"
+        }
       ]
     },
     {
-      "id": "home-school-25", "from": "home", "to": "school", "summary": "25路 C653 金峰南岸/金譽峰→T363/2 連貫公路/威尼斯人",
+      "id": "home-school-25",
+      "from": "home",
+      "to": "school",
+      "summary": "25路 C653 金峰南岸/金譽峰→T363/2 連貫公路/威尼斯人",
       "is_active": false,
       "note": "v0.16.0 新增去学校方案：25 循环线 C653 金峰南岸上車（家步行 3 分钟）→ T363/2 連貫公路/威尼斯人下（回程繞行方向，去学校近路）；下车步行到校，分钟数待实测",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
-        { "seq": 2, "kind": "bus", "routes": ["25"], "from": "station:C653", "to": "station:T363/2", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:T363/2", "to": "place:school", "minutes": null }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C653"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "25"
+          ],
+          "from": "station:C653",
+          "to": "station:T363/2"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:T363/2",
+          "to": "place:school"
+        }
       ]
     },
     {
-      "id": "home-school-25ax", "from": "home", "to": "school", "summary": "25AX路 C690/2 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T363/2 連貫公路/威尼斯人",
+      "id": "home-school-25ax",
+      "from": "home",
+      "to": "school",
+      "summary": "25AX路 C690/2 蝴蝶谷大馬路總站 或 C689/2 和諧廣場/樂群樓 → T363/2 連貫公路/威尼斯人",
       "is_active": false,
-      "board_candidates": ["C690/2", "C689/2"],
+      "board_candidates": [
+        "C690/2",
+        "C689/2"
+      ],
       "note": "v0.16.0 新增去学校方案：25AX 高峰快線 C690/2 或 C689/2 上車 → T363/2 連貫公路/威尼斯人下；下车步行到校，分钟数待实测",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/2", "minutes": 7 },
-        { "seq": 2, "kind": "bus", "routes": ["25AX"], "from": "station:C690/2", "to": "station:T363/2", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:T363/2", "to": "place:school", "minutes": null }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C690/2"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "25AX"
+          ],
+          "from": "station:C690/2",
+          "to": "station:T363/2"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:T363/2",
+          "to": "place:school"
+        }
       ]
     },
     {
-      "id": "home-school-8", "from": "home", "to": "school", "summary": "輕軌 石排灣→協和醫院(換)→路氹東（已併入 home-school-9，路氹東/科大 動態下車）", "is_active": false,
+      "id": "home-school-8",
+      "from": "home",
+      "to": "school",
+      "summary": "輕軌 石排灣→協和醫院(換)→路氹東（已併入 home-school-9，路氹東/科大 動態下車）",
+      "is_active": false,
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:LRT-SPW", "minutes": 4 },
-        { "seq": 2, "kind": "lrt", "routes": ["LRT-石排湾线"], "from": "station:LRT-SPW", "to": "station:LRT-UH", "minutes": null },
-        { "seq": 3, "kind": "transfer", "at": "station:LRT-UH", "minutes": null },
-        { "seq": 4, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-UH", "to": "station:LRT-LDE", "minutes": null },
-        { "seq": 5, "kind": "walk", "from": "station:LRT-LDE", "to": "place:school", "minutes": null }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:LRT-SPW"
+        },
+        {
+          "seq": 2,
+          "kind": "lrt",
+          "routes": [
+            "LRT-石排湾线"
+          ],
+          "from": "station:LRT-SPW",
+          "to": "station:LRT-UH"
+        },
+        {
+          "seq": 3,
+          "kind": "transfer",
+          "at": "station:LRT-UH"
+        },
+        {
+          "seq": 4,
+          "kind": "lrt",
+          "routes": [
+            "LRT-氹仔线"
+          ],
+          "from": "station:LRT-UH",
+          "to": "station:LRT-LDE"
+        },
+        {
+          "seq": 5,
+          "kind": "walk",
+          "from": "station:LRT-LDE",
+          "to": "place:school"
+        }
       ]
     },
     {
-      "id": "home-school-9", "from": "home", "to": "school", "summary": "輕軌 石排灣→協和醫院(換)→科大 或 路氹東（動態下車）",
+      "id": "home-school-9",
+      "from": "home",
+      "to": "school",
+      "summary": "輕軌 石排灣→協和醫院(換)→科大 或 路氹東（動態下車）",
       "note": "v0.16.0：并入原 home-school-8（路氹東）/home-school-9（科大）；TPL 氹仔线 UH→LDE(路氹東,先)→MUST(科大,末位)，末位与 bus to 一致；LRT-LDE 步行待实测",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:LRT-SPW", "minutes": 4 },
-        { "seq": 2, "kind": "lrt", "routes": ["LRT-石排湾线"], "from": "station:LRT-SPW", "to": "station:LRT-UH", "minutes": null },
-        { "seq": 3, "kind": "transfer", "at": "station:LRT-UH", "minutes": null },
-        { "seq": 4, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-UH", "to": "station:LRT-MUST", "alight_candidates": ["LRT-LDE", "LRT-MUST"], "minutes": null },
-        { "seq": 5, "kind": "walk", "from": "station:LRT-MUST", "to": "place:school", "minutes": 8 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:LRT-SPW"
+        },
+        {
+          "seq": 2,
+          "kind": "lrt",
+          "routes": [
+            "LRT-石排湾线"
+          ],
+          "from": "station:LRT-SPW",
+          "to": "station:LRT-UH"
+        },
+        {
+          "seq": 3,
+          "kind": "transfer",
+          "at": "station:LRT-UH"
+        },
+        {
+          "seq": 4,
+          "kind": "lrt",
+          "routes": [
+            "LRT-氹仔线"
+          ],
+          "from": "station:LRT-UH",
+          "to": "station:LRT-MUST",
+          "alight_candidates": [
+            "LRT-LDE",
+            "LRT-MUST"
+          ]
+        },
+        {
+          "seq": 5,
+          "kind": "walk",
+          "from": "station:LRT-MUST",
+          "to": "place:school"
+        }
       ]
     },
     {
-      "id": "school-home-1", "from": "school", "to": "home", "summary": "26路 T373/2 偉龍/科技大學→C652 安順大廈",
+      "id": "school-home-1",
+      "from": "school",
+      "to": "home",
+      "summary": "26路 T373/2 偉龍/科技大學→C652 安順大廈",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["26", "51A", "51B"], "from": "station:T373/2", "to": "station:C652", "minutes": null, "routeMeta": { "26": { "to": "C652" }, "51A": { "to": "C690/1", "alight": ["C688/2", "C690/1"] }, "51B": { "to": "C690/2", "alight": ["C688/2", "C690/2"] } } },
-        { "seq": 3, "kind": "walk", "from": "station:C652", "to": "place:home", "minutes": 3 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:school",
+          "to": "station:T373/2"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "26",
+            "51A",
+            "51B"
+          ],
+          "from": "station:T373/2",
+          "to": "station:C652",
+          "routeMeta": {
+            "26": {
+              "to": "C652"
+            },
+            "51A": {
+              "to": "C690/1",
+              "alight": [
+                "C688/2",
+                "C690/1"
+              ]
+            },
+            "51B": {
+              "to": "C690/2",
+              "alight": [
+                "C688/2",
+                "C690/2"
+              ]
+            }
+          }
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:C652",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "school-home-2", "from": "school", "to": "home", "is_active": false, "summary": "51A/51B路（旧合并，已拆分为独立卡）",
+      "id": "school-home-2",
+      "from": "school",
+      "to": "home",
+      "is_active": false,
+      "summary": "51A/51B路（旧合并，已拆分为独立卡）",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T358", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["51A", "51B"], "from": "station:T358", "to": "station:C688", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:C688", "to": "place:home", "minutes": 9 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:school",
+          "to": "station:T358"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51A",
+            "51B"
+          ],
+          "from": "station:T358",
+          "to": "station:C688"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:C688",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "school-home-2-51a", "from": "school", "to": "home", "summary": "51A路 T373/2 偉龍/科技大學→C688/2 和諧廣場 或 C690/1 蝴蝶谷（動態下車）",
+      "id": "school-home-2-51a",
+      "from": "school",
+      "to": "home",
+      "summary": "51A路 T373/2 偉龍/科技大學→C688/2 和諧廣場 或 C690/1 蝴蝶谷（動態下車）",
       "is_active": false,
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["51A"], "from": "station:T373/2", "to": "station:C690/1", "alight_candidates": ["C688/2", "C690/1"], "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:C690/1", "to": "place:home", "minutes": 7 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:school",
+          "to": "station:T373/2"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51A"
+          ],
+          "from": "station:T373/2",
+          "to": "station:C690/1",
+          "alight_candidates": [
+            "C688/2",
+            "C690/1"
+          ]
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:C690/1",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "school-home-2-51b", "from": "school", "to": "home", "summary": "51B路 T373/2 偉龍/科技大學→C688/2 和諧廣場 或 C690/2 蝴蝶谷（動態下車）",
+      "id": "school-home-2-51b",
+      "from": "school",
+      "to": "home",
+      "summary": "51B路 T373/2 偉龍/科技大學→C688/2 和諧廣場 或 C690/2 蝴蝶谷（動態下車）",
       "is_active": false,
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["51B"], "from": "station:T373/2", "to": "station:C690/2", "alight_candidates": ["C688/2", "C690/2"], "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:C690/2", "to": "place:home", "minutes": 7 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:school",
+          "to": "station:T373/2"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51B"
+          ],
+          "from": "station:T373/2",
+          "to": "station:C690/2",
+          "alight_candidates": [
+            "C688/2",
+            "C690/2"
+          ]
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:C690/2",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "school-home-3", "from": "school", "to": "home", "is_active": false, "summary": "51A/51B路（旧合并，已拆分为独立卡）",
+      "id": "school-home-3",
+      "from": "school",
+      "to": "home",
+      "is_active": false,
+      "summary": "51A/51B路（旧合并，已拆分为独立卡）",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T358", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["51A", "51B"], "from": "station:T358", "to": "station:C690", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:C690", "to": "place:home", "minutes": 7 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:school",
+          "to": "station:T358"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51A",
+            "51B"
+          ],
+          "from": "station:T358",
+          "to": "station:C690"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:C690",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "school-home-3-51a", "from": "school", "to": "home", "summary": "51A路（已併入 school-home-2-51a，動態下車含 C690/1）", "is_active": false,
+      "id": "school-home-3-51a",
+      "from": "school",
+      "to": "home",
+      "summary": "51A路（已併入 school-home-2-51a，動態下車含 C690/1）",
+      "is_active": false,
       "note": "旧「直达总站」卡，与改造后的动态下车主卡 school-home-2-51a 重复；停用保留历史统计",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["51A"], "from": "station:T373/2", "to": "station:C690", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:C690", "to": "place:home", "minutes": 7 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:school",
+          "to": "station:T373/2"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51A"
+          ],
+          "from": "station:T373/2",
+          "to": "station:C690"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:C690",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "school-home-3-51b", "from": "school", "to": "home", "summary": "51B路（已併入 school-home-2-51b，動態下車含 C690/2）", "is_active": false,
+      "id": "school-home-3-51b",
+      "from": "school",
+      "to": "home",
+      "summary": "51B路（已併入 school-home-2-51b，動態下車含 C690/2）",
+      "is_active": false,
       "note": "旧「直达总站」卡，与改造后的动态下车主卡 school-home-2-51b 重复；停用保留历史统计",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T373/2", "minutes": null },
-        { "seq": 2, "kind": "bus", "routes": ["51B"], "from": "station:T373/2", "to": "station:C690", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:C690", "to": "place:home", "minutes": 7 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:school",
+          "to": "station:T373/2"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51B"
+          ],
+          "from": "station:T373/2",
+          "to": "station:C690"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:C690",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "school-home-4", "from": "school", "to": "home", "summary": "51路 T417 科大/機場貨運站→C688/2 和諧廣場 或 C690/3 蝴蝶谷（動態下車）",
+      "id": "school-home-4",
+      "from": "school",
+      "to": "home",
+      "summary": "51路 T417 科大/機場貨運站→C688/2 和諧廣場 或 C690/3 蝴蝶谷（動態下車）",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T417", "minutes": 8 },
-        { "seq": 2, "kind": "bus", "routes": ["51"], "from": "station:T417", "to": "station:C690/3", "alight_candidates": ["C688/2", "C690/3"], "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:C690/3", "to": "place:home", "minutes": 7 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:school",
+          "to": "station:T417"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51"
+          ],
+          "from": "station:T417",
+          "to": "station:C690/3",
+          "alight_candidates": [
+            "C688/2",
+            "C690/3"
+          ]
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:C690/3",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "school-home-5", "from": "school", "to": "home", "summary": "51路（已併入 school-home-4，動態下車含 C690/3）", "is_active": false,
+      "id": "school-home-5",
+      "from": "school",
+      "to": "home",
+      "summary": "51路（已併入 school-home-4，動態下車含 C690/3）",
+      "is_active": false,
       "note": "旧「直达总站」卡，与改造后的动态下车主卡 school-home-4 重复；停用保留历史统计",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:T417", "minutes": 8 },
-        { "seq": 2, "kind": "bus", "routes": ["51"], "from": "station:T417", "to": "station:C690", "minutes": null },
-        { "seq": 3, "kind": "walk", "from": "station:C690", "to": "place:home", "minutes": 7 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:school",
+          "to": "station:T417"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51"
+          ],
+          "from": "station:T417",
+          "to": "station:C690"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:C690",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "school-home-6", "from": "school", "to": "home", "summary": "輕軌 路氹東→協和醫院(換)→石排灣（已併入 school-home-7，科大/路氹東 上車）", "is_active": false,
+      "id": "school-home-6",
+      "from": "school",
+      "to": "home",
+      "summary": "輕軌 路氹東→協和醫院(換)→石排灣（已併入 school-home-7，科大/路氹東 上車）",
+      "is_active": false,
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:LRT-LDE", "minutes": null },
-        { "seq": 2, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-LDE", "to": "station:LRT-UH", "minutes": null },
-        { "seq": 3, "kind": "transfer", "at": "station:LRT-UH", "minutes": null },
-        { "seq": 4, "kind": "lrt", "routes": ["LRT-石排湾线"], "from": "station:LRT-UH", "to": "station:LRT-SPW", "minutes": null },
-        { "seq": 5, "kind": "walk", "from": "station:LRT-SPW", "to": "place:home", "minutes": 4 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:school",
+          "to": "station:LRT-LDE"
+        },
+        {
+          "seq": 2,
+          "kind": "lrt",
+          "routes": [
+            "LRT-氹仔线"
+          ],
+          "from": "station:LRT-LDE",
+          "to": "station:LRT-UH"
+        },
+        {
+          "seq": 3,
+          "kind": "transfer",
+          "at": "station:LRT-UH"
+        },
+        {
+          "seq": 4,
+          "kind": "lrt",
+          "routes": [
+            "LRT-石排湾线"
+          ],
+          "from": "station:LRT-UH",
+          "to": "station:LRT-SPW"
+        },
+        {
+          "seq": 5,
+          "kind": "walk",
+          "from": "station:LRT-SPW",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "school-home-7", "from": "school", "to": "home", "summary": "輕軌 科大 或 路氹東→協和醫院(換)→石排灣",
-      "board_candidates": ["LRT-MUST", "LRT-LDE"],
+      "id": "school-home-7",
+      "from": "school",
+      "to": "home",
+      "summary": "輕軌 科大 或 路氹東→協和醫院(換)→石排灣",
+      "board_candidates": [
+        "LRT-MUST",
+        "LRT-LDE"
+      ],
       "note": "v0.16.0：并入原 school-home-6（路氹東）/school-home-7（科大）；氹仔线 MUST(科大,近校正门)→LDE(路氹東) 回程可上兩站，首項=默认（MUST 步行 8min 已测）；LDE 步行待实测",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:school", "to": "station:LRT-MUST", "minutes": 8 },
-        { "seq": 2, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-MUST", "to": "station:LRT-UH", "minutes": null },
-        { "seq": 3, "kind": "transfer", "at": "station:LRT-UH", "minutes": null },
-        { "seq": 4, "kind": "lrt", "routes": ["LRT-石排湾线"], "from": "station:LRT-UH", "to": "station:LRT-SPW", "minutes": null },
-        { "seq": 5, "kind": "walk", "from": "station:LRT-SPW", "to": "place:home", "minutes": 4 }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:school",
+          "to": "station:LRT-MUST"
+        },
+        {
+          "seq": 2,
+          "kind": "lrt",
+          "routes": [
+            "LRT-氹仔线"
+          ],
+          "from": "station:LRT-MUST",
+          "to": "station:LRT-UH"
+        },
+        {
+          "seq": 3,
+          "kind": "transfer",
+          "at": "station:LRT-UH"
+        },
+        {
+          "seq": 4,
+          "kind": "lrt",
+          "routes": [
+            "LRT-石排湾线"
+          ],
+          "from": "station:LRT-UH",
+          "to": "station:LRT-SPW"
+        },
+        {
+          "seq": 5,
+          "kind": "walk",
+          "from": "station:LRT-SPW",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "home-hengqin-1", "from": "home", "to": "hengqin", "summary": "26/50路→蓮花路停車場(換)→50/25B/25BS/102/701X/N6→橫琴澳方口岸",
+      "id": "home-hengqin-1",
+      "from": "home",
+      "to": "hengqin",
+      "summary": "26/50路→蓮花路停車場(換)→50/25B/25BS/102/701X/N6→橫琴澳方口岸",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
-        { "seq": 2, "kind": "bus", "routes": ["26", "50"], "from": "station:C653", "to": "station:T355/2", "minutes": null, "note": "26 三站直達蓮花路停車場 T355/2 台；50 循環線自 C653 起 3 站先抵對側 T355/1 台（同屬蓮花路停車場，跨台幾步、無步行計時），乘 50 請在 T355/1 台下車；優先 26" },
-        { "seq": 3, "kind": "transfer", "at": "station:T355/2", "minutes": 0, "note": "v0.14.x 换乘点站台同场（T355/1↔T355/2 相邻），跨台不计步行；v0.16.1 显式 minutes=0 固化（实测 155：50 在 T355/1 台下车 6 秒内 T355/2 台续等 25BS）" },
-        { "seq": 4, "kind": "bus", "routes": ["50", "25B", "25BS", "102", "701X", "N6"], "from": "station:T355/2", "to": "station:T560/4", "minutes": null, "note": "各線在橫琴口岸停不同站台，50 停 T560/4" },
-        { "seq": 5, "kind": "walk", "from": "station:T560/4", "to": "place:hengqin", "minutes": null, "note": "v0.13.0 显式口岸步行段：巴士站→口岸通關大廳，步行與其它段一致計入行程；分鐘待實測" },
-        { "seq": 6, "kind": "cross_border", "at": "橫琴口岸", "label": "橫琴口岸", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C653"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "26",
+            "50"
+          ],
+          "from": "station:C653",
+          "to": "station:T355/2",
+          "note": "26 三站直達蓮花路停車場 T355/2 台；50 循環線自 C653 起 3 站先抵對側 T355/1 台（同屬蓮花路停車場，跨台幾步、無步行計時），乘 50 請在 T355/1 台下車；優先 26"
+        },
+        {
+          "seq": 3,
+          "kind": "transfer",
+          "at": "station:T355/2",
+          "note": "v0.14.x 换乘点站台同场（T355/1↔T355/2 相邻），跨台不计步行；v0.16.1 显式 minutes=0 固化（实测 155：50 在 T355/1 台下车 6 秒内 T355/2 台续等 25BS）"
+        },
+        {
+          "seq": 4,
+          "kind": "bus",
+          "routes": [
+            "50",
+            "25B",
+            "25BS",
+            "102",
+            "701X",
+            "N6"
+          ],
+          "from": "station:T355/2",
+          "to": "station:T560/4",
+          "note": "各線在橫琴口岸停不同站台，50 停 T560/4"
+        },
+        {
+          "seq": 5,
+          "kind": "walk",
+          "from": "station:T560/4",
+          "to": "place:hengqin",
+          "note": "v0.13.0 显式口岸步行段：巴士站→口岸通關大廳，步行與其它段一致計入行程；分鐘待實測"
+        },
+        {
+          "seq": 6,
+          "kind": "cross_border",
+          "at": "橫琴口岸",
+          "label": "橫琴口岸",
+          "note": "通關獨立計時（border_minutes），不計入行程"
+        }
       ],
       "note": "50 路或可由樂居大馬路直達橫琴澳方口岸，待實地驗證後可作直達方案補充"
     },
     {
-      "id": "home-hengqin-2", "from": "home", "to": "hengqin", "summary": "輕軌 石排灣→協和醫院(換)→蓮花(換)→橫琴",
+      "id": "home-hengqin-2",
+      "from": "home",
+      "to": "hengqin",
+      "summary": "輕軌 石排灣→協和醫院(換)→蓮花(換)→橫琴",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:LRT-SPW", "minutes": 4 },
-        { "seq": 2, "kind": "lrt", "routes": ["LRT-石排湾线"], "from": "station:LRT-SPW", "to": "station:LRT-UH", "minutes": null },
-        { "seq": 3, "kind": "transfer", "at": "station:LRT-UH", "minutes": null },
-        { "seq": 4, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-UH", "to": "station:LRT-LOT", "minutes": null },
-        { "seq": 5, "kind": "transfer", "at": "station:LRT-LOT", "minutes": null },
-        { "seq": 6, "kind": "lrt", "routes": ["LRT-横琴线"], "from": "station:LRT-LOT", "to": "station:LRT-HQ", "minutes": null },
-        { "seq": 7, "kind": "walk", "from": "station:LRT-HQ", "to": "place:hengqin", "minutes": null, "note": "v0.13.0 显式口岸步行段：橫琴出站→口岸通關大廳，計入行程；分鐘待實測" },
-        { "seq": 8, "kind": "cross_border", "at": "橫琴口岸", "label": "橫琴口岸", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:LRT-SPW"
+        },
+        {
+          "seq": 2,
+          "kind": "lrt",
+          "routes": [
+            "LRT-石排湾线"
+          ],
+          "from": "station:LRT-SPW",
+          "to": "station:LRT-UH"
+        },
+        {
+          "seq": 3,
+          "kind": "transfer",
+          "at": "station:LRT-UH"
+        },
+        {
+          "seq": 4,
+          "kind": "lrt",
+          "routes": [
+            "LRT-氹仔线"
+          ],
+          "from": "station:LRT-UH",
+          "to": "station:LRT-LOT"
+        },
+        {
+          "seq": 5,
+          "kind": "transfer",
+          "at": "station:LRT-LOT"
+        },
+        {
+          "seq": 6,
+          "kind": "lrt",
+          "routes": [
+            "LRT-横琴线"
+          ],
+          "from": "station:LRT-LOT",
+          "to": "station:LRT-HQ"
+        },
+        {
+          "seq": 7,
+          "kind": "walk",
+          "from": "station:LRT-HQ",
+          "to": "place:hengqin",
+          "note": "v0.13.0 显式口岸步行段：橫琴出站→口岸通關大廳，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 8,
+          "kind": "cross_border",
+          "at": "橫琴口岸",
+          "label": "橫琴口岸",
+          "note": "通關獨立計時（border_minutes），不計入行程"
+        }
       ]
     },
     {
-      "id": "hengqin-home-1", "from": "hengqin", "to": "home", "summary": "50路 T560/4 橫琴澳方口岸→C652 安順大廈",
+      "id": "hengqin-home-1",
+      "from": "hengqin",
+      "to": "home",
+      "summary": "50路 T560/4 橫琴澳方口岸→C652 安順大廈",
       "note": "v0.13.0：回程首步即通關（與去程對稱建模），通關獨立計時；口岸步行显式化待實測",
       "legs": [
-        { "seq": 1, "kind": "cross_border", "at": "橫琴口岸", "label": "橫琴口岸", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:hengqin", "to": "station:T560/4", "minutes": null, "note": "v0.13.0 显式口岸步行段：口岸通關大廳→巴士站，計入行程；分鐘待實測" },
-        { "seq": 3, "kind": "bus", "routes": ["50"], "from": "station:T560/4", "to": "station:C652", "minutes": null, "note": "四站直達石排灣" },
-        { "seq": 4, "kind": "walk", "from": "station:C652", "to": "place:home", "minutes": 3 }
+        {
+          "seq": 1,
+          "kind": "cross_border",
+          "at": "橫琴口岸",
+          "label": "橫琴口岸",
+          "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程"
+        },
+        {
+          "seq": 2,
+          "kind": "walk",
+          "from": "place:hengqin",
+          "to": "station:T560/4",
+          "note": "v0.13.0 显式口岸步行段：口岸通關大廳→巴士站，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 3,
+          "kind": "bus",
+          "routes": [
+            "50"
+          ],
+          "from": "station:T560/4",
+          "to": "station:C652",
+          "note": "四站直達石排灣"
+        },
+        {
+          "seq": 4,
+          "kind": "walk",
+          "from": "station:C652",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "hengqin-home-2", "from": "hengqin", "to": "home", "summary": "輕軌 橫琴→蓮花(換)→協和醫院(換)→石排灣",
+      "id": "hengqin-home-2",
+      "from": "hengqin",
+      "to": "home",
+      "summary": "輕軌 橫琴→蓮花(換)→協和醫院(換)→石排灣",
       "note": "v0.13.0：回程首步即通關（與去程對稱建模），通關獨立計時；口岸步行显式化待實測",
       "legs": [
-        { "seq": 1, "kind": "cross_border", "at": "橫琴口岸", "label": "橫琴口岸", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:hengqin", "to": "station:LRT-HQ", "minutes": null, "note": "v0.13.0 显式口岸步行段：口岸通關大廳→橫琴，計入行程；分鐘待實測" },
-        { "seq": 3, "kind": "lrt", "routes": ["LRT-横琴线"], "from": "station:LRT-HQ", "to": "station:LRT-LOT", "minutes": null },
-        { "seq": 4, "kind": "transfer", "at": "station:LRT-LOT", "minutes": null },
-        { "seq": 5, "kind": "lrt", "routes": ["LRT-氹仔线"], "from": "station:LRT-LOT", "to": "station:LRT-UH", "minutes": null },
-        { "seq": 6, "kind": "transfer", "at": "station:LRT-UH", "minutes": null },
-        { "seq": 7, "kind": "lrt", "routes": ["LRT-石排湾线"], "from": "station:LRT-UH", "to": "station:LRT-SPW", "minutes": null },
-        { "seq": 8, "kind": "walk", "from": "station:LRT-SPW", "to": "place:home", "minutes": 4 }
+        {
+          "seq": 1,
+          "kind": "cross_border",
+          "at": "橫琴口岸",
+          "label": "橫琴口岸",
+          "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程"
+        },
+        {
+          "seq": 2,
+          "kind": "walk",
+          "from": "place:hengqin",
+          "to": "station:LRT-HQ",
+          "note": "v0.13.0 显式口岸步行段：口岸通關大廳→橫琴，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 3,
+          "kind": "lrt",
+          "routes": [
+            "LRT-横琴线"
+          ],
+          "from": "station:LRT-HQ",
+          "to": "station:LRT-LOT"
+        },
+        {
+          "seq": 4,
+          "kind": "transfer",
+          "at": "station:LRT-LOT"
+        },
+        {
+          "seq": 5,
+          "kind": "lrt",
+          "routes": [
+            "LRT-氹仔线"
+          ],
+          "from": "station:LRT-LOT",
+          "to": "station:LRT-UH"
+        },
+        {
+          "seq": 6,
+          "kind": "transfer",
+          "at": "station:LRT-UH"
+        },
+        {
+          "seq": 7,
+          "kind": "lrt",
+          "routes": [
+            "LRT-石排湾线"
+          ],
+          "from": "station:LRT-UH",
+          "to": "station:LRT-SPW"
+        },
+        {
+          "seq": 8,
+          "kind": "walk",
+          "from": "station:LRT-SPW",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "home-gate-59", "from": "home", "to": "gate", "summary": "59路 C653 金峰南岸/金譽峰→M9/2 關閘廣場",
+      "id": "home-gate-59",
+      "from": "home",
+      "to": "gate",
+      "summary": "59路 C653 金峰南岸/金譽峰→M9/2 關閘廣場",
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
-        { "seq": 2, "kind": "bus", "routes": ["59", "25"], "from": "station:C653", "to": "station:M9/2", "minutes": null, "note": "59 雙向線 dir1 由石排灣往關閘（DSAT 站序 C653 在 dir1 idx1）", "routeMeta": { "59": { "to": "M9/2" }, "25": { "to": "M1/13" } } },
-        { "seq": 3, "kind": "walk", "from": "station:M9/2", "to": "place:gate", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
-        { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C653"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "59",
+            "25"
+          ],
+          "from": "station:C653",
+          "to": "station:M9/2",
+          "note": "59 雙向線 dir1 由石排灣往關閘（DSAT 站序 C653 在 dir1 idx1）",
+          "routeMeta": {
+            "25": {
+              "to": "M1/13"
+            },
+            "59": {
+              "to": "M9/2"
+            }
+          }
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:M9/2",
+          "to": "place:gate",
+          "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 4,
+          "kind": "cross_border",
+          "at": "關閘（拱北口岸）",
+          "label": "關閘（拱北口岸）",
+          "note": "通關獨立計時（border_minutes），不計入行程"
+        }
       ]
     },
     {
-      "id": "home-gate-25", "from": "home", "to": "gate", "summary": "25路 C653 金峰南岸/金譽峰→M1/13 關閘總站",
+      "id": "home-gate-25",
+      "from": "home",
+      "to": "gate",
+      "summary": "25路 C653 金峰南岸/金譽峰→M1/13 關閘總站",
       "is_active": false,
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘總站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C653", "minutes": 3 },
-        { "seq": 2, "kind": "bus", "routes": ["25"], "from": "station:C653", "to": "station:M1/13", "minutes": null, "note": "25 停關閘總站 M1/13" },
-        { "seq": 3, "kind": "walk", "from": "station:M1/13", "to": "place:gate", "minutes": null, "note": "显式口岸步行段：關閘總站→通關大廳，計入行程；分鐘待實測" },
-        { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C653"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "25"
+          ],
+          "from": "station:C653",
+          "to": "station:M1/13",
+          "note": "25 停關閘總站 M1/13"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:M1/13",
+          "to": "place:gate",
+          "note": "显式口岸步行段：關閘總站→通關大廳，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 4,
+          "kind": "cross_border",
+          "at": "關閘（拱北口岸）",
+          "label": "關閘（拱北口岸）",
+          "note": "通關獨立計時（border_minutes），不計入行程"
+        }
       ]
     },
     {
-      "id": "home-gate-51", "from": "home", "to": "gate", "summary": "51路 C690/3 蝴蝶谷大馬路總站→M9/4 關閘廣場",
+      "id": "home-gate-51",
+      "from": "home",
+      "to": "gate",
+      "summary": "51路 C690/3 蝴蝶谷大馬路總站→M9/4 關閘廣場",
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/3", "minutes": 7 },
-        { "seq": 2, "kind": "bus", "routes": ["51", "51B", "25AX"], "from": "station:C690/3", "to": "station:M9/4", "minutes": null, "note": "51 循環線；蝴蝶谷 C690/3 發車往關閘方向（DSAT 僅一套站序）", "routeMeta": { "51": { "board": ["C690/3", "C689/2"], "to": "M9/4" }, "51B": { "board": ["C690/2", "C689/2"], "to": "M9/4" }, "25AX": { "board": ["C690/2", "C689/2"], "to": "M9/3" } } },
-        { "seq": 3, "kind": "walk", "from": "station:M9/4", "to": "place:gate", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
-        { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C690/3"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51",
+            "51B",
+            "25AX"
+          ],
+          "from": "station:C690/3",
+          "to": "station:M9/4",
+          "note": "51 循環線；蝴蝶谷 C690/3 發車往關閘方向（DSAT 僅一套站序）",
+          "routeMeta": {
+            "51": {
+              "board": [
+                "C690/3",
+                "C689/2"
+              ],
+              "to": "M9/4"
+            },
+            "51B": {
+              "board": [
+                "C690/2",
+                "C689/2"
+              ],
+              "to": "M9/4"
+            },
+            "25AX": {
+              "board": [
+                "C690/2",
+                "C689/2"
+              ],
+              "to": "M9/3"
+            }
+          }
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:M9/4",
+          "to": "place:gate",
+          "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 4,
+          "kind": "cross_border",
+          "at": "關閘（拱北口岸）",
+          "label": "關閘（拱北口岸）",
+          "note": "通關獨立計時（border_minutes），不計入行程"
+        }
       ]
     },
     {
-      "id": "home-gate-51b", "from": "home", "to": "gate", "summary": "51B路 C690/2 蝴蝶谷大馬路總站→M9/4 關閘廣場",
+      "id": "home-gate-51b",
+      "from": "home",
+      "to": "gate",
+      "summary": "51B路 C690/2 蝴蝶谷大馬路總站→M9/4 關閘廣場",
       "is_active": false,
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/2", "minutes": 7 },
-        { "seq": 2, "kind": "bus", "routes": ["51B"], "from": "station:C690/2", "to": "station:M9/4", "minutes": null, "note": "51B 循環線；蝴蝶谷 C690/2 發車往關閘方向（DSAT 僅一套站序）" },
-        { "seq": 3, "kind": "walk", "from": "station:M9/4", "to": "place:gate", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
-        { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C690/2"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "51B"
+          ],
+          "from": "station:C690/2",
+          "to": "station:M9/4",
+          "note": "51B 循環線；蝴蝶谷 C690/2 發車往關閘方向（DSAT 僅一套站序）"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:M9/4",
+          "to": "place:gate",
+          "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 4,
+          "kind": "cross_border",
+          "at": "關閘（拱北口岸）",
+          "label": "關閘（拱北口岸）",
+          "note": "通關獨立計時（border_minutes），不計入行程"
+        }
       ]
     },
     {
-      "id": "home-gate-25ax", "from": "home", "to": "gate", "summary": "25AX路 C690/2 蝴蝶谷大馬路總站→M9/3 關閘廣場",
+      "id": "home-gate-25ax",
+      "from": "home",
+      "to": "gate",
+      "summary": "25AX路 C690/2 蝴蝶谷大馬路總站→M9/3 關閘廣場",
       "is_active": false,
       "note": "v0.13.0 去關閘（拱北口岸）；巴士到關閘站後显式步行至通關大廳（待實測），通關獨立計時",
       "legs": [
-        { "seq": 1, "kind": "walk", "from": "place:home", "to": "station:C690/2", "minutes": 7 },
-        { "seq": 2, "kind": "bus", "routes": ["25AX"], "from": "station:C690/2", "to": "station:M9/3", "minutes": null, "note": "25AX 高峰快線；蝴蝶谷 C690/2 發車往關閘（DSAT 僅一套站序）" },
-        { "seq": 3, "kind": "walk", "from": "station:M9/3", "to": "place:gate", "minutes": null, "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測" },
-        { "seq": 4, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "通關獨立計時（border_minutes），不計入行程" }
+        {
+          "seq": 1,
+          "kind": "walk",
+          "from": "place:home",
+          "to": "station:C690/2"
+        },
+        {
+          "seq": 2,
+          "kind": "bus",
+          "routes": [
+            "25AX"
+          ],
+          "from": "station:C690/2",
+          "to": "station:M9/3",
+          "note": "25AX 高峰快線；蝴蝶谷 C690/2 發車往關閘（DSAT 僅一套站序）"
+        },
+        {
+          "seq": 3,
+          "kind": "walk",
+          "from": "station:M9/3",
+          "to": "place:gate",
+          "note": "显式口岸步行段：關閘廣場→通關大廳，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 4,
+          "kind": "cross_border",
+          "at": "關閘（拱北口岸）",
+          "label": "關閘（拱北口岸）",
+          "note": "通關獨立計時（border_minutes），不計入行程"
+        }
       ]
     },
     {
-      "id": "gate-home-59", "from": "gate", "to": "home", "summary": "59路 M9/2 關閘廣場→C652 安順大廈",
+      "id": "gate-home-59",
+      "from": "gate",
+      "to": "home",
+      "summary": "59路 M9/2 關閘廣場→C652 安順大廈",
       "note": "v0.13.0 回程（關閘→宿舍）；首步即通關（與去程對稱建模），通關獨立計時",
       "legs": [
-        { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:gate", "to": "station:M9/2", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
-        { "seq": 3, "kind": "bus", "routes": ["59"], "from": "station:M9/2", "to": "station:C652", "minutes": null, "note": "59 雙向線 dir0 由關閘往石排灣" },
-        { "seq": 4, "kind": "walk", "from": "station:C652", "to": "place:home", "minutes": 3 }
+        {
+          "seq": 1,
+          "kind": "cross_border",
+          "at": "關閘（拱北口岸）",
+          "label": "關閘（拱北口岸）",
+          "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程"
+        },
+        {
+          "seq": 2,
+          "kind": "walk",
+          "from": "place:gate",
+          "to": "station:M9/2",
+          "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 3,
+          "kind": "bus",
+          "routes": [
+            "59"
+          ],
+          "from": "station:M9/2",
+          "to": "station:C652",
+          "note": "59 雙向線 dir0 由關閘往石排灣"
+        },
+        {
+          "seq": 4,
+          "kind": "walk",
+          "from": "station:C652",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "gate-home-25", "from": "gate", "to": "home", "summary": "25路 M1/13 關閘總站→C652 安順大廈",
+      "id": "gate-home-25",
+      "from": "gate",
+      "to": "home",
+      "summary": "25路 M1/13 關閘總站→C652 安順大廈",
       "note": "v0.13.0 回程（關閘→宿舍）；首步即通關（與去程對稱建模），通關獨立計時",
       "legs": [
-        { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:gate", "to": "station:M1/13", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘總站，計入行程；分鐘待實測" },
-        { "seq": 3, "kind": "bus", "routes": ["25"], "from": "station:M1/13", "to": "station:C652", "minutes": null, "note": "25 由關閘總站往石排灣" },
-        { "seq": 4, "kind": "walk", "from": "station:C652", "to": "place:home", "minutes": 3 }
+        {
+          "seq": 1,
+          "kind": "cross_border",
+          "at": "關閘（拱北口岸）",
+          "label": "關閘（拱北口岸）",
+          "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程"
+        },
+        {
+          "seq": 2,
+          "kind": "walk",
+          "from": "place:gate",
+          "to": "station:M1/13",
+          "note": "显式口岸步行段：口岸通關大廳→關閘總站，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 3,
+          "kind": "bus",
+          "routes": [
+            "25"
+          ],
+          "from": "station:M1/13",
+          "to": "station:C652",
+          "note": "25 由關閘總站往石排灣"
+        },
+        {
+          "seq": 4,
+          "kind": "walk",
+          "from": "station:C652",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "gate-home-51", "from": "gate", "to": "home", "summary": "51路 M9/4 關閘廣場→C690/3 蝴蝶谷大馬路總站",
+      "id": "gate-home-51",
+      "from": "gate",
+      "to": "home",
+      "summary": "51路 M9/4 關閘廣場→C690/3 蝴蝶谷大馬路總站",
       "note": "v0.13.0 回程（關閘→宿舍）；首步即通關（與去程對稱建模），通關獨立計時",
       "legs": [
-        { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:gate", "to": "station:M9/4", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
-        { "seq": 3, "kind": "bus", "routes": ["51", "51B"], "from": "station:M9/4", "to": "station:C690/3", "minutes": null, "note": "51 循環線繞回蝴蝶谷總站", "routeMeta": { "51": { "to": "C690/3", "alight": ["C688/2", "C690/3"] }, "51B": { "to": "C690/2", "alight": ["C688/2", "C690/2"] } } },
-        { "seq": 4, "kind": "walk", "from": "station:C690/3", "to": "place:home", "minutes": 7 }
+        {
+          "seq": 1,
+          "kind": "cross_border",
+          "at": "關閘（拱北口岸）",
+          "label": "關閘（拱北口岸）",
+          "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程"
+        },
+        {
+          "seq": 2,
+          "kind": "walk",
+          "from": "place:gate",
+          "to": "station:M9/4",
+          "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 3,
+          "kind": "bus",
+          "routes": [
+            "51",
+            "51B"
+          ],
+          "from": "station:M9/4",
+          "to": "station:C690/3",
+          "note": "51 循環線繞回蝴蝶谷總站",
+          "routeMeta": {
+            "51": {
+              "to": "C690/3",
+              "alight": [
+                "C688/2",
+                "C690/3"
+              ]
+            },
+            "51B": {
+              "to": "C690/2",
+              "alight": [
+                "C688/2",
+                "C690/2"
+              ]
+            }
+          }
+        },
+        {
+          "seq": 4,
+          "kind": "walk",
+          "from": "station:C690/3",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "gate-home-51b", "from": "gate", "to": "home", "summary": "51B路 M9/4 關閘廣場→C690/2 蝴蝶谷大馬路總站",
+      "id": "gate-home-51b",
+      "from": "gate",
+      "to": "home",
+      "summary": "51B路 M9/4 關閘廣場→C690/2 蝴蝶谷大馬路總站",
       "is_active": false,
       "note": "v0.13.0 回程（關閘→宿舍）；首步即通關（與去程對稱建模），通關獨立計時",
       "legs": [
-        { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:gate", "to": "station:M9/4", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
-        { "seq": 3, "kind": "bus", "routes": ["51B"], "from": "station:M9/4", "to": "station:C690/2", "minutes": null, "note": "51B 循環線繞回蝴蝶谷總站" },
-        { "seq": 4, "kind": "walk", "from": "station:C690/2", "to": "place:home", "minutes": 7 }
+        {
+          "seq": 1,
+          "kind": "cross_border",
+          "at": "關閘（拱北口岸）",
+          "label": "關閘（拱北口岸）",
+          "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程"
+        },
+        {
+          "seq": 2,
+          "kind": "walk",
+          "from": "place:gate",
+          "to": "station:M9/4",
+          "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 3,
+          "kind": "bus",
+          "routes": [
+            "51B"
+          ],
+          "from": "station:M9/4",
+          "to": "station:C690/2",
+          "note": "51B 循環線繞回蝴蝶谷總站"
+        },
+        {
+          "seq": 4,
+          "kind": "walk",
+          "from": "station:C690/2",
+          "to": "place:home"
+        }
       ]
     },
     {
-      "id": "gate-home-25ax", "from": "gate", "to": "home", "summary": "25AX路 M9/3 關閘廣場→C690/2 蝴蝶谷大馬路總站",
+      "id": "gate-home-25ax",
+      "from": "gate",
+      "to": "home",
+      "summary": "25AX路 M9/3 關閘廣場→C690/2 蝴蝶谷大馬路總站",
       "note": "v0.13.0 回程（關閘→宿舍）；首步即通關（與去程對稱建模），通關獨立計時",
       "legs": [
-        { "seq": 1, "kind": "cross_border", "at": "關閘（拱北口岸）", "label": "關閘（拱北口岸）", "minutes": null, "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程" },
-        { "seq": 2, "kind": "walk", "from": "place:gate", "to": "station:M9/3", "minutes": null, "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測" },
-        { "seq": 3, "kind": "bus", "routes": ["25AX"], "from": "station:M9/3", "to": "station:C690/2", "minutes": null, "note": "25AX 高峰快線繞回蝴蝶谷總站" },
-        { "seq": 4, "kind": "walk", "from": "station:C690/2", "to": "place:home", "minutes": 7 }
+        {
+          "seq": 1,
+          "kind": "cross_border",
+          "at": "關閘（拱北口岸）",
+          "label": "關閘（拱北口岸）",
+          "note": "回程首步出關；通關獨立計時（border_minutes），不計入行程"
+        },
+        {
+          "seq": 2,
+          "kind": "walk",
+          "from": "place:gate",
+          "to": "station:M9/3",
+          "note": "显式口岸步行段：口岸通關大廳→關閘廣場站，計入行程；分鐘待實測"
+        },
+        {
+          "seq": 3,
+          "kind": "bus",
+          "routes": [
+            "25AX"
+          ],
+          "from": "station:M9/3",
+          "to": "station:C690/2",
+          "note": "25AX 高峰快線繞回蝴蝶谷總站"
+        },
+        {
+          "seq": 4,
+          "kind": "walk",
+          "from": "station:C690/2",
+          "to": "place:home"
+        }
       ]
     }
   ]

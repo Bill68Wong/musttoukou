@@ -39,7 +39,7 @@ export interface PlanLegLite {
   board_candidates?: string[] | null;
   /** bus 段可选下车点（回宿舍动态下车：末位=强制终点，与 to_station 一致） */
   alight_candidates?: string[] | null;
-  /** v0.16.4：段参考时长/分钟（transfer 0 = 同场换乘步行 0 分钟） */
+  /** v0.16.4 引入；v0.24.0 起手工估算值已剔除，本字段恒为 null（保留以兼容旧数据读取） */
   minutes?: number | null;
   /** v0.17.0：合并卡「每线路差异化」——key=线路码，值=该线自己的 下车站/上车台/下车候选 */
   route_meta?: Record<string, RouteMeta> | null;
@@ -242,15 +242,20 @@ export function buildSteps(legs: PlanLegLite[]): Step[] {
       case "bus":
       case "lrt":
         vehIdx++;
-        // v0.16.4：同场换乘（前一个 leg 是 transfer minutes=0，如莲花路停车场
+        // v0.24.0：同场换乘（前一 leg 是 transfer 且位于同一站，如莲花路停车场
         // T355/1↔T355/2 相邻台）→ 下车即已到站，第二程不再生成「到站，开始等车」步：
         // 等车自下车时刻自动开始，UI 下车后直接是「上车」（board 步自带等车 LiveEta）。
-        // 判定仅限显式 0 分钟换乘（当前只有莲花路巴士卡；轻轨 UH/LOT 换乘未标注不受影响）
+        // 判据改为「站码严格相等 + 非轻轨前缀」—— 不再依赖 minutes=0 标记位
+        // （手工估算值已全面剔除）。轻轨换乘（UH/LOT）体验维持原样：仍生成等车步。
+        // ⚠️ 此处必须严格相等，不可用 stationCodesEq（后者会做站台归一，
+        //    会把 T355/1 与 T355/2 视为同站，从而误判非换乘场景）。
         const prevLeg = legs[i - 1];
         const sameFieldTransfer =
           prevLeg?.leg_kind === "transfer" &&
-          prevLeg.minutes != null &&
-          Number(prevLeg.minutes) === 0;
+          !!prevLeg.to_station &&
+          prevLeg.to_station === leg.from_station &&
+          !leg.from_station?.startsWith("LRT-") &&
+          !prevLeg.to_station.startsWith("LRT-");
         if (!sameFieldTransfer) {
           steps.push({
             eventType: "wait_start",

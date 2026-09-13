@@ -324,8 +324,9 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
         );
       }
 
-      // v0.16.4：同场换乘（莲花路停车场）步骤模型已不生成第二程「到站，开始等车」步
-      // （buildSteps 对 transfer minutes=0 的后段跳过 wait_start）→ 下车后 events/步骤直接
+      // v0.16.4 引入；v0.24.0 起判据改为「前一 transfer 段站码严格相等 + 非轻轨前缀」：
+      // 同场换乘（莲花路停车场 T355/1↔T355/2）步骤模型已不生成第二程「到站，开始等车」步
+      // （buildSteps 对同站非轻轨换乘的后段跳过 wait_start）→ 下车后 events/步骤直接
       // 落到第二程 board（上车），无中间态/无残留事件。此处按步骤结构补记等车车距快照，
       // 保持与手动 wait_start 一致的数据采集口径（wait_snapshots 独立表，不入事件链）
       if (type === "alight") {

@@ -7,10 +7,13 @@ import { NextRequest, NextResponse } from "next/server";
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 放行：登录页、登录接口、静态资源
+  // 放行：登录页、登录接口、静态资源、定时任务
   if (
     pathname === "/login" ||
     pathname === "/api/auth" ||
+    // v0.25.0：Vercel Cron 触发派生数据重算，走自身 Bearer 鉴权（不受口令门约束，
+    // 否则 cron 请求会被这里拦成 401 → 重算静默失败）
+    pathname === "/api/cron/rebuild" ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
     pathname === "/manifest.webmanifest" ||

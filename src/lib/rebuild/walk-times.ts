@@ -48,24 +48,28 @@ export interface WalkRebuildResult {
 
 const macauDate = (t: Date) => new Date(t.getTime() + 8 * 3600e3).toISOString().slice(0, 10);
 
+interface EvRow {
+  seq: number;
+  event_type: string;
+  station_code: string | null;
+  recorded_at: string;
+}
+
 /**
  * 取会话内「某事件 → 另一事件」的真实间隔（分钟），扣除区间内 pause→resume。
  * 起点侧：第一个 depart → 其后第一个 wait_start
  * 到点侧：末次 alight ← 其前最后一个 arrive（用倒序扫描取末次，避免换乘中途的 alight 被误用）
+ *
+ * ⚠️ 纯函数、不查库：会话事件由调用方一次性取回后按 session_id 分组传入。
+ * （v0.25.1：原实现是「每会话查一次 timer_events」→ 往返次数 = 会话数 × 2，
+ *  跨区域 RTT ~200ms 时样本一多就会撞 maxDuration；改成一次取全量后只剩 1 次往返。）
  */
-async function gapMinutes(
-  pool: Pool,
-  sid: number,
+function gapMinutes(
+  rows: EvRow[],
   fromType: string,
   toType: string,
-): Promise<{ minutes: number; station: string | null; fromAt: Date } | null> {
-  const { rows } = await pool.query(
-    `SELECT seq, event_type, station_code, recorded_at
-       FROM timer_events WHERE session_id = $1 ORDER BY seq`,
-    [sid],
-  );
+): { minutes: number; station: string | null; fromAt: Date } | null {
   if (!rows.length) return null;
-  type Row = { seq: number; event_type: string; station_code: string | null; recorded_at: string };
 
   let i = -1;
   let j = -1;
@@ -76,25 +80,25 @@ async function gapMinutes(
   } else {
     // 倒序：末次 toType（arrive）作为终点，其前最后一个 fromType（alight）作为起点
     for (let k = rows.length - 1; k >= 0; k--) {
-      if (j < 0 && (rows[k] as Row).event_type === toType) j = k;
-      if (i < 0 && (rows[k] as Row).event_type === fromType) i = k;
+      if (j < 0 && rows[k].event_type === toType) j = k;
+      if (i < 0 && rows[k].event_type === fromType) i = k;
       if (i >= 0 && j >= 0) break;
     }
   }
   if (i < 0 || j < 0 || j <= i) return null;
 
-  const t0 = new Date((rows[i] as Row).recorded_at);
-  const t1 = new Date((rows[j] as Row).recorded_at);
+  const t0 = new Date(rows[i].recorded_at);
+  const t1 = new Date(rows[j].recorded_at);
   const raw = (t1.getTime() - t0.getTime()) / 60000;
 
   // 扣除区间内 pause → resume
   let paused = 0;
   let pStart: Date | null = null;
   for (let k = i; k <= j; k++) {
-    const t = (rows[k] as Row).event_type;
-    if (t === "pause" && !pStart) pStart = new Date((rows[k] as Row).recorded_at);
+    const t = rows[k].event_type;
+    if (t === "pause" && !pStart) pStart = new Date(rows[k].recorded_at);
     else if (t === "resume" && pStart) {
-      paused += (new Date((rows[k] as Row).recorded_at).getTime() - pStart.getTime()) / 60000;
+      paused += (new Date(rows[k].recorded_at).getTime() - pStart.getTime()) / 60000;
       pStart = null;
     }
   }
@@ -102,9 +106,7 @@ async function gapMinutes(
 
   return {
     minutes: raw - paused,
-    station: (fromType === "depart"
-      ? (rows[j] as Row).station_code
-      : (rows[i] as Row).station_code) as string | null,
+    station: (fromType === "depart" ? rows[j].station_code : rows[i].station_code) as string | null,
     fromAt: t0,
   };
 }
@@ -170,11 +172,32 @@ export async function rebuildWalkTimes(pool: Pool, opts: { dry?: boolean } = {})
   `)
   ).rows as { id: number; plan_id: number; from_zone: string | null; to_zone: string | null }[];
 
+  // 🚨 一次取回全部会话事件再按 session_id 分组（勿逐会话查库）：
+  // 逐会话查 = 往返次数随样本线性增长，跨区域 RTT ~200ms 时迟早撞 maxDuration。
+  const ids = sessions.map((s) => s.id);
+  const evBySession = new Map<number, EvRow[]>();
+  if (ids.length) {
+    const evRows = (
+      await pool.query(
+        `SELECT session_id, seq, event_type, station_code, recorded_at
+           FROM timer_events
+          WHERE session_id = ANY($1::int[])
+          ORDER BY session_id, seq`,
+        [ids],
+      )
+    ).rows as (EvRow & { session_id: number })[];
+    for (const r of evRows) {
+      if (!evBySession.has(r.session_id)) evBySession.set(r.session_id, []);
+      evBySession.get(r.session_id)!.push(r);
+    }
+  }
+
   const samples: WalkSample[] = [];
   for (const s of sessions) {
+    const rows = evBySession.get(s.id) ?? [];
     const sp = startByPlan.get(s.plan_id);
     if (sp) {
-      const g = await gapMinutes(pool, s.id, "depart", "wait_start");
+      const g = gapMinutes(rows, "depart", "wait_start");
       if (g && g.station && g.station === sp.station) {
         const zone = sp.place === schoolId ? (s.from_zone ?? null) : null;
         const ok = g.minutes >= MIN_MIN && g.minutes <= MAX_MIN;
@@ -192,7 +215,7 @@ export async function rebuildWalkTimes(pool: Pool, opts: { dry?: boolean } = {})
     }
     const ep = endByPlan.get(s.plan_id);
     if (ep) {
-      const g = await gapMinutes(pool, s.id, "alight", "arrive");
+      const g = gapMinutes(rows, "alight", "arrive");
       if (g && g.station && g.station === ep.station) {
         const zone = ep.place === schoolId ? (s.to_zone ?? null) : null;
         const ok = g.minutes >= MIN_MIN && g.minutes <= MAX_MIN;

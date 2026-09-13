@@ -1,6 +1,6 @@
 {
   "name": "must-dengxiao",
-  "version": "0.26.2",
+  "version": "0.27.0",
   "private": true,
   "description": "MUST登校 · 擎天汇↔澳科大↔横琴 通勤计时与数据采集系统",
   "scripts": {
@@ -42,7 +42,10 @@
     "db:segments": "tsx scripts/rebuild-segment-stats.ts",
     "db:walktimes": "tsx scripts/rebuild-walk-times.ts",
     "db:coverage": "tsx scripts/seg-coverage.ts",
-    "db:gaps": "tsx scripts/gap-report.ts"
+    "db:gaps": "tsx scripts/gap-report.ts",
+    "track:plan": "node scripts/track-collect.mjs --dry-plan",
+    "track:collect": "node scripts/track-collect.mjs",
+    "track:derive": "node scripts/track-derive.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

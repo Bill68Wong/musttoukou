@@ -47,3 +47,7 @@ next-env.d.ts
 
 # 本地截图验证输出
 /.verify/
+
+# 追踪式计时采集产物（原始帧体量大，只留本地；脚本与 README 入库）
+/data/tracking/*
+!/data/tracking/README.md

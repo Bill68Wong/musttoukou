@@ -105,6 +105,8 @@ export interface SegmentRebuildResult {
     unmatched: number;
     cross: number;
     reverse: number;
+    /** 跨线回退成功回收的段（本线站序解不出，但该邻接对属另一条线） */
+    recovered: number;
   };
   /** 写入行数（dry 时为 0） */
   written: number;
@@ -150,6 +152,36 @@ export async function rebuildSegmentStats(
     for (const [k, v] of m) if (k === p || mainCode(k) === p) out.push(...v);
     return [...new Set(out)].sort((a, b) => a - b);
   };
+
+  // ============ ①-b 全澳邻接键索引（v0.26.1 修 bug #23） ============
+  // 键 = mainCode(from)→mainCode(to)，值 = 拥有该邻接对的线路集合。
+  // 用途：同一会话内跨线打点（换乘到另一条线）的后段，在「会话自身 route_code」
+  // 的站序里必然解不出（seqsOf 命中失败）→ 原来是直接丢弃。
+  // 现按站码反查归属线路，用那条线的站序复核后接受该样本。
+  // 依据：邻接区间本身可跨线路共享（段的物理含义 = 从 A 站开到 B 站的时长）。
+  const dirsByRoute = new Map<string, string[]>();
+  const adjOwners = new Map<string, Set<string>>();
+  {
+    let prevKey = "";
+    let prevCode = "";
+    for (const r of routeRows) {
+      const key = `${r.route}|${r.dsat_dir}`;
+      if (key !== prevKey) {
+        const rt = r.route as string;
+        if (!dirsByRoute.has(rt)) dirsByRoute.set(rt, []);
+        dirsByRoute.get(rt)!.push(r.dsat_dir as string);
+        prevKey = key;
+        prevCode = "";
+      }
+      const code = r.station_code as string;
+      if (prevCode) {
+        const adj = `${mainCode(prevCode)}→${mainCode(code)}`;
+        if (!adjOwners.has(adj)) adjOwners.set(adj, new Set());
+        adjOwners.get(adj)!.add(r.route as string);
+      }
+      prevCode = code;
+    }
+  }
 
   // ================= ② 读两套源事件 =================
   const sessions = await q(
@@ -218,9 +250,42 @@ export async function rebuildSegmentStats(
     source: "timer" | "free",
   ): { samples: SegmentSample[]; st: Record<string, number> } {
     const samples: SegmentSample[] = [];
-    const st = { ok: 0, head: 0, tail: 0, sameStation: 0, zeroGap: 0, unmatched: 0, cross: 0, reverse: 0 };
+    const st = {
+      ok: 0,
+      head: 0,
+      tail: 0,
+      sameStation: 0,
+      zeroGap: 0,
+      unmatched: 0,
+      cross: 0,
+      reverse: 0,
+      recovered: 0,
+    };
     // skip 不参与，直接过滤（其前后点会变成跨站，从而被丢弃）
     const seq = pts.filter((p) => p.kind !== "skip");
+
+    /** 在给定站序索引里解析相邻站对：命中且相邻返回下标，否则 null */
+    const resolve = (
+      mm: Map<string, number[]>,
+      aCode: string,
+      bCode: string,
+      minFrom: number,
+    ): { x: number; y: number } | null => {
+      const sa = seqsOf(mm, aCode);
+      const sb = seqsOf(mm, bCode);
+      if (!sa.length || !sb.length) return null;
+      let best: { x: number; y: number } | null = null;
+      for (const x of sa) {
+        if (x < minFrom) continue;
+        for (const y of sb) {
+          if (y <= x) continue;
+          if (!best || y - x < best.y - best.x) best = { x, y };
+        }
+      }
+      if (!best || best.y - best.x !== 1) return null;
+      return best;
+    };
+
     let lastSeq = -1;
     for (let i = 0; i + 1 < seq.length; i++) {
       const a = seq[i];
@@ -235,35 +300,51 @@ export async function rebuildSegmentStats(
         st.zeroGap++;
         continue;
       }
-      const sa = seqsOf(m, a.code);
-      const sb = seqsOf(m, b.code);
-      if (!sa.length || !sb.length) {
-        st.unmatched++;
-        continue;
-      }
-      let best: { x: number; y: number } | null = null;
-      for (const x of sa) {
-        if (x < lastSeq) continue;
-        for (const y of sb) {
-          if (y <= x) continue;
-          if (!best || y - x < best.y - best.x) best = { x, y };
+      // ① 先用当前线路站序解析
+      let hitRoute: string | null = null;
+      let hitX = -1;
+      const own = resolve(m, a.code, b.code, lastSeq);
+      if (own) {
+        hitRoute = route;
+        hitX = own.x;
+      } else {
+        // ② 跨线回退：按站码反查「哪些线路站序含该邻接对」（v0.26.1 修 #23）
+        //    场景：一个会话里换乘到另一条线，后段不属于会话的 route_code。
+        //    接受条件同样要求「在该线路站序里严格相邻」——若会话漏记了中间站，
+        //    在那条线的站序里也不会相邻，因此不会产出错误的长段。
+        const owners = adjOwners.get(`${mainCode(a.code)}→${mainCode(b.code)}`);
+        if (owners) {
+          for (const owner of owners) {
+            if (owner === route) continue;
+            for (const d of dirsByRoute.get(owner) ?? []) {
+              const om = seqIdx.get(`${owner}|${d}`);
+              if (!om) continue;
+              const r2 = resolve(om, a.code, b.code, -1);
+              if (r2) {
+                hitRoute = owner;
+                hitX = r2.x;
+                st.recovered++;
+                break;
+              }
+            }
+            if (hitRoute) break;
+          }
         }
       }
-      if (!best) {
-        if (Math.min(...sb) < Math.min(...sa)) st.reverse++;
+      if (!hitRoute) {
+        const sa = seqsOf(m, a.code);
+        const sb = seqsOf(m, b.code);
+        if (!sa.length || !sb.length) st.unmatched++;
+        else if (Math.min(...sb) < Math.min(...sa)) st.reverse++;
         else st.cross++;
         continue;
       }
-      lastSeq = best.x;
-      if (best.y - best.x !== 1) {
-        st.cross++;
-        continue;
-      }
+      lastSeq = hitX;
       st.ok++;
       if (a.kind === "board") st.head++;
       if (b.kind === "alight") st.tail++;
       samples.push({
-        route,
+        route: hitRoute,
         from: a.code,
         to: b.code,
         weekday,
@@ -279,7 +360,7 @@ export async function rebuildSegmentStats(
   const samples: SegmentSample[] = [];
   const stats = {
     head: 0, tail: 0, redirect: 0,
-    sameStation: 0, zeroGap: 0, unmatched: 0, cross: 0, reverse: 0,
+    sameStation: 0, zeroGap: 0, unmatched: 0, cross: 0, reverse: 0, recovered: 0,
   };
 
   /** 对一个行程跑两个方向，取顺向解更多的那个 */
@@ -307,7 +388,16 @@ export async function rebuildSegmentStats(
     if (!bestRun) return;
     if (usedDir !== d0) stats.redirect++;
     samples.push(...bestRun.samples);
-    for (const k of ["head", "tail", "sameStation", "zeroGap", "unmatched", "cross", "reverse"] as const)
+    for (const k of [
+      "head",
+      "tail",
+      "sameStation",
+      "zeroGap",
+      "unmatched",
+      "cross",
+      "reverse",
+      "recovered",
+    ] as const)
       stats[k] += bestRun.st[k] ?? 0;
   }
 

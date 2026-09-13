@@ -45,6 +45,9 @@ async function main() {
       `站码未匹配 ${stats.unmatched} · 跨站（中间漏打/忘打卡） ${stats.cross} · 反向 ${stats.reverse}`,
   );
   console.log(
+    `   跨线回退回收 ${stats.recovered} 段（本线站序解不出，但该邻接对属另一条线 → 按站码反查归属）`,
+  );
+  console.log(
     `   档位：stop（起点停靠，含停站）${r.byKind.stop} · pass（起点甩站，≈纯行驶）${r.byKind.pass}`,
   );
   console.log(`   写入 ${r.written} 行（分层 ${r.layered} + 兜底）`);

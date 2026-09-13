@@ -110,21 +110,44 @@ async function main() {
   const shareCount = (a: string, b: string) =>
     (pairRoutes.get(`${mainCode(a)}→${mainCode(b)}`) ?? new Set<string>()).size;
 
-  // ③ 样本数（兜底行）
+  // ③ 样本数（兜底行）+ 跨线路邻接键索引
   const stats = await q(
     `SELECT route_code, from_station, to_station, samples FROM segment_stats
       WHERE weekday = -1 AND time_bucket = 'all' AND arrive_kind = 'all'`,
   );
   const sampleOf = new Map<string, number>();
-  for (const s of stats) sampleOf.set(`${s.route_code}|${s.from_station}|${s.to_station}`, s.samples as number);
-  const lookup = (route: string, from: string, to: string): number => {
+  /** mainCode(from)→mainCode(to) → (线路 → 样本数)：邻接区间可跨线路共享 */
+  const sharedOf = new Map<string, Map<string, number>>();
+  for (const s of stats) {
+    const n = s.samples as number;
+    sampleOf.set(`${s.route_code}|${s.from_station}|${s.to_station}`, n);
+    const key = `${mainCode(s.from_station as string)}→${mainCode(s.to_station as string)}`;
+    if (!sharedOf.has(key)) sharedOf.set(key, new Map());
+    const mm = sharedOf.get(key)!;
+    const r = s.route_code as string;
+    mm.set(r, (mm.get(r) ?? 0) + n);
+  }
+  /**
+   * 三级回退（v0.26.1）：
+   *   ① (route, from, to) 精确
+   *   ② (route, 主码from, 主码to) 同线路站台归一
+   *   ③ 任意线路下的同一邻接键 (主码from→主码to) —— 跨线路共享
+   * ③ 的依据：邻接区间可跨线路共享（本项目核心采集方法论）。缺了它会把
+   * 「样本已存在、只是记在别的线路名下」的段误报成缺口。
+   */
+  const lookup = (route: string, from: string, to: string): { n: number; via: string[] | null } => {
     const d = sampleOf.get(`${route}|${from}|${to}`);
-    if (d !== undefined) return d;
+    if (d !== undefined) return { n: d, via: null };
     for (const [k, v] of sampleOf) {
       const [r, f, t] = k.split("|");
-      if (r === route && mainCode(f) === mainCode(from) && mainCode(t) === mainCode(to)) return v;
+      if (r === route && mainCode(f) === mainCode(from) && mainCode(t) === mainCode(to))
+        return { n: v, via: null };
     }
-    return 0;
+    const sh = sharedOf.get(`${mainCode(from)}→${mainCode(to)}`);
+    if (sh?.size) {
+      return { n: [...sh.values()].reduce((x, y) => x + y, 0), via: [...sh.keys()].sort() };
+    }
+    return { n: 0, via: null };
   };
 
   /** 线路 + from→to → 相邻段列表（选顺向 + 环距最近解） */
@@ -185,13 +208,16 @@ async function main() {
 
   const ft = `${PLACE_SHORT[FROM] ?? FROM} → ${PLACE_SHORT[TO] ?? TO}`;
   console.log(`\n${"=".repeat(18)} ${ft} 时间样本缺口（目标 ≥${MIN} 次）${"=".repeat(18)}`);
-  console.log(`库：${target} ｜ 方案 ${plans.length} 个（active ${plans.filter((p) => p.is_active).length}）\n`);
+  console.log(`库：${target} ｜ 方案 ${plans.length} 个（active ${plans.filter((p) => p.is_active).length}）`);
+  console.log(`段样本查询：① (线路,上站,下站) 精确 → ② 同线路站台归一 → ③ 跨线路邻接键共享\n`);
 
   // 汇总容器
   type Gap = { route: string; from: string; to: string; n: number; share: number; plans: Set<number> };
   const gapAgg = new Map<string, Gap>();
   let segTotal = 0;
   let segOk = 0;
+  /** 由「跨线路邻接键回退」命中的段次（样本记在别的线路名下） */
+  let segShared = 0;
   const walkNeed = new Map<string, { place: number; station: string; plans: Set<number> }>();
   const transferNeed: { plan: number; station: string; note: string }[] = [];
 
@@ -218,6 +244,7 @@ async function main() {
           continue;
         }
         let ok = 0;
+        let sharedHits = 0;
         const gaps: string[] = [];
         const seen = new Set<string>();
         for (const [a, b] of segs) {
@@ -225,12 +252,16 @@ async function main() {
           if (seen.has(kk)) continue;
           seen.add(kk);
           segTotal++;
-          const n = lookup(route as string, a, b);
+          const lk = lookup(route as string, a, b);
+          const n = lk.n;
+          if (lk.via) segShared++;
           if (n >= MIN) {
             ok++;
             segOk++;
+            if (lk.via) sharedHits++;
           } else {
-            gaps.push(`${a}→${b}(样本${n},共享${shareCount(a, b)}线)`);
+            const viaTxt = lk.via ? `,共享自${lk.via.join("/")}` : "";
+            gaps.push(`${a}→${b}(样本${n},共享${shareCount(a, b)}线${viaTxt})`);
             const gk = `${route}|${a}|${b}`;
             if (!gapAgg.has(gk))
               gapAgg.set(gk, { route: route as string, from: a, to: b, n, share: shareCount(a, b), plans: new Set() });
@@ -239,7 +270,8 @@ async function main() {
         }
         const tot = ok + gaps.length;
         const flag = gaps.length === 0 ? "✅" : ok === 0 ? "🔴" : "🟡";
-        lines.push(`   ${flag} ${String(route).padEnd(14)} ${fSt} → ${tSt}  覆盖 ${ok}/${tot} 段`);
+        const shTxt = sharedHits ? `  ← 其中 ${sharedHits} 段跨线共享` : "";
+        lines.push(`   ${flag} ${String(route).padEnd(14)} ${fSt} → ${tSt}  覆盖 ${ok}/${tot} 段${shTxt}`);
         if (gaps.length) lines.push(`        缺：${gaps.join("  ")}`);
       }
     }
@@ -323,6 +355,11 @@ async function main() {
     `乘车段：按方案累加 需 ${segTotal} 段 / 已足 ${segOk} 段 / 缺 ${segTotal - segOk} 段；` +
       `去重后唯一缺口 ${gapAgg.size} 段（0 样本 ${zeroGaps.length} · 样本不足 ${lowGaps.length}）`,
   );
+  if (segShared)
+    console.log(
+      `   └ 其中 ${segShared} 段次由「跨线路邻接键共享」命中：同一邻接站对的样本记在别的线路名下，` +
+        `按邻接键复用即可，不必重复采集`,
+    );
   console.log(`步行段：需 ${walkNeed.size} 组，已足 ${walkOk} 组，缺 ${walkGaps.length} 组`);
   console.log(`换乘段：${transferNeed.length} 处`);
 

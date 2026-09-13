@@ -259,13 +259,34 @@ export async function rebuildWalkTimes(pool: Pool, opts: { dry?: boolean } = {})
     };
   }
 
-  await pool.query(`DELETE FROM walk_times`);
-  for (const r of rows) {
-    await pool.query(
-      `INSERT INTO walk_times (place_id, station_code, zone, minutes, samples, source, measured_at)
-       VALUES ($1,$2,$3,$4,$5,'timer',$6)`,
-      [r.placeId, r.station, r.zone, r.minutes, r.samples, r.date],
-    );
+  // 事务 + UNNEST 批量写（同 segment-stats 的理由：逐行 INSERT 在跨区域
+  // Vercel→Supabase 场景下会把「行数 × 往返延迟」累积成总耗时并撞 maxDuration）
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`DELETE FROM walk_times`);
+    if (rows.length) {
+      await client.query(
+        `INSERT INTO walk_times (place_id, station_code, zone, minutes, samples, source, measured_at)
+         SELECT p, s, z, m, n, 'timer', d
+           FROM UNNEST($1::int[], $2::text[], $3::text[], $4::numeric[], $5::int[], $6::date[])
+                AS x(p, s, z, m, n, d)`,
+        [
+          rows.map((r) => r.placeId),
+          rows.map((r) => r.station),
+          rows.map((r) => r.zone),
+          rows.map((r) => r.minutes),
+          rows.map((r) => r.samples),
+          rows.map((r) => r.date),
+        ],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
   }
   const chk = (
     await pool.query(`SELECT count(*)::int n, COALESCE(sum(samples),0)::int total FROM walk_times`)

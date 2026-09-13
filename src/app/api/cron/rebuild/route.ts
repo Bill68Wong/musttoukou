@@ -31,8 +31,13 @@ export const dynamic = "force-dynamic";
 /** Vercel Hobby 计划函数上限 60s；两个重算当前合计数秒，数据长大后仍有余量 */
 export const maxDuration = 60;
 
-/** 进程内互斥：同实例并发请求直接拒绝，不排队（避免雪崩） */
-let running = false;
+/** 进程内互斥：同实例并发请求直接拒绝，不排队（避免雪崩）。
+ *  ⚠️ 用「时间戳 + 过期」而非布尔：若某次执行被 maxDuration 掐断或进程被回收，
+ *  finally 不会执行 —— 布尔锁会永久卡在 true 让端点彻底失联（v0.25.0 实测踩到）。
+ *  超过 STALE_MS 视为陈旧锁，自动放行。 */
+let runningSince = 0;
+const STALE_MS = 5 * 60_000;
+const isLocked = () => runningSince !== 0 && Date.now() - runningSince < STALE_MS;
 
 interface StepResult {
   name: string;
@@ -79,11 +84,11 @@ async function handle(req: NextRequest) {
   if (!authorized(req)) {
     return NextResponse.json({ error: "未授权" }, { status: 401 });
   }
-  if (running) {
+  if (isLocked()) {
     return NextResponse.json({ error: "上一次重算仍在进行", running: true }, { status: 409 });
   }
 
-  running = true;
+  runningSince = Date.now();
   const t0 = Date.now();
   try {
     const pool = getPool();
@@ -130,7 +135,7 @@ async function handle(req: NextRequest) {
       { status: 500 },
     );
   } finally {
-    running = false;
+    runningSince = 0;
   }
 }
 

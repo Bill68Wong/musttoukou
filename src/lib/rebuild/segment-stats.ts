@@ -394,13 +394,30 @@ export async function rebuildSegmentStats(
     try {
       await client.query("BEGIN");
       await client.query("DELETE FROM segment_stats");
-      for (const r of rows) {
+      // 🚨 必须批量写：逐行 INSERT 会让「行数 × 单次跨区域往返」累积成总耗时。
+      // Vercel 函数默认在 iad1（美东）、Supabase 在 ap-southeast-1（新加坡），
+      // 单次往返约 230ms → 354 行 ≈ 80s，直接超过 maxDuration=60s 被掐断
+      // （症状：ECONNRESET + 互斥锁卡死）。UNNEST 把全部行压成一次往返。
+      if (rows.length) {
         await client.query(
           `INSERT INTO segment_stats
              (route_code, from_station, to_station, weekday, time_bucket, arrive_kind,
               avg_minutes, p50_minutes, samples, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())`,
-          r,
+           SELECT r, f, t, w, b, k, a, p, s, now()
+             FROM UNNEST($1::text[], $2::text[], $3::text[], $4::smallint[], $5::text[],
+                         $6::text[], $7::numeric[], $8::numeric[], $9::int[])
+                  AS x(r, f, t, w, b, k, a, p, s)`,
+          [
+            rows.map((r) => r[0]),
+            rows.map((r) => r[1]),
+            rows.map((r) => r[2]),
+            rows.map((r) => r[3]),
+            rows.map((r) => r[4]),
+            rows.map((r) => r[5]),
+            rows.map((r) => r[6]),
+            rows.map((r) => r[7]),
+            rows.map((r) => r[8]),
+          ],
         );
       }
       await client.query("COMMIT");

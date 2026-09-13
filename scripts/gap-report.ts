@@ -285,11 +285,15 @@ async function main() {
   console.log("\n── B. 步行段（walk_times：place ↔ 站点）──");
   for (const plan of plans) {
     const ls = legsOf.get(plan.id as number) ?? [];
+    // 🚨 只按 walk 腿的 seq 极值判定（v0.26.2 修）：跨境方案末尾还有 cross_border 腿，
+    // 若用「所有腿」的极值，出境的到点步行与入境的起点步行会被挤出极值位而被静默跳过
+    // → 关闸/横琴侧的步行需求一度完全没被评估。
+    const walkSeqs = ls.filter((x) => x.leg_kind === "walk").map((x) => x.seq as number);
+    if (!walkSeqs.length) continue;
     for (const l of ls) {
       if (l.leg_kind !== "walk") continue;
-      const seqs = ls.map((x) => x.seq as number);
-      const isStart = (l.seq as number) === Math.min(...seqs);
-      const isEnd = (l.seq as number) === Math.max(...seqs);
+      const isStart = (l.seq as number) === Math.min(...walkSeqs);
+      const isEnd = (l.seq as number) === Math.max(...walkSeqs);
       // 起点步行 = seq 最小 walk 的 to_station（place = from）；到点步行 = seq 最大 walk 的 from_station（place = to）
       if (isStart && l.to_station) {
         const k = `${fromId}|${mainCode(l.to_station as string)}`;

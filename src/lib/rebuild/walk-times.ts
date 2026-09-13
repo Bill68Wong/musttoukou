@@ -119,6 +119,9 @@ function gapMinutes(
  *   到点步行 = arrive(终点) − alight(末站)
  *   站归属按 plan_legs 的 walk 段位置判定（首段 walk 的 to_station = 起点侧；
  *   末段 walk 的 from_station = 到点侧），不盲取首尾事件。
+ *   ⚠️ v0.26.2：「首段/末段 walk」只比较 leg_kind='walk' 的腿的 seq 极值 ——
+ *   不能用「所有腿」的极值（跨境方案的 cross_border 腿会插在步行腿之后/之前，
+ *   把到点步行、起点步行挤出极值位而被静默跳过）。
  *   区间内 pause→resume 扣除；保留 0.3~20 分钟；聚合存均值 + samples。
  */
 export async function rebuildWalkTimes(pool: Pool, opts: { dry?: boolean } = {}): Promise<WalkRebuildResult> {
@@ -130,12 +133,18 @@ export async function rebuildWalkTimes(pool: Pool, opts: { dry?: boolean } = {})
   const schoolId = placeIdOf.get("school")!;
 
   // 各计划的 walk 段位置判定
+  // 🚨 min/max 必须只统计 leg_kind='walk' 的腿（v0.26.2 修）：
+  // 跨境方案末尾还有 cross_border 腿（如 home-gate-59 的 seq=4），若按「所有腿」取极值，
+  // 出境的到点步行（walk seq=3）与入境的起点步行（walk seq=2）就都不在极值位上 → 被静默跳过，
+  // 导致关闸/横琴侧步行样本从未回写（实测 14 个方案受影响）。
   const walkLegs = (
     await pool.query(`
     SELECT p.id plan_id, p.from_place, p.to_place,
            l.seq, l.from_station, l.to_station,
-           (SELECT min(l2.seq) FROM plan_legs l2 WHERE l2.plan_id = p.id) AS min_seq,
-           (SELECT max(l2.seq) FROM plan_legs l2 WHERE l2.plan_id = p.id) AS max_seq
+           (SELECT min(l2.seq) FROM plan_legs l2
+             WHERE l2.plan_id = p.id AND l2.leg_kind = 'walk') AS min_seq,
+           (SELECT max(l2.seq) FROM plan_legs l2
+             WHERE l2.plan_id = p.id AND l2.leg_kind = 'walk') AS max_seq
       FROM commute_plans p
       JOIN plan_legs l ON l.plan_id = p.id AND l.leg_kind = 'walk'
      ORDER BY p.id, l.seq

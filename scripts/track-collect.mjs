@@ -17,8 +17,9 @@
  *   ⇒ 每轮请求数 = 113（不是 92，也不是 184）；5 秒间隔 → 22.6 次/秒
  *
  * ── 用法 ──
- *   node scripts/track-collect.mjs --dry-plan                  # 只打印计划，不发请求
- *   node scripts/track-collect.mjs --minutes=2 --stage=3       # 2 分钟全速自检
+ *   --dry-plan                  # 只打印计划，不发请求
+ *   node scripts/track-collect.mjs --selftest                  # 护栏自检（离线，0 请求）
+ *   node scripts/track-collect.mjs --minutes=2 --stage=3       # 2 分钟全速冒烟（真发请求）
  *   node scripts/track-collect.mjs --minutes=30                # 正式一轮（含渐变启动）
  *
  * ── 参数 ──
@@ -28,6 +29,7 @@
  *   --timeout=3000      单请求超时（毫秒）
  *   --stage=auto|0|1|2|3  起始档；auto=从档0渐变；给 3 则跳过渐变直接全速
  *   --ramp=3,3,5        档0/1/2 各持续分钟（档3 吃掉剩余全部时间）
+ *   --recover-hold=180  降档后恢复期：每档需稳定停留的秒数（默认 180）
  *   --seg-minutes=2     落盘分片时长（越小越抗中断，每片是完整可解压的 gzip）
  *   --out=data/tracking 落盘目录
  *   --plan=...          轮询计划缓存（缺失则按 direction 规则现推）
@@ -39,11 +41,24 @@
  *   <out>/<stamp>-meta.json         本次运行参数、档位时间线、健康度采样、总计
  *   <out>/<stamp>-run.log           人类可读运行日志
  *
- * ── 安全机制（渐变启动 + 降级阶梯 + 硬熔断）──
+ * ── 安全机制（渐变启动 + 降级阶梯 + 恢复 + 硬熔断）──
  *   渐变：档0(8条)→档1(24)→档2(48)→档3(92)，每档须「失败率=0 且延迟稳定」才放行
- *   降级：滑动窗口失败率 > 5% → 降一档（单向，不再自动回升）
+ *   降级：滑动窗口**有效**失败率 > 5% **且有效失败数 ≥ 5** → 降一档
  *         滑动窗口 p50 延迟异常 → 间隔 5s→10s→20s（单向）
+ *   恢复：降档后**逐级升回**——每档须稳定停留 `--recover-hold`（默认 180 秒）且窗口零失败
  *   熔断：连续失败 ≥ 10 次 → 立即中止整轮并落盘收尾
+ *
+ * ── 降档护栏四修（v0.27.4，依据第六轮误降档事故 · DETAILS §D）──
+ *   第六轮现象：同一秒 3 个目标（3/d0、3/d1、3X/d0）同时 timeout → 旧窗口 3/50 = 6.0% > 5%
+ *   → 降档；且旧代码 `degraded` 一次置 true 即**永久锁死**，此后 19.5 分钟钉在档1（只覆盖 24/92 条线）。
+ *   根因 = **本机瞬时停顿 ~3 秒**（p50 全程 13~17ms 纹丝不动 · 失败全为 timeout · 零 net:fetch failed）
+ *   → 四个缺陷，逐一修：
+ *     ① **降档可恢复**：`degraded` 由「永久锁」改为「恢复模式」标志 —— 降档后按恢复节奏逐级升回档3
+ *     ② **绝对失败数下限**：降档须同时满足 `失败率 > 5%` **且 `窗口失败数 ≥ FAIL_MIN_COUNT(5)`**
+ *        （旧逻辑只按比例 → 小分母下 3 个失败即触发，且高档位下 50 请求只相当于 0.44 轮）
+ *     ③ **窗口改「最近 90 秒」时间制**（原「最近 50 个请求」）→ 灵敏度与档位无关，恒定
+ *     ④ **同秒突发豁免**：同一秒内 ≥3 个不同目标失败、且窗口 p50 未超基线 2× → 判**客户端瞬时停顿**，
+ *        该簇失败不参与降档判定（计入总数与日志，只豁免「降档」这一个决定）
  *
  * ── 延迟降级的防误触发（2026-09-13 首轮实测踩坑后加固）──
  *   首轮现象：升档后仅 40 秒就触发「p50 52ms > 3× 基线 16ms」→ 间隔单向放宽到 10s，
@@ -89,6 +104,7 @@ const CFG = {
   timeoutMs: Number(arg("timeout", "3000")),
   stage: arg("stage", "auto"),
   ramp: String(arg("ramp", "3,3,5")).split(",").map(Number),
+  recoverHoldSec: Number(arg("recover-hold", "180")),
   segMinutes: Number(arg("seg-minutes", "2")),
   out: path.resolve(ROOT, arg("out", "data/tracking")),
   planFile: path.resolve(ROOT, arg("plan", "data/tracking/poll-plan.json")),
@@ -221,26 +237,44 @@ class SegmentWriter {
   }
 }
 
-/** 健康度：滑动窗口 + 熔断判定 */
+/** 健康度：**时间**滑动窗口（默认最近 90 秒）+ 熔断判定
+ *  ★ v0.27.4：原「最近 50 个请求」的计数窗口在档案高时只相当于 0.44 轮 → 一轮里 3 个失败即触发降档；
+ *    改为**时间制**后，窗口内样本数随档位自然伸缩，**灵敏度恒定**。 */
+const WIN_MS = 90 * 1000;        // 窗口时长（毫秒）
+const WIN_MAX_HARD = 4000;       // 窗口内最多保留条数（档3 ≈ 2030 条/90s，留足余量）
+
+// ── 降档判定参数（v0.27.4 · 见文件头「降档护栏四修」）──
+const FAIL_RATE_LIMIT = 0.05;    // 有效失败率上限（> 即降档候选）
+const FAIL_MIN_COUNT = 5;        // ★ ② 绝对失败数下限 —— 两个条件都满足才降档
+const WIN_MIN_SAMPLES = 50;      // 窗口样本数下限（不够就不判，避免刚启动误判）
+const CLIENT_BURST_TARGETS = 3;  // ★ ④ 同秒突发豁免：同一秒内 ≥ N 个不同目标失败
+const CLIENT_BURST_P50_MULT = 2; // ★ ④ 且窗口 p50 ≤ 基线 × N（服务端未变慢）才算客户端侧
 class Health {
   constructor() {
-    this.win = [];          // {ok, ms, at}
-    this.winMax = 100;
+    this.win = [];          // {ok, ms, at, tgt}
     this.consecFail = 0;
     this.total = 0;
     this.fail = 0;
   }
-  push(ok, ms) {
+  push(ok, ms, tgt = "") {
     this.total++;
     if (!ok) this.fail++;
     this.consecFail = ok ? 0 : this.consecFail + 1;
-    this.win.push({ ok, ms, at: Date.now() });
-    if (this.win.length > this.winMax) this.win.shift();
+    this.win.push({ ok, ms, at: Date.now(), tgt });
+    this.prune();
   }
-  get winFailRate() {
-    if (!this.win.length) return 0;
-    return this.win.filter((x) => !x.ok).length / this.win.length;
+  /** 丢掉过期样本（时间窗）并按硬上限截断 */
+  prune(now = Date.now()) {
+    const cut = now - WIN_MS;
+    let i = 0;
+    while (i < this.win.length && this.win[i].at < cut) i++;
+    if (i) this.win.splice(0, i);
+    if (this.win.length > WIN_MAX_HARD) this.win.splice(0, this.win.length - WIN_MAX_HARD);
   }
+  reset() { this.win.length = 0; }
+  get winLen() { return this.win.length; }
+  get winFail() { let n = 0; for (const x of this.win) if (!x.ok) n++; return n; }
+  get winFailRate() { return this.win.length ? this.winFail / this.win.length : 0; }
   get winP50() {
     const v = this.win.filter((x) => x.ok).map((x) => x.ms).sort((a, b) => a - b);
     return v.length ? v[Math.floor(v.length / 2)] : 0;
@@ -249,6 +283,39 @@ class Health {
     const v = this.win.filter((x) => x.ok).map((x) => x.ms).sort((a, b) => a - b);
     return v.length ? v[Math.min(v.length - 1, Math.floor(v.length * 0.95))] : 0;
   }
+}
+
+/**
+ * 同秒突发豁免（v0.27.4）：把「同一秒内 ≥ CLIENT_BURST_TARGETS 个**不同目标**（线路×方向）同时失败」
+ * 且**服务端 p50 未抬升**的失败，判为**客户端瞬时停顿**，不计入降档判定。
+ *
+ * 依据（第六轮实况）：网络层若被限流/拒绝会拿到 HTTP 响应，而实测失败全是 3000ms 超时 +
+ * 零 net:fetch failed；服务端若拥塞必然同步抬高 p50，而实测 p50 全程 13~17ms 纹丝不动
+ * → 只可能是本机一次停顿同时打断多个在途请求（pool=6 + 3000ms 超时）。
+ *
+ * ⚠️ 只豁免「降档」这一个决定：失败照常计入 totals、照常写日志、0 次豁免时行为与旧版完全一致。
+ * @returns {{exempt:number, bursts:number[], p50:number}}
+ */
+function clientStallExempt(win, baselineP50) {
+  const bySec = new Map();
+  for (const e of win) {
+    if (e.ok) continue;
+    const sec = Math.floor(e.at / 1000);
+    let s = bySec.get(sec);
+    if (!s) { s = new Set(); bySec.set(sec, s); }
+    s.add(e.tgt);
+  }
+  const bursts = [];
+  for (const [sec, set] of bySec) if (set.size >= CLIENT_BURST_TARGETS) bursts.push(sec);
+  if (!bursts.length) return { exempt: 0, bursts: [], p50: 0 };
+  const v = win.filter((x) => x.ok).map((x) => x.ms).sort((a, b) => a - b);
+  const p50 = v.length ? v[Math.floor(v.length / 2)] : 0;
+  // 服务端若同步变慢 → 不是客户端侧，不豁免
+  if (baselineP50 > 0 && p50 > baselineP50 * CLIENT_BURST_P50_MULT) return { exempt: 0, bursts: [], p50 };
+  const burstSet = new Set(bursts);
+  let exempt = 0;
+  for (const e of win) if (!e.ok && burstSet.has(Math.floor(e.at / 1000))) exempt++;
+  return { exempt, bursts, p50 };
 }
 
 async function fetchRoute(route, dir, opts = {}) {
@@ -425,11 +492,95 @@ function orderRoutes(plan) {
   return [...ordered, ...rest];
 }
 
+// ════════════════════════════ 3.5 护栏自检（--selftest · 零网络请求）════════════════════════════
+
+/**
+ * 护栏自检：用**合成窗口**复现「第六轮误降档（2026-09-14 12:01）」并验证四修生效。
+ * 纯离线 —— 0 网络请求、0 落盘，可随时跑：`node scripts/track-collect.mjs --selftest`
+ */
+function selfTest() {
+  const T = Math.floor(Date.now() / 1000) * 1000;   // 对齐整秒，便于构造「同一秒」
+  const okAt = (at, tgt, ms = 14) => ({ ok: true, ms, at, tgt });
+  const failAt = (at, tgt) => ({ ok: false, ms: 3000, at, tgt });
+  const rows = [];
+  const check = (name, got, want) => {
+    const pass = got === want;
+    rows.push(`${pass ? "✅" : "❌"} ${name}　得 ${got}　期望 ${want}`);
+    return pass;
+  };
+
+  // ① 第六轮实况：50 样本、同一秒 3 个不同目标（3/d0 · 3/d1 · 3X/d0）超时、p50 与基线持平 14ms
+  {
+    const w = [];
+    for (let i = 0; i < 47; i++) w.push(okAt(T - (90 - i) * 1000, `R${i}/d0`));
+    const sec = T - 30 * 1000;
+    w.push(failAt(sec + 120, "3/d0"), failAt(sec + 240, "3/d1"), failAt(sec + 360, "3X/d0"));
+    const ex = clientStallExempt(w, 14);
+    const rawFail = w.filter((x) => !x.ok).length;
+    check("① 同秒 3 目标突发 → 全部豁免", ex.exempt, 3);
+    check("① 窗口原始失败率 6.0% > 5%（旧逻辑会降档）", rawFail / w.length > FAIL_RATE_LIMIT, true);
+    check("① 有效失败 0 < FAIL_MIN_COUNT → 不降档", rawFail - ex.exempt < FAIL_MIN_COUNT, true);
+  }
+  // ② 真拥塞：5 个失败分散在 5 个不同秒（不成簇）→ 不豁免，且够 5 个下限 → 应降档
+  {
+    const w = [];
+    for (let i = 0; i < 45; i++) w.push(okAt(T - (90 - i) * 1000, `R${i}/d0`));
+    for (let k = 0; k < 5; k++) w.push(failAt(T - (60 - k * 8) * 1000, `S${k}/d0`));
+    const ex = clientStallExempt(w, 14);
+    const eff = w.filter((x) => !x.ok).length - ex.exempt;
+    check("② 分散失败 → 0 豁免", ex.exempt, 0);
+    check("② 有效失败 5 ≥ FAIL_MIN_COUNT", eff >= FAIL_MIN_COUNT, true);
+    check("② 有效失败率 10% > 5% → 判定降档", eff / w.length > FAIL_RATE_LIMIT, true);
+  }
+  // ③ 同秒 3 目标突发，但**服务端 p50 抬到 60ms**（> 基线 14 × 2）→ 判服务端变慢 → 不豁免
+  {
+    const w = [];
+    for (let i = 0; i < 47; i++) w.push(okAt(T - (90 - i) * 1000, `R${i}/d0`, 60));
+    const sec = T - 30 * 1000;
+    w.push(failAt(sec + 120, "3/d0"), failAt(sec + 240, "3/d1"), failAt(sec + 360, "3X/d0"));
+    const ex = clientStallExempt(w, 14);
+    check("③ p50 抬升 60ms > 基线×2 → 不豁免", ex.exempt, 0);
+  }
+  // ④ 绝对下限：同秒 3 个突发（豁免）+ 另有 1 个分散失败 → 有效 1 个 < 5 → 不降档
+  {
+    const w = [];
+    for (let i = 0; i < 46; i++) w.push(okAt(T - (90 - i) * 1000, `R${i}/d0`));
+    const sec = T - 30 * 1000;
+    w.push(failAt(sec + 120, "3/d0"), failAt(sec + 240, "3/d1"), failAt(sec + 360, "3X/d0"));
+    w.push(failAt(T - 70 * 1000, "Z/d0"));
+    const ex = clientStallExempt(w, 14);
+    const eff = w.filter((x) => !x.ok).length - ex.exempt;
+    check("④ 豁免 3、有效 1 < 5 → 不降档（小分母不再误触发）", eff < FAIL_MIN_COUNT, true);
+  }
+  // ⑤ 时间窗裁剪：窗口外的旧样本必须被 prune 掉（旧实现是「最近 N 个请求」，与时间无关）
+  {
+    const h = new Health();
+    for (let i = 0; i < 80; i++) h.push(true, 14, `R${i}/d0`);
+    for (let i = 0; i < 20; i++) h.win.unshift({ ok: true, ms: 14, at: Date.now() - 200 * 1000, tgt: `OLD${i}/d0` });
+    h.prune();
+    check("⑤ 窗口外 20 个旧样本被裁掉 → 80", h.winLen, 80);
+    check("⑤ 窗口内失败数统计正确 → 0", h.winFail, 0);
+  }
+  // ⑥ 恢复常量可被 --recover-hold 覆盖且不小于 30 秒（防误配成 0 导致抖动）
+  {
+    check("⑥ RECOVER_HOLD_MS ≥ 30s", Math.max(30, CFG.recoverHoldSec) * 1000 >= 30000, true);
+  }
+
+  const bad = rows.filter((r) => r.startsWith("❌")).length;
+  console.log("════ 降档护栏自检（--selftest · 0 网络请求）════");
+  console.log(`窗口 ${WIN_MS / 1000}s · 失败率上限 ${FAIL_RATE_LIMIT * 100}% · 绝对下限 ${FAIL_MIN_COUNT} 个 · 同秒突发目标数 ≥${CLIENT_BURST_TARGETS} · p50 倍数 ${CLIENT_BURST_P50_MULT}× · 恢复停留 ${CFG.recoverHoldSec}s`);
+  for (const r of rows) console.log(r);
+  console.log(bad ? `\n❌ 自检未通过：${bad} 项` : `\n✅ 自检全绿（${rows.length} 项）`);
+  process.exitCode = bad ? 1 : 0;
+}
+
 // ════════════════════════════ 4. 主流程 ════════════════════════════
 
 async function main() {
+  if (has("selftest")) { selfTest(); return; }
   LOG(`════ DSAT 全澳追踪式采集 ════ `);
   LOG(`参数：${CFG.minutes} 分钟 · 间隔 ${CFG.intervalSec}s · 并发 ${CFG.pool} · 超时 ${CFG.timeoutMs}ms · 分片 ${CFG.segMinutes} 分钟 · 起始档 ${CFG.stage}`);
+  LOG(`护栏：窗口 ${WIN_MS / 1000}s · 有效失败率 >${FAIL_RATE_LIMIT * 100}% 且 ≥${FAIL_MIN_COUNT} 个才降档 · 降档后每档稳定 ${CFG.recoverHoldSec}s 即逐级恢复 · 同秒 ≥${CLIENT_BURST_TARGETS} 目标突发且 p50 未超基线 ${CLIENT_BURST_P50_MULT}× → 豁免`);
   LOG(`UA：${USER_AGENT}`);
 
   const planFileOnDisk = fs.existsSync(CFG.planFile);
@@ -509,7 +660,10 @@ async function main() {
   const LATENCY_STRIKES_NEEDED = 3;   //   需连续 N 个窗口都超阈值
   const STAGE_COOLDOWN_MS = 90 * 1000;//   升档后冷静期，期间不因延迟降级
   let latencyStrikes = 0;             //   连续超阈值计数（一恢复就清零）
-  let degraded = false;
+  // ★ v0.27.4：`degraded` 语义由「永久锁」改为「恢复模式」——降档后仍可逐级升回档3
+  let degraded = false;               //   是否已触发过降档（此后走恢复节奏而非渐变节奏）
+  const RECOVER_HOLD_MS = Math.max(30, CFG.recoverHoldSec) * 1000; // 恢复期每档需稳定停留的时长
+  let exemptTotal = 0;                //   累计「同秒突发豁免」的失败数（仅豁免降档判定，总数照记）
   let aborted = null;
   let lastSignalTs = "";
 
@@ -526,23 +680,32 @@ async function main() {
 
   let roundStart = Date.now();
   while (Date.now() < finishAt && !aborted) {
-    // ── 档位轮转（仅在渐变期，且未被降级）──
-    if (!degraded && curStage < 3) {
-      const elapsedMin = (Date.now() - stageStartMs) / 60000;
-      if (elapsedMin >= (stages[curStage].minutes || 0)) {
-        // 放行条件：窗口够大且失败率 = 0（不达标就原地停，不硬闯）
-        const ready = health.win.length >= 20 && health.winFailRate === 0;
+    // ── 档位轮转（渐变期 或 降档后的恢复期）──
+    //  ★ v0.27.4：两者用同一套逻辑，只差「每档需停留多久」与日志措辞 ——
+    //    渐变期按 --ramp 分钟；恢复期按 --recover-hold 秒（默认 180）。都要求窗口够大且失败率 = 0。
+    const rampMode = !degraded && curStage < 3;
+    const recoverMode = degraded && curStage < 3;
+    if (rampMode || recoverMode) {
+      const holdMs = rampMode ? (stages[curStage].minutes || 0) * 60000 : RECOVER_HOLD_MS;
+      if (Date.now() - stageStartMs >= holdMs) {
+        const ready = health.winLen >= 20 && health.winFailRate === 0;
         if (ready) {
+          const from = curStage;
           curStage++;
-          stageLog.push({ stage: curStage, at: new Date().toISOString(), reason: `档${curStage - 1}达标放行（失败率 0%）` });
-          LOG(`⬆️ 升档 → 档${curStage}（${Math.min(STAGE_ROUTE_COUNT[curStage], ordered.length)} 条）`);
-          health.win.length = 0;
+          stageLog.push({
+            stage: curStage, at: new Date().toISOString(),
+            reason: rampMode
+              ? `档${from}达标放行（失败率 0%）`
+              : `恢复升档：档${from} 稳定 ${(RECOVER_HOLD_MS / 1000).toFixed(0)}s 且失败率 0%`,
+          });
+          LOG(`${rampMode ? "⬆️ 升档" : "🔁 恢复升档"} → 档${curStage}（${Math.min(STAGE_ROUTE_COUNT[curStage], ordered.length)} 条）`);
+          health.reset();
           health._heldOnce = false;
           latencyStrikes = 0;
           stageStartMs = Date.now();
         } else if (!health._heldOnce) {
           health._heldOnce = true;
-          LOG(`⏸ 档${curStage} 未达标（失败率 ${(health.winFailRate * 100).toFixed(1)}%，样本 ${health.win.length}）→ 原地停留`);
+          LOG(`⏸ 档${curStage} 未达标（失败率 ${(health.winFailRate * 100).toFixed(1)}%，样本 ${health.winLen}）→ 原地停留`);
         }
       }
     }
@@ -566,11 +729,11 @@ async function main() {
       seq++;
       rec.seq = seq; rec.round = round; rec.stage = curStage;
       writer.write(rec);
-      health.push(!!rec.ok, rec.ms ?? 0);
+      health.push(!!rec.ok, rec.ms ?? 0, `${task.route}/d${task.dir}`);
       if (rec.ok) {
         okN++;
         if (curStage !== baselineStage) { baselineStage = curStage; baselineP50 = 0; }
-        if (baselineP50 === 0 && health.win.length >= 100) {
+        if (baselineP50 === 0 && health.winLen >= 100) {
           baselineP50 = health.winP50;
           LOG(`📏 档${curStage} 基线延迟 p50 = ${baselineP50}ms（本档前 100 次成功请求）`);
         }
@@ -581,6 +744,7 @@ async function main() {
     });
 
     const roundMs = Date.now() - roundT0;
+    health.prune();   // ★ v0.27.4：时间窗 —— 判定前先丢掉过期样本
     roundSamples.push({ round, stage: curStage, intervalMs, reqs: reqs.length, ok: okN, fail: failN, ms: roundMs });
 
     // ── 每 6 轮（≈30s）打一条健康度 ──
@@ -590,9 +754,10 @@ async function main() {
         done: seq, okRate: (1 - health.fail / health.total) * 100,
         winFailRate: health.winFailRate * 100, p50: health.winP50, p95: health.winP95,
         consecFail: health.consecFail, roundMs,
+        winLen: health.winLen, winFail: health.winFail,   // ★ v0.27.4：窗口透明度
       };
       healthSamples.push(hs);
-      LOG(`♥ 轮${round} 档${curStage} 间隔${intervalMs / 1000}s 请求${seq} 累计成功率${hs.okRate.toFixed(2)}% 窗失败率${hs.winFailRate.toFixed(1)}% p50=${hs.p50}ms p95=${hs.p95}ms 轮耗时${roundMs}ms`);
+      LOG(`♥ 轮${round} 档${curStage} 间隔${intervalMs / 1000}s 请求${seq} 累计成功率${hs.okRate.toFixed(2)}% 窗失败率${hs.winFailRate.toFixed(1)}%（${hs.winFail}/${hs.winLen}） p50=${hs.p50}ms p95=${hs.p95}ms 轮耗时${roundMs}ms`);
     }
 
     // ── 降级判定 ──
@@ -601,31 +766,44 @@ async function main() {
       LOG(`🛑 ${aborted}`);
       break;
     }
-    if (health.win.length >= 50 && health.winFailRate > 0.05) {
-      if (curStage > 0) {
-        degraded = true;
+    if (health.winLen >= WIN_MIN_SAMPLES && health.winFailRate > FAIL_RATE_LIMIT) {
+      // ★ v0.27.4 ②：绝对失败数下限　★ ④：同秒突发豁免（客户端瞬时停顿不算数）
+      const ex = clientStallExempt(health.win, baselineP50);
+      const effFail = health.winFail - ex.exempt;
+      const effRate = health.winLen ? effFail / health.winLen : 0;
+      if (ex.exempt) {
+        exemptTotal += ex.exempt;
+        LOG(`🙈 同秒突发豁免 ${ex.exempt} 个失败（秒=${ex.bursts.join("·")}｜窗口 p50 ${ex.p50}ms vs 基线 ${baselineP50}ms 未变慢）`
+          + ` → 有效失败 ${effFail}/${health.winLen} = ${(effRate * 100).toFixed(1)}%`);
+      }
+      if (effFail < FAIL_MIN_COUNT || effRate <= FAIL_RATE_LIMIT) {
+        if (!ex.exempt) LOG(`… 失败率 ${(health.winFailRate * 100).toFixed(1)}% 但有效失败 ${effFail} < ${FAIL_MIN_COUNT}（未达绝对下限）→ 不降档`);
+      } else if (curStage > 0) {
+        degraded = true;   // ★ v0.27.4 ①：进入恢复模式（不再永久锁死）
         const prev = curStage;
         curStage = Math.max(0, curStage - 1);
-        stageLog.push({ stage: curStage, at: new Date().toISOString(), reason: `窗失败率 ${(health.winFailRate * 100).toFixed(1)}% > 5%，从档${prev}降档` });
-        LOG(`🔻 降档 档${prev} → 档${curStage}（窗失败率 ${(health.winFailRate * 100).toFixed(1)}%）`);
-        health.win.length = 0;
+        stageLog.push({ stage: curStage, at: new Date().toISOString(), reason: `有效失败 ${effFail}/${health.winLen} = ${(effRate * 100).toFixed(1)}% > ${FAIL_RATE_LIMIT * 100}% 且 ≥ ${FAIL_MIN_COUNT} 个，从档${prev}降档（豁免 ${ex.exempt}）` });
+        LOG(`🔻 降档 档${prev} → 档${curStage}（有效失败 ${effFail}/${health.winLen} = ${(effRate * 100).toFixed(1)}%，豁免 ${ex.exempt}）`
+          + `｜将于稳定 ${(RECOVER_HOLD_MS / 60000).toFixed(1)} 分钟后逐级恢复`);
+        health.reset();
         latencyStrikes = 0;
         stageStartMs = Date.now();
       } else if (intervalStep < 2) {
         intervalStep++;
         intervalMs = baseInterval * 2 ** intervalStep;
-        stageLog.push({ stage: curStage, at: new Date().toISOString(), reason: `档0 仍 >5%，间隔放宽至 ${intervalMs / 1000}s` });
-        LOG(`🐌 间隔放宽 ${intervalMs / 1000}s（窗失败率 ${(health.winFailRate * 100).toFixed(1)}%）`);
-        health.win.length = 0;
+        stageLog.push({ stage: curStage, at: new Date().toISOString(), reason: `档0 仍 >${FAIL_RATE_LIMIT * 100}%，间隔放宽至 ${intervalMs / 1000}s` });
+        LOG(`🐌 间隔放宽 ${intervalMs / 1000}s（有效失败 ${effFail}/${health.winLen} = ${(effRate * 100).toFixed(1)}%）`);
+        health.reset();
       } else {
-        aborted = "档0 且间隔已 20s，失败率仍 >5% → 中止";
+        aborted = `档0 且间隔已 20s，有效失败率仍 >${FAIL_RATE_LIMIT * 100}% → 中止`;
         LOG(`🛑 ${aborted}`);
         break;
       }
     }
     // ★ 延迟异常 → 放宽间隔（三层加固，2026-09-13 首轮误降级后修订）
     //    ① 5× 基线 + 绝对地板 80ms  ② 连续 3 个窗口  ③ 升档后 90 秒冷静期
-    if (health.win.length >= 50 && baselineP50 > 0 && intervalStep < 2) {
+    //    ★ v0.27.4：窗口已改 90 秒时间制 —— 单个 p95 尖峰更难撼动窗内 p50，误触发概率进一步下降
+    if (health.winLen >= WIN_MIN_SAMPLES && baselineP50 > 0 && intervalStep < 2) {
       const overMult = health.winP50 > baselineP50 * LATENCY_MULT;
       const overFloor = health.winP50 > LATENCY_FLOOR_MS;
       const cooled = Date.now() - stageStartMs >= STAGE_COOLDOWN_MS;
@@ -640,7 +818,7 @@ async function main() {
         stageLog.push({ stage: curStage, at: new Date().toISOString(), reason: `连续 ${LATENCY_STRIKES_NEEDED} 个窗口 p50 ${health.winP50}ms > ${LATENCY_MULT}× 基线 ${baselineP50}ms（且 >${LATENCY_FLOOR_MS}ms），间隔放宽至 ${intervalMs / 1000}s` });
         LOG(`🐌 延迟异常（连续 ${LATENCY_STRIKES_NEEDED} 窗口）→ 间隔放宽 ${intervalMs / 1000}s（p50 ${health.winP50}ms vs 基线 ${baselineP50}ms）`);
         latencyStrikes = 0;
-        health.win.length = 0;
+        health.reset();
       }
     } else latencyStrikes = 0;
 
@@ -672,6 +850,18 @@ async function main() {
     needDir1,
     stages,
     stageLog,
+    // ★ v0.27.4：把降档护栏参数写进 meta，报告可自解释（旧轮的 meta 无此段）
+    guard: {
+      winMs: WIN_MS,
+      winMaxHard: WIN_MAX_HARD,
+      failRateLimit: FAIL_RATE_LIMIT,
+      failMinCount: FAIL_MIN_COUNT,
+      winMinSamples: WIN_MIN_SAMPLES,
+      clientBurstTargets: CLIENT_BURST_TARGETS,
+      clientBurstP50Mult: CLIENT_BURST_P50_MULT,
+      recoverHoldSec: RECOVER_HOLD_MS / 1000,
+      exemptTotal,
+    },
     totals: {
       rounds: round,
       requests: health.total,
@@ -693,6 +883,7 @@ async function main() {
   LOG(`轮次 ${round} · 请求 ${health.total} 次 · 失败 ${health.fail} 次（${meta.totals.failRatePct.toFixed(2)}%）`);
   LOG(`轮耗时 p50 ${meta.totals.roundMsP50}ms / max ${meta.totals.roundMsMax}ms · 间隔终值 ${intervalMs / 1000}s`);
   LOG(`gzip 落盘 ${(writer.bytes / 1048576).toFixed(2)} MB · ${writer.files.length} 片`);
+  if (exemptTotal) LOG(`🙈 同秒突发豁免累计 ${exemptTotal} 次失败（仅不计入降档判定，总数照记）`);
   LOG(`中止原因：${aborted ?? "正常到时结束"}`);
   LOG(`产物：${writer.files.join("  ")}`);
   LOG(`      ${stamp}-meta.json  ${stamp}-run.log`);

@@ -9,6 +9,7 @@
  *  - POST {base}/getRouteAndCompanyList.html  全部线路
  */
 import { genToken } from "./token";
+import { DSAT_UA } from "./ua";
 import type { BusPositionsPayload, RouteDataPayload, DsatResult } from "./types";
 import { guardDsatCall, logDsatCall } from "../risk";
 import { RISK } from "../../config/risk";
@@ -55,6 +56,7 @@ async function dsatPost<T>(
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         token, // ★ token 走请求头（与官方前端一致）
+        "User-Agent": DSAT_UA, // ★ 合规自证：可识别身份 + 用途（见 ./ua.ts 与 docs/数据来源合规备忘-20260914.md）
       },
       body,
       signal: AbortSignal.timeout(RISK.timerGrab.timeoutMs),

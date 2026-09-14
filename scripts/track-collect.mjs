@@ -4,6 +4,9 @@
  * 定位：只读采集器。**不写数据库、不改 src/**，只把 DSAT 实时报站原始帧落盘
  *       gzip，供 scripts/track-derive.mjs 事后算「离开 A → 离开 B」的站间时长。
  *
+ * 合规：请求带**可识别 UA**（见下方 USER_AGENT）——不伪装浏览器、不隐藏身份、注明用途。
+ *       依据 docs/数据来源合规备忘-20260914.md（DSAT 使用條款：非商業 · 注明來源 · 不得修改內容）。
+ *
  * 为什么是 .mjs 而不是 .ts：本脚本刻意**不 import 任何生产模块**（src/ 下含 pg 的
  * server 模块在纯 node 环境跑不了），token 算法在此内联复刻，保证与 src/lib/dsat/token.ts
  * 完全一致（md5(qs) 按 YYYYMMDDHHmm 插位成 44 字符）。
@@ -70,6 +73,15 @@ const arg = (k, d) => {
 const has = (k) => argv.some((a) => a === `--${k}` || a.startsWith(`--${k}=`));
 
 const ROOT = path.resolve(process.cwd());
+
+// ── DSAT 请求的 User-Agent（合规自证，v0.27.3）──────────────────────────
+// 本脚本刻意不 import src/（见文件头），故此处内联复刻 src/lib/dsat/ua.ts 的同一格式：
+// 产品名/版本 + (+项目说明页) + 用途；版本号随 package.json 自动同步。
+// ❌ 不伪装成浏览器 · ❌ 不写 bot/crawler/spider 字样 · ❌ 不放中文或 emoji · ❌ 不放个人邮箱
+// 依据：docs/数据来源合规备忘-20260914.md §七 #1 —— **改格式时两处都要改**。
+const PKG_VERSION = JSON.parse(fs.readFileSync(path.resolve(ROOT, "package.json"), "utf8")).version;
+const USER_AGENT = `MUSTDengxiao/${PKG_VERSION} (+https://musttoukou.vercel.app; personal non-commercial)`;
+
 const CFG = {
   minutes: Number(arg("minutes", "30")),
   intervalSec: Number(arg("interval", "5")),
@@ -248,7 +260,7 @@ async function fetchRoute(route, dir, opts = {}) {
   try {
     const res = await fetch(`${CFG.baseUrl}/routestation/bus`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", token },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT, token },
       body: qs,
       signal: AbortSignal.timeout(CFG.timeoutMs),
       cache: "no-store",
@@ -356,7 +368,7 @@ async function fetchRouteList() {
   const qs = qsOf({ lang: "zh_tw", device: "web" });
   const res = await fetch(`${CFG.baseUrl}/getRouteAndCompanyList.html`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", token: genToken(qs) },
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT, token: genToken(qs) },
     body: qs,
     signal: AbortSignal.timeout(CFG.timeoutMs * 3),
   });
@@ -418,6 +430,7 @@ function orderRoutes(plan) {
 async function main() {
   LOG(`════ DSAT 全澳追踪式采集 ════ `);
   LOG(`参数：${CFG.minutes} 分钟 · 间隔 ${CFG.intervalSec}s · 并发 ${CFG.pool} · 超时 ${CFG.timeoutMs}ms · 分片 ${CFG.segMinutes} 分钟 · 起始档 ${CFG.stage}`);
+  LOG(`UA：${USER_AGENT}`);
 
   const planFileOnDisk = fs.existsSync(CFG.planFile);
   let planData;

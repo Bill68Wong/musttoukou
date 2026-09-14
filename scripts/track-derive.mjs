@@ -25,10 +25,16 @@
  *   状态缺口 = s1@X → s1@Y（跨站且**没有** s0 帧）→ X 的离开时刻不可测，
  *              X→Y 这一段必须整段丢弃（这是「长驻站/总站待发」的典型症状）。
  *
- * ── 三重过滤（宁丢不错）───────────────────────────────────────────
+ * ── 三重过滤 + 一道聚合护栏（宁丢不错）─────────────────────────────
  *   ① 严格相邻：两次事件的站序下标差必须 === 1（差 > 1 说明中间站没采到 → 不是邻接区间）
  *   ② 无状态缺口：起点站的离开时刻必须真实测到
  *   ③ 时长合理：0.1 ~ 20 分钟之外一律丢弃并计入异常清单
+ *   ④ **同键一致性护栏（聚合层，2026-09-13 后新增）**：同一共享键 n≥OUT_MIN_N 时，
+ *      样本 > max(p50×OUT_MULT, p50+OUT_FLOOR_MIN 分) 判为可疑 → 从均值剔除（原值保留可回溯）。
+ *      治「站外长时间停留」：司机休息/待發 期间 API 仍保留上一站且 status='0'（实测连挂 138 帧
+ *      ≈ 11.4 分钟）→ ①②③ 全拦不住，「s0 持续时长」也判不出来（真实跨海段同样长 s0）。
+ *      真实长区间不会误伤：同键多样本彼此一致 → p50 大 → 阈值随之上抬（`M9→T316` 全组 9.6~12.7 分，
+ *      阈值 36 分，零命中）。参数可用 `--outlier-mult` / `--outlier-floor` / `--outlier-min-n` 覆盖。
  *
  * ── 输出 ──
  *   <out>/<label>-derived.json          结构化样本（按共享键 / 按线路键聚合）
@@ -61,6 +67,11 @@ const CFG = {
 
 const MIN_MINUTES = 0.1;
 const MAX_MINUTES = 20;
+
+// ── 同键一致性护栏参数（2026-09-13 第二轮实测后新增，可用 --outlier-* 覆盖）──
+const OUT_MULT = Number(arg("outlier-mult", "3"));       // 超过 p50 的倍数 → 可疑
+const OUT_FLOOR_MIN = Number(arg("outlier-floor", "2")); // 且至少超 p50 这么多分钟（防小 p50 误判）
+const OUT_MIN_N = Number(arg("outlier-min-n", "5"));     // 同键样本数 ≥ N 才启用（样本太少判不出）
 
 const mainCode = (c) => /^[A-Za-z]+\d+/.exec(String(c ?? ""))?.[0] ?? String(c ?? "");
 const p2 = (n) => String(n).padStart(2, "0");
@@ -176,6 +187,50 @@ function agg(list) {
     min: Math.round(v[0] * 100) / 100,
     max: Math.round(v[v.length - 1] * 100) / 100,
   };
+}
+
+// ── 同键一致性护栏（核心）─────────────────────────────────────────────
+// 治「站外长时间停留造假长区间」：司机休息/待發 期间，API 仍保留上一站且 status='0'
+// （第二轮实测 s0 连挂 138 帧 ≈ 11.4 分钟）→ idx 严格 +1、无状态缺口、时长未越界，
+// **解析层的三道过滤全拦不住**；连「s0 持续时长」也判不出来（真实跨海段同样长 s0）。
+//
+// 唯一可靠判据 = **同一共享键上其余样本是否一致**：
+//   阈值 thr = max(p50 × OUT_MULT, p50 + OUT_FLOOR_MIN 分钟)，且该键样本数 ≥ OUT_MIN_N 才启用。
+//   超阈样本 → 标记 suspicious、从均值剔除，但**原值保留在 json / 报告里可回溯**（绝不静默丢弃）。
+//
+// 为什么不会误伤真实跨海长区间：它们同键多样本且彼此一致 → p50 本身就大 → 阈值随之上抬。
+//   实测 `M9→T316` 全组 9.58~12.74 分（p50 12.0）→ 阈值 36 分，零命中。
+//   而被判可疑的 `M144→M76` 是「同键 p50 2.83，孤立 11.90」→ 阈值 8.49，精确命中。
+function splitOutliers(list) {
+  const v = list.map((x) => x.minutes).sort((a, b) => a - b);
+  if (v.length < OUT_MIN_N) return { kept: list, outliers: [], thr: null, p50: null };
+  const p50 = v[Math.floor(v.length / 2)];
+  const thr = Math.max(p50 * OUT_MULT, p50 + OUT_FLOOR_MIN);
+  const kept = [], outliers = [];
+  for (const x of list) (x.minutes > thr ? outliers : kept).push(x);
+  return { kept, outliers, thr, p50 };
+}
+
+/** 按共享键（from|to|weekday|bucket）分组找可疑样本 → { flagged:Set, list:[] } */
+function flagOutliers(samples) {
+  const groups = new Map();
+  for (const s of samples) {
+    const mp = macauParts(s.t);
+    const k = `${s.from}|${s.to}|${mp.weekday}|${bucketOf(mp.hour)}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(s);
+  }
+  const flagged = new Set();
+  const list = [];
+  for (const [k, g] of groups) {
+    const { outliers, thr, p50 } = splitOutliers(g);
+    for (const o of outliers) {
+      flagged.add(o); // 用对象身份标记，便于从原集合里过滤
+      list.push({ key: k, route: o.route, dir: o.dir, plate: o.plate, minutes: o.minutes, p50, thr, n: g.length, t: o.t });
+    }
+  }
+  list.sort((a, b) => b.minutes - a.minutes);
+  return { flagged, list };
 }
 
 // ════════════════ 4. 真值（DB）════════════════
@@ -294,13 +349,22 @@ async function main() {
     };
     return { byShared: pack(byShared), byRoute: pack(byRoute) };
   }
-  const depAgg = buildKeys(depSamples);
-  const arrAgg = buildKeys(arrSamples);
+  // ── 同键一致性护栏：剔除「站外长时间停留」造出的假长区间（原值保留，可回溯）──
+  const depFlag = flagOutliers(depSamples);
+  const arrFlag = flagOutliers(arrSamples);
+  const depClean = depSamples.filter((s) => !depFlag.flagged.has(s));
+  const arrClean = arrSamples.filter((s) => !arrFlag.flagged.has(s));
+  L(`🧹 同键一致性护栏：离开口径可疑 ${depFlag.list.length}/${depSamples.length} 条 · ` +
+    `到达口径可疑 ${arrFlag.list.length}/${arrSamples.length} 条（阈值 max(p50×${OUT_MULT}, p50+${OUT_FLOOR_MIN} 分)，同键 n≥${OUT_MIN_N} 启用）`);
+  L("");
 
-  // 双口径对照（同一段两口径的差 = dwell_B − dwell_A）
+  const depAgg = buildKeys(depClean);
+  const arrAgg = buildKeys(arrClean);
+
+  // 双口径对照（同一段两口径的差 = dwell_B − dwell_A）；用**护栏后**样本，避免假区间污染
   const dPairs = new Map();
-  for (const s of depSamples) { const k = `${s.route}|${s.from}|${s.to}`; if (!dPairs.has(k)) dPairs.set(k, { d: [], a: [] }); dPairs.get(k).d.push(s.minutes); }
-  for (const s of arrSamples) { const k = `${s.route}|${s.from}|${s.to}`; if (dPairs.has(k)) dPairs.get(k).a.push(s.minutes); }
+  for (const s of depClean) { const k = `${s.route}|${s.from}|${s.to}`; if (!dPairs.has(k)) dPairs.set(k, { d: [], a: [] }); dPairs.get(k).d.push(s.minutes); }
+  for (const s of arrClean) { const k = `${s.route}|${s.from}|${s.to}`; if (dPairs.has(k)) dPairs.get(k).a.push(s.minutes); }
   const dualDiffs = [];
   for (const [k, v] of dPairs) {
     if (!v.d.length || !v.a.length) continue;
@@ -312,7 +376,7 @@ async function main() {
   const compares = [];
   if (truth) {
     const seen = new Map(); // route|from|to -> {mins:[], truth:[]}
-    for (const s of depSamples) {
+    for (const s of depClean) {
       const k = `${s.route}|${s.from}|${s.to}`;
       if (!seen.has(k)) seen.set(k, { mins: [], rows: truth.get(`${s.from}|${s.to}`) ?? [] });
       seen.get(k).mins.push(s.minutes);
@@ -336,12 +400,14 @@ async function main() {
   L("## 一、样本规模");
   L(`  离开口径（与手动打点同口径）：${depSamples.length} 段样本 · ${depSharedN} 个唯一邻接键`);
   L(`  到达口径（与 segment_stats 同口径）：${arrSamples.length} 段样本 · ${Object.keys(arrAgg.byShared).length} 个唯一邻接键`);
+  L(`  🧹 护栏后净样本：离开 ${depClean.length} · 到达 ${arrClean.length}` +
+    `（剔除「站外长时间停留」假区间：离开 ${depFlag.list.length} · 到达 ${arrFlag.list.length}，原值保留在 derived.json / 第六节）`);
   const bucketCount = {};
   for (const s of depSamples) { const b = bucketOf(macauParts(s.t).hour); bucketCount[b] = (bucketCount[b] ?? 0) + 1; }
   L(`  时段分布：${Object.entries(bucketCount).map(([k, v]) => `${k}=${v}`).join("  ") || "—"}`);
   L("");
 
-  L("## 二、双口径内部一致性（差 = dwell_B − dwell_A，理论均值应≈0）");
+  L("## 二、双口径内部一致性（差 = dwell_B − dwell_A，理论均值应≈0；护栏后样本）");
   if (dualDiffs.length) {
     const diffs = dualDiffs.map((x) => (x.dep - x.arr) * 60);
     const m = diffs.reduce((a, b) => a + b, 0) / diffs.length;
@@ -352,14 +418,14 @@ async function main() {
   } else L("  （无同段双口径样本）");
   L("");
 
-  L("## 三、样本最多的段（离开口径 Top 20）");
+  L("## 三、样本最多的段（离开口径 Top 20 · 护栏后）");
   const top = Object.entries(depAgg.byShared).sort((a, b) => b[1].n - a[1].n).slice(0, 20);
   L(`  ${"共享键(from|to|wd|bucket)".padEnd(34)} ${"n".padStart(4)} ${"均值".padStart(7)} ${"p50".padStart(7)} ${"min".padStart(7)} ${"max".padStart(7)}`);
   for (const [k, a] of top) L(`  ${k.padEnd(34)} ${String(a.n).padStart(4)} ${String(a.avg).padStart(7)} ${String(a.p50).padStart(7)} ${String(a.min).padStart(7)} ${String(a.max).padStart(7)}`);
   L("");
 
   if (truth) {
-    L(`## 四、与 segment_stats 真值对照（按站码归一 + 样本加权；--truth=${CFG.truth}）`);
+    L(`## 四、与 segment_stats 真值对照（按站码归一 + 样本加权；--truth=${CFG.truth}；护栏后样本）`);
     if (!compares.length) L("  （无交集）");
     else {
       const ad = compares.map((c) => Math.abs(c.diff));
@@ -385,6 +451,19 @@ async function main() {
     L(`    ${d.kind === "depart" ? "离开口径" : "到达口径"} ${d.route}路 ${d.from}→${d.to} = ${d.minutes.toFixed(2)} 分（${d.reason}）`);
   L("");
 
+  L("## 六、同键一致性护栏命中（站外长时间停留 → 假长区间）");
+  L(`  规则：同一共享键 n≥${OUT_MIN_N} 时，样本 > max(p50×${OUT_MULT}, p50+${OUT_FLOOR_MIN} 分) 判为可疑 → 从均值剔除（原值保留在 derived.json）`);
+  if (!depFlag.list.length && !arrFlag.list.length) L("  无命中");
+  else {
+    for (const x of depFlag.list.slice(0, 20))
+      L(`    离开 ${x.route}路 ${x.key}：${x.minutes.toFixed(2)} 分 vs 同键 n=${x.n} p50 ${x.p50.toFixed(2)}（阈值 ${x.thr.toFixed(2)}）· ${x.plate} ${macauParts(x.t).hhmm}`);
+    if (depFlag.list.length > 20) L(`    …另 ${depFlag.list.length - 20} 条（离开口径）`);
+    for (const x of arrFlag.list.slice(0, 10))
+      L(`    到达 ${x.route}路 ${x.key}：${x.minutes.toFixed(2)} 分 vs 同键 n=${x.n} p50 ${x.p50.toFixed(2)}（阈值 ${x.thr.toFixed(2)}）· ${x.plate}`);
+  }
+  L(`  ⚠️ 同键样本 < ${OUT_MIN_N} 时护栏不启用（样本太少判不出一致性）→ 这类键的极端值见第三节 max 列，必要时人工核查`);
+  L("");
+
   // ── 落盘 ──
   const derived = {
     label,
@@ -396,7 +475,15 @@ async function main() {
       arriveEvents: nArr, departEvents: nDep,
       statusGaps: allGaps.length,
       departSamples: depSamples.length, arriveSamples: arrSamples.length,
+      cleanSamples: { depart: depClean.length, arrive: arrClean.length },
+      outliers: { depart: depFlag.list.length, arrive: arrFlag.list.length },
       dropped: { notAdjacent: allDropAdj.length, durationOutOfRange: allDropDur.length },
+    },
+    outlierGuard: {
+      rule: { mult: OUT_MULT, floorMin: OUT_FLOOR_MIN, minN: OUT_MIN_N },
+      note: "同键一致性护栏：剔除「站外长时间停留」造成的假长区间；原值保留在 rawDepartSamples 与下方清单中",
+      departCandidates: depFlag.list,
+      arriveCandidates: arrFlag.list,
     },
     depart: depAgg,
     arrive: arrAgg,

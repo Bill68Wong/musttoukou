@@ -8,6 +8,7 @@
  *  - POST {base}/routestation/bus         实时车辆
  *  - POST {base}/getRouteAndCompanyList.html  全部线路
  */
+import { after } from "next/server";
 import { genToken } from "./token";
 import { DSAT_UA } from "./ua";
 import type { BusPositionsPayload, RouteDataPayload, DsatResult } from "./types";
@@ -23,6 +24,38 @@ function buildBody(params: Record<string, string>): string {
   return Object.entries(params)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join("&");
+}
+
+/**
+ * ★ v1.0.5：把记账从「本次请求内 await」改成「响应发出之后再补记」。
+ *
+ * 动机（线上实测倒逼）：推荐一次页面加载并发 9 次 DSAT 调用，原来每次调用结束都
+ *   `await logDsatCall(...)`。函数执行在 iad1（美东）、主库在 ap-southeast-1（新加坡），
+ *   单次记账往返 ≈230ms；9 次虽并发，仍把实时层整体拖长约 0.25s，
+ *   而**用户真正要的只是班次数据**，记账属后台统计。
+ *
+ * 语义变化：
+ *   · 响应不再等记账 → 用户更快拿到卡片；
+ *   · `after()` 由 Vercel 的 waitUntil 托管，保证响应发出后回调仍执行完
+ *     （不会像裸 fire-and-forget 那样被实例冻结吞掉）；
+ *   · 记账失败依旧只 console.warn，绝不影响班次结果。
+ *
+ * 回退路径：非请求上下文（`db/sync-routes.ts` 这类脚本直接调用本模块）里
+ *   `after()` 不可用会抛错 → 退化为直接调用。脚本进程会等 event loop 清空才退出，
+ *   因此日志同样能写完。
+ *
+ * ⚠️ 副作用（可接受）：熔断判定读的 `dsat_call_logs` 会晚 0.2~0.3s 落库。
+ *    判定逻辑是「最近 N 条是否全失败」，晚一点点不影响结论正确性。
+ */
+function scheduleLog(entry: Parameters<typeof logDsatCall>[0]): void {
+  const run = () => {
+    void logDsatCall(entry).catch(() => {});
+  };
+  try {
+    after(run);
+  } catch {
+    run();
+  }
 }
 
 /**
@@ -101,8 +134,8 @@ async function dsatPost<T>(
   }
 
   const latencyMs = Date.now() - started;
-  // 记账（尽力而为）
-  await logDsatCall({
+  // 记账（尽力而为）★ v1.0.5：改为响应后补记，不再阻塞本次请求
+  scheduleLog({
     purpose,
     route_code: routeCode,
     ok,

@@ -1,13 +1,31 @@
 /**
- * 推荐静态数据装载（src/lib/recommend/query.ts，v1.0.0）
+ * 推荐静态数据装载（src/lib/recommend/query.ts，v1.0.0 / v1.0.4）
  *
  * ⚠️ server-only（含 pg）：client 组件**禁止** import 本模块 → 视图类型走 ./types。
  *
- * 性能要点：全部静态查询**并行发出**（一个 RTT 窗口），再在内存里建索引：
- *   站序（route-index）· segment_stats · walk_times · transfer_walks · places · 方案腿 · 线路色
+ * ────────────────────────── ★ v1.0.4 缓存架构 ──────────────────────────
+ * 静态数据全部来自**派生表**（站序由 db:sync-routes 同步；段/步行/换乘由每日 Cron 重算）
+ * → 低频变更 → 放进 **Vercel Data Cache**（`unstable_cache`）：**跨实例、跨冷启动持久**。
+ *
+ * 缓存的是**原始行**（纯 JSON）；索引（Map）仍在内存里构建
+ *   —— Map 不能 JSON 序列化，整体缓存会静默丢成 `{}`。
+ *
+ * 为什么必须跨实例（这是本轮性能问题的正解）：
+ *   线上函数执行在 iad1（美东）、主库在 ap-southeast-1（新加坡）→ **每次冷启动**重建
+ *   数据库连接要 5~6 个往返（TCP + TLS + SCRAM 认证 + startup）≈ 2.3s。
+ *   实测反证链：v1.0.2 把连接池上限 5→12（无效）、v1.0.3 把 route_stations 传输量
+ *   压掉 9 成（仍无效，staticMs 2283ms 几乎不动）→ **传输量与连接数都不是瓶颈，
+ *   固定建连成本才是**。走 Data Cache 后，冷启动直接读边缘缓存 → 完全不碰数据库。
  */
 import type { Pool } from "pg";
-import { loadRouteIndex } from "@/lib/dsat/route-index";
+import { unstable_cache } from "next/cache";
+import { getPool } from "@/lib/db";
+import {
+  buildRouteIndexFromRows,
+  queryRouteIndexRows,
+  type RouteStopRow,
+  type StationRow,
+} from "@/lib/dsat/route-index";
 import { buildLrtPreload, type LrtPreload } from "@/lib/lrt/next-departures";
 import type { PlanLegLite } from "@/lib/timer-flow";
 import { enumerateOptions, type PlanLite } from "./enumerate";
@@ -46,29 +64,37 @@ export interface RecStatic {
   routeColors: Record<string, string>;
 }
 
-/**
- * 静态数据进程内缓存。
- *
- * 为什么必须有：本机→新加坡 RTT 高时 `loadStatics` 实测 **743ms**（§六 预算「静态 ~0.1s」是
- * sin1 同区线上的数字）—— 每次点卡都重查会让 2 秒目标失守。而这些数据全是**派生表**
- * （站序由 db:sync-routes 同步、段/步行/换乘由每日 Cron 重算），低频变更 → 缓存 60 秒零风险。
- * ⚠️ 线上（Vercel↔Supabase 同 ap-southeast-1）本就快，此缓存主要保住冷路径与突发流量。
- */
-const STATIC_TTL_MS = 60_000;
-const g = globalThis as unknown as { __recStaticCache?: { ts: number; data: RecStatic } };
+/** 轻轨时刻行（`lrt_timetables` 全量） */
+type LrtTtRow = {
+  api_station: string;
+  route_no: string;
+  direction: string;
+  day_type: string;
+  first_min: number;
+  last_min: number;
+  minutes: { hour: number; minutes: number[] }[];
+};
 
-/** 并行装入全部静态数据（**一次 RTT 窗口**；默认走 60s 进程内缓存） */
-export async function loadStatics(pool: Pool, force = false): Promise<RecStatic> {
-  const c = g.__recStaticCache;
-  if (!force && c && Date.now() - c.ts < STATIC_TTL_MS) return c.data;
-  const data = await loadStaticsUncached(pool);
-  g.__recStaticCache = { ts: Date.now(), data };
-  return data;
+/** ★ v1.0.4：静态数据原始行（纯 JSON · 可跨实例缓存 · **不含任何 Map**） */
+interface StaticRows {
+  routeStops: RouteStopRow[];
+  stations: StationRow[];
+  seg: SegmentStatRow[];
+  walk: WalkTimeRow[];
+  transfer: TransferWalkRow[];
+  places: { id: number; slug: string }[];
+  plans: PlanLite[];
+  legs: Record<string, unknown>[];
+  colors: { code: string; color: string }[];
+  lrtApi: { db_code: string; api_id: string; name_tc: string | null }[];
+  lrtHol: { d: string }[];
+  lrtTt: LrtTtRow[];
 }
 
-async function loadStaticsUncached(pool: Pool): Promise<RecStatic> {
+/** 全部静态查询**并行发出**（一个 RTT 窗口），返回可序列化的原始行 */
+async function fetchStaticRowsUncached(pool: Pool): Promise<StaticRows> {
   const [
-    routeIdx,
+    routeIdxRows,
     segRes,
     walkRes,
     transferRes,
@@ -80,7 +106,7 @@ async function loadStaticsUncached(pool: Pool): Promise<RecStatic> {
     lrtHolRes,
     lrtTtRes,
   ] = await Promise.all([
-    loadRouteIndex(pool),
+    queryRouteIndexRows(pool),
     pool.query(
       `SELECT route_code, from_station, to_station, weekday, time_bucket, arrive_kind,
               avg_minutes, p50_minutes, samples FROM segment_stats`,
@@ -119,14 +145,64 @@ async function loadStaticsUncached(pool: Pool): Promise<RecStatic> {
     ),
   ]);
 
+  const [routeStops, stations] = routeIdxRows;
+  return {
+    routeStops,
+    stations,
+    seg: segRes.rows as unknown as SegmentStatRow[],
+    walk: walkRes.rows as unknown as WalkTimeRow[],
+    transfer: transferRes.rows as unknown as TransferWalkRow[],
+    places: placeRes.rows as { id: number; slug: string }[],
+    plans: planRes.rows as unknown as PlanLite[],
+    legs: legRes.rows as Record<string, unknown>[],
+    colors: colorRes.rows as { code: string; color: string }[],
+    lrtApi: lrtApiRes.rows as { db_code: string; api_id: string; name_tc: string | null }[],
+    lrtHol: lrtHolRes.rows as { d: string }[],
+    lrtTt: lrtTtRes.rows as unknown as LrtTtRow[],
+  };
+}
+
+/**
+ * ★ v1.0.4：静态行 = **跨实例数据缓存**（60s 重新验证，与原有进程内 TTL 同口径）。
+ * ⚠️ 不走 `pool` 参数：`unstable_cache` 会把入参序列化进 cache key，
+ *    而 Pool 实例不可序列化 → 必须用模块级 `getPool()`。
+ *    若 Data Cache 未命中，则回落到一次真实查询（行为与 v1.0.3 相同）。
+ */
+const getStaticRows = unstable_cache(
+  async () => fetchStaticRowsUncached(getPool()),
+  ["rec-static-rows-v1"],
+  { revalidate: 60, tags: ["rec-static"] },
+);
+
+/**
+ * 静态数据进程内缓存（同实例复用，避免每次请求重建索引）。
+ * 与 Data Cache 是两层：外层（跨实例）管「取行」，内层（本实例）管「建索引」。
+ */
+const STATIC_TTL_MS = 60_000;
+const g = globalThis as unknown as { __recStaticCache?: { ts: number; data: RecStatic } };
+
+/** 装入全部静态数据（默认走 60s 进程内缓存；取行走 Vercel Data Cache） */
+export async function loadStatics(pool: Pool, force = false): Promise<RecStatic> {
+  // ★ v1.0.4：取行已交给 Data Cache（跨实例），pool 参数仅为兼容既有签名保留
+  void pool;
+  const c = g.__recStaticCache;
+  if (!force && c && Date.now() - c.ts < STATIC_TTL_MS) return c.data;
+  const data = await loadStaticsUncached();
+  g.__recStaticCache = { ts: Date.now(), data };
+  return data;
+}
+
+async function loadStaticsUncached(): Promise<RecStatic> {
+  const rows = await getStaticRows();
+
   const placeIds: Record<string, number> = {};
-  for (const r of placeRes.rows as { id: number; slug: string }[]) placeIds[r.slug] = r.id;
+  for (const r of rows.places) placeIds[r.slug] = r.id;
 
   const routeColors: Record<string, string> = {};
-  for (const r of colorRes.rows as { code: string; color: string }[]) routeColors[r.code] = r.color;
+  for (const r of rows.colors) routeColors[r.code] = r.color;
 
   const legsByPlan = new Map<number, PlanLegLite[]>();
-  for (const r of legRes.rows as Record<string, unknown>[]) {
+  for (const r of rows.legs) {
     const pid = r.plan_id as number;
     if (!legsByPlan.has(pid)) legsByPlan.set(pid, []);
     const opts = r.route_options ? (JSON.parse(r.route_options as string) as string[]) : null;
@@ -145,21 +221,23 @@ async function loadStaticsUncached(pool: Pool): Promise<RecStatic> {
     });
   }
 
-  const planRows = (planRes.rows as unknown as PlanLite[]).map((plan) => ({
+  const planRows = rows.plans.map((plan) => ({
     plan,
     legs: legsByPlan.get(plan.id) ?? [],
   }));
 
+  const routeIdx = buildRouteIndexFromRows(rows.routeStops, rows.stations);
+
   return {
     routeIdx,
-    segIdx: buildSegmentIndex(segRes.rows as unknown as SegmentStatRow[]),
-    walkIdx: buildWalkIndex(walkRes.rows as unknown as WalkTimeRow[]),
-    transferIdx: buildTransferIndex(transferRes.rows as unknown as TransferWalkRow[]),
-    // 站序直接复用刚加载的 routeIdx.dirStops（不再单独查 route_stations）
+    segIdx: buildSegmentIndex(rows.seg),
+    walkIdx: buildWalkIndex(rows.walk),
+    transferIdx: buildTransferIndex(rows.transfer),
+    // 站序直接复用刚构建的 routeIdx.dirStops（不再单独查 route_stations）
     lrtPre: buildLrtPreload({
-      apiRows: lrtApiRes.rows as { db_code: string; api_id: string; name_tc: string | null }[],
-      holidayRows: lrtHolRes.rows as { d: string }[],
-      ttRows: lrtTtRes.rows as never[],
+      apiRows: rows.lrtApi,
+      holidayRows: rows.lrtHol,
+      ttRows: rows.lrtTt,
       dirStopsAll: routeIdx.dirStops,
     }),
     placeIds,

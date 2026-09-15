@@ -284,9 +284,19 @@ export async function queryLrtDepartures(
     const next = nextN(candSec, now.daySec, take);
 
     // 6) 空态判定
+    // ★ v1.0.2 修正判定顺序：`nextN` 取的是「今日 00:00 起秒」这条轴上的候选，**不跨日**。
+    //   所以「今日首班还没到点」时，next 里装的是**今天早上**的首班 → 旧的「先判 next 非空」
+    //   会直接给出 running，使 `before_first` 沦为**永远走不到的死代码**
+    //   （而前端 `LrtEta.tsx:274` 明明实现了「首班 06:30 開出 · 往X」文案）。
+    //   线上实测后果：凌晨 00:13 查石排湾线，state=running 且下一班 = 06:30 →
+    //   卡片显示「还有 372 分」，门到门总用时被算成 399 分并**挤进推荐前 5**。
+    //   正确优先级：① 昨日跨午夜续班仍有车 → running ② 今日首班前 → before_first
+    //              ③ 今日还有后续班次 → running ④ 今日已收车 → after_last
+    const prevRunning = prevRow ? rowCandidateSec(prevRow, true).some((s) => s > now.daySec) : false;
     let state: LrtDeparturesOk["state"] = "no_data";
-    if (next.length > 0) state = "running";
+    if (prevRunning) state = "running";
     else if (todayRow && now.daySec < todayRow.first_min * 60) state = "before_first";
+    else if (next.length > 0) state = "running";
     else if (todayRow) state = "after_last";
 
     return {

@@ -96,6 +96,18 @@ const CACHE_TTL_MS = 5_000;
 const MAX_ROUTES = 6;
 /** 并发批大小：批内 Promise.all 同时查，批间串行（对 DSAT 温和，不突刺） */
 const BATCH_CONCURRENCY = 3;
+/**
+ * ★ v1.0.2：**推荐路径**的批并发（6 = MAX_ROUTES，即一个桶一次并发完）。
+ *
+ * 线上函数执行在 iad1（美东）、DSAT 在澳门 → 冷启动时首轮请求需先建 TLS（~0.6s）。
+ * 一个桶最多 6 条线，按 3 条/批会串成两批 ≈ 1.1s，**紧贴 `live.ts` 的 1.2s 桶超时**
+ * → 实测冷启动 11 个桶里 9 个超时（`✗bus:…=1200ms`），巴士线被整批剔除、只剩轻轨卡。
+ * 推荐路径放宽到 6 一次并发完，桶耗时约减半。
+ *
+ * 峰值仍温和：桶多为「1 桶 1 线」，实测一次推荐总计 ≈ 9 次 DSAT 调用
+ * （与采集器并发 6 同量级）；计时主流程仍走 3，行为不变。
+ */
+const BATCH_CONCURRENCY_RECOMMEND = 6;
 const g = globalThis as unknown as {
   __etaCache?: Map<string, { ts: number; data: EtaResponse }>;
 };
@@ -386,9 +398,12 @@ export async function queryEta(
     }
   };
 
-  // 并发分批：≤3 条/批，批内 Promise.all（顺序 = routes 传入顺序），避免多线路串行拖长耗时
-  for (let i = 0; i < routes.length; i += BATCH_CONCURRENCY) {
-    const batch = routes.slice(i, i + BATCH_CONCURRENCY);
+  // 并发分批：批内 Promise.all（顺序 = routes 传入顺序），避免多线路串行拖长耗时。
+  // ★ v1.0.2：推荐路径放宽到 6（一个桶一次并发完，见 BATCH_CONCURRENCY_RECOMMEND）；
+  //   计时主流程仍 3 条/批（对 DSAT 温和，不突刺）。
+  const batchSize = purpose === "recommend" ? BATCH_CONCURRENCY_RECOMMEND : BATCH_CONCURRENCY;
+  for (let i = 0; i < routes.length; i += batchSize) {
+    const batch = routes.slice(i, i + batchSize);
     const batchResults = await Promise.all(batch.map((route) => queryOne(route)));
     results.push(...batchResults);
   }

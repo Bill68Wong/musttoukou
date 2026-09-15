@@ -13,6 +13,9 @@ import RecommendCard from "./RecommendCard";
 import { useDevMode } from "@/lib/dev-mode";
 import type { RecommendCard as CardData, SchoolZone } from "@/lib/recommend/types";
 
+/** UI 目标卡数（用户门槛：点首页卡 2 秒内看到 5 张）；实际不足时给出原因说明 */
+const TARGET_CARDS = 5;
+
 export default function RecommendCards({
   cards,
   colors,
@@ -44,6 +47,18 @@ export default function RecommendCards({
 
   return (
     <div className="rc-list">
+      {/* ★ v1.0.2：不足目标张数时说明原因（用户 2026-09-16 拍板：真实几张就几张 + 明确提示，
+          不用估算卡凑满）。少的原因可能是「该时段已收班」或「暂未取到实时班次」，
+          因此文案把两种可能都写上，不假装是深夜。 */}
+      {cards.length < TARGET_CARDS && (
+        <p
+          className="t-label t-muted"
+          style={{ margin: "0 2px 8px", lineHeight: 1.6 }}
+        >
+          目前僅 {cards.length} 條路線可用 · 其餘路線此時段已收班或暫未取到實時班次
+          （列出均為實時結果，不含估算）
+        </p>
+      )}
       {cards.map((c, i) => (
         <RecommendCard key={`${c.planId}-${c.rides.map((r) => `${r.route}${r.alight}`).join("_")}`} card={c} colors={colors} devMode={devMode} zone={zone} rank={i + 1} />
       ))}

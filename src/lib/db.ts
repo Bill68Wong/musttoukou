@@ -28,7 +28,13 @@ export function getPool(): Pool {
   }
   const pool = new Pool({
     connectionString: connStr,
-    max: 5,
+    // ★ v1.0.2：4 → 12。`loadStatics` 一次性并行发 11 条查询，而原上限 5 会让它们**分两波建连**：
+    //   线上函数执行在 iad1（美东）、主库在 ap-southeast-1（新加坡），每次冷启动建连 ~1.1s
+    //   ⇒ 两波合计 ≈ 2.3s（线上实测 staticMs=2335ms）→ 首屏必然破 2 秒门槛。
+    //   生产连的是 Supabase **Transaction Pooler（6543 / pgbouncer）**，提高上限是安全的
+    //   —— pgbouncer 复用后端连接，并不会真的开 12 条到 Postgres。
+    //   （v1.0.1 曾把桶并发提到 12，但静态层这条串行波次一直没治，故 v1.0.2 补上。）
+    max: 12,
     ssl: connStr.includes("supabase") ? { rejectUnauthorized: false } : undefined,
   });
   globalForDb.pgPool = pool;

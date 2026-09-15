@@ -49,6 +49,86 @@ export interface LrtDeparturesErr {
 
 export type LrtDeparturesResult = LrtDeparturesOk | LrtDeparturesErr;
 
+/**
+ * ★ v1.0.0（性能修复）：轻轨**预载上下文**。
+ *
+ * ── 为什么必须有 ────────────────────────────────────────────────────
+ * `queryLrtDepartures` 原本要 **6 次串行 DB 往返**（站序 → api 码 ×2 → 假期 ×2 → 时刻表 ×2）。
+ * 线上实测：Vercel 函数跑在 **iad1（美东）**，主库在 **ap-southeast-1（新加坡）**
+ * → 单次往返 ~230ms → 合计 >1.2s ⇒ **每个轻轨桶都恒定超时** ⇒ 轻轨方案全被剔除
+ * （点首页卡从 5 张掉到 4 张）。根因不是轻轨算法，是**跨洲 DB 往返被串行放大**。
+ *
+ * ── 修法 ────────────────────────────────────────────────────────────
+ * 轻轨的数据全是**极小静态表**（13 个站的 api 映射 · 假期表 · 3 条线全量时刻行 ≈ 数百行）→
+ * 折进 `loadStatics` **已有的并行窗口**（+3 条查询、**零额外 RTT**），
+ * 之后每个轻轨桶 **0 次 DB 往返**（纯内存）。
+ * 站序直接复用已加载的 `RouteIndex.dirStops`（不再单独查 `route_stations`）。
+ *
+ * ⚠️ 不传 `pre` → 完全走旧 DB 路径 → `/api/lrt/eta` 行为不变（向后兼容）。
+ */
+export interface LrtPreload {
+  /** `${lineCode}|${dsatDir}` → 有序本库站码（来自 RouteIndex.dirStops，已是 seq 序） */
+  dirStops: Map<string, string[]>;
+  /** 本库站码 → motransportinfo api_id */
+  apiIdOf: Map<string, string>;
+  /** 本库站码 → 站名（终点站名展示用） */
+  nameOf: Map<string, string>;
+  /** 法定假期集合（'YYYY-MM-DD'） */
+  holidays: Set<string>;
+  /** `${apiStation}|${routeNo}|${apiDir}|${dayType}` → 时刻行 */
+  tt: Map<string, LrtTimetableMinutes>;
+}
+
+/** 预载时刻表的键（构建方与查询方必须一致） */
+export function lrtTtKey(
+  apiStation: string,
+  routeNo: string,
+  apiDir: string,
+  dayType: DayType,
+): string {
+  return `${apiStation}|${routeNo}|${apiDir}|${dayType}`;
+}
+
+/**
+ * 纯函数构建预载上下文（**不做任何 DB 访问** —— 查询由调用方并行发出后喂进来）。
+ * @param dirStopsAll 全量站序索引（`RouteIndex.dirStops`）—— 本函数只挑 `LRT-*` 的键
+ */
+export function buildLrtPreload(args: {
+  apiRows: { db_code: string; api_id: string; name_tc: string | null }[];
+  holidayRows: { d: string }[];
+  ttRows: (LrtTimetableMinutes & {
+    api_station: string;
+    route_no: string;
+    direction: string;
+    day_type: string;
+  })[];
+  dirStopsAll: Map<string, string[]>;
+}): LrtPreload {
+  const dirStops = new Map<string, string[]>();
+  for (const [k, v] of args.dirStopsAll) if (k.startsWith("LRT-")) dirStops.set(k, v);
+
+  const apiIdOf = new Map<string, string>();
+  const nameOf = new Map<string, string>();
+  for (const r of args.apiRows) {
+    apiIdOf.set(r.db_code, r.api_id);
+    if (r.name_tc) nameOf.set(r.db_code, r.name_tc);
+  }
+
+  const holidays = new Set<string>();
+  for (const r of args.holidayRows) holidays.add(String(r.d).slice(0, 10));
+
+  const tt = new Map<string, LrtTimetableMinutes>();
+  for (const r of args.ttRows) {
+    tt.set(lrtTtKey(r.api_station, r.route_no, r.direction, r.day_type as DayType), {
+      first_min: r.first_min,
+      last_min: r.last_min,
+      minutes: r.minutes,
+    });
+  }
+
+  return { dirStops, apiIdOf, nameOf, holidays, tt };
+}
+
 export interface LrtDeparturesInput {
   /** 本库站码（LRT-*） */
   station: string;
@@ -68,6 +148,11 @@ export interface LrtDeparturesInput {
    * ⚠️ 不传 = 完全走旧路径，`/api/lrt/eta` 行为字节级不变。
    */
   nowMs?: number;
+  /**
+   * ★ v1.0.0：预载上下文（见 `LrtPreload`）。给了 → **0 次 DB 往返**（纯内存）；
+   * 不给 → 走原 6 次串行查询（`/api/lrt/eta` 旧路径）。
+   */
+  pre?: LrtPreload;
 }
 
 /** 后续第 n 班（严格晚于 atMs 的最近一班） */
@@ -102,20 +187,29 @@ export async function queryLrtDepartures(
     return { ok: false, error: "缺少 dest 或 dir", status: 400 };
   }
   const routeNo = LRT_LINE_TO_ROUTE_NO[route];
+  const pre = input.pre ?? null;
 
   try {
     // 1) 线路站序（本库码，按 dsat_dir 分组）→ 乘车方向 & 终点站
-    const stopsRes = await pool.query(
-      `SELECT rs.dsat_dir, rs.station_code
-       FROM route_stations rs
-       JOIN routes r ON r.id = rs.route_id
-       WHERE r.code = $1 AND r.kind = 'lrt'
-       ORDER BY rs.dsat_dir, rs.seq`,
-      [route],
-    );
+    //    ⚠️ pre 存在时从内存索引取（键 `${lineCode}|${dsatDir}`）—— 0 次 DB 往返
     const dirStops: Record<string, string[]> = {};
-    for (const row of stopsRes.rows as { dsat_dir: string; station_code: string }[]) {
-      (dirStops[row.dsat_dir] ??= []).push(row.station_code);
+    if (pre) {
+      const prefix = `${route}|`;
+      for (const [k, v] of pre.dirStops) {
+        if (k.startsWith(prefix)) dirStops[k.slice(prefix.length)] = v;
+      }
+    } else {
+      const stopsRes = await pool.query(
+        `SELECT rs.dsat_dir, rs.station_code
+         FROM route_stations rs
+         JOIN routes r ON r.id = rs.route_id
+         WHERE r.code = $1 AND r.kind = 'lrt'
+         ORDER BY rs.dsat_dir, rs.seq`,
+        [route],
+      );
+      for (const row of stopsRes.rows as { dsat_dir: string; station_code: string }[]) {
+        (dirStops[row.dsat_dir] ??= []).push(row.station_code);
+      }
     }
     const dirs = Object.keys(dirStops);
     if (dirs.length === 0) {
@@ -128,12 +222,19 @@ export async function queryLrtDepartures(
     }
 
     // 2) 上车站 & 方向终点 → motransportinfo 站码（API 码只在服务端内部）
-    const stRes = await pool.query(`SELECT api_id FROM lrt_api_stations WHERE db_code = $1`, [station]);
-    const termRes = await pool.query(`SELECT api_id, name_tc FROM lrt_api_stations WHERE db_code = $1`, [
-      terminusDb,
-    ]);
-    const stationApi = (stRes.rows[0] as { api_id?: string } | undefined)?.api_id;
-    const termRow = termRes.rows[0] as { api_id?: string; name_tc?: string } | undefined;
+    let stationApi: string | undefined;
+    let termRow: { api_id?: string; name_tc?: string } | undefined;
+    if (pre) {
+      stationApi = pre.apiIdOf.get(station);
+      termRow = { api_id: pre.apiIdOf.get(terminusDb), name_tc: pre.nameOf.get(terminusDb) };
+    } else {
+      const stRes = await pool.query(`SELECT api_id FROM lrt_api_stations WHERE db_code = $1`, [station]);
+      const termRes = await pool.query(`SELECT api_id, name_tc FROM lrt_api_stations WHERE db_code = $1`, [
+        terminusDb,
+      ]);
+      stationApi = (stRes.rows[0] as { api_id?: string } | undefined)?.api_id;
+      termRow = termRes.rows[0] as { api_id?: string; name_tc?: string } | undefined;
+    }
     if (!stationApi || !termRow?.api_id) {
       return { ok: false, error: "站点映射缺失（lrt_api_stations）", status: 500 };
     }
@@ -143,22 +244,36 @@ export async function queryLrtDepartures(
     // 3) 班别：今日 + 昨日（昨日仅用于跨午夜续班，班别各自按日判定）
     const nowMsRef = input.nowMs ?? Date.now();
     const now = macauNowParts(new Date(nowMsRef));
-    const holRes = await pool.query(`SELECT 1 FROM lrt_holidays WHERE holiday_date = $1`, [now.ymd]);
-    const dayType: DayType = dayTypeOf(now.weekday, (holRes.rowCount ?? 0) > 0);
     const prevYmd = shiftYmd(now.ymd, -1);
     const prevWeekday = new Date(`${prevYmd}T00:00:00Z`).getUTCDay();
-    const prevHol = await pool.query(`SELECT 1 FROM lrt_holidays WHERE holiday_date = $1`, [prevYmd]);
-    const prevDayType: DayType = dayTypeOf(prevWeekday, (prevHol.rowCount ?? 0) > 0);
+    let dayType: DayType;
+    let prevDayType: DayType;
+    if (pre) {
+      dayType = dayTypeOf(now.weekday, pre.holidays.has(now.ymd));
+      prevDayType = dayTypeOf(prevWeekday, pre.holidays.has(prevYmd));
+    } else {
+      const holRes = await pool.query(`SELECT 1 FROM lrt_holidays WHERE holiday_date = $1`, [now.ymd]);
+      dayType = dayTypeOf(now.weekday, (holRes.rowCount ?? 0) > 0);
+      const prevHol = await pool.query(`SELECT 1 FROM lrt_holidays WHERE holiday_date = $1`, [prevYmd]);
+      prevDayType = dayTypeOf(prevWeekday, (prevHol.rowCount ?? 0) > 0);
+    }
 
-    // 4) 时刻行（并行取今日 + 昨日跨午夜续班）
-    const rowSql = `SELECT first_min, last_min, minutes FROM lrt_timetables
-                    WHERE api_station = $1 AND route_no = $2 AND direction = $3 AND day_type = $4`;
-    const [todayRes, prevRes] = await Promise.all([
-      pool.query(rowSql, [stationApi, routeNo, directionApi, dayType]),
-      pool.query(rowSql, [stationApi, routeNo, directionApi, prevDayType]),
-    ]);
-    const todayRow = todayRes.rows[0] as LrtTimetableMinutes | undefined;
-    const prevRow = prevRes.rows[0] as LrtTimetableMinutes | undefined;
+    // 4) 时刻行（今日 + 昨日跨午夜续班）
+    let todayRow: LrtTimetableMinutes | undefined;
+    let prevRow: LrtTimetableMinutes | undefined;
+    if (pre) {
+      todayRow = pre.tt.get(lrtTtKey(stationApi, routeNo, directionApi, dayType));
+      prevRow = pre.tt.get(lrtTtKey(stationApi, routeNo, directionApi, prevDayType));
+    } else {
+      const rowSql = `SELECT first_min, last_min, minutes FROM lrt_timetables
+                      WHERE api_station = $1 AND route_no = $2 AND direction = $3 AND day_type = $4`;
+      const [todayRes, prevRes] = await Promise.all([
+        pool.query(rowSql, [stationApi, routeNo, directionApi, dayType]),
+        pool.query(rowSql, [stationApi, routeNo, directionApi, prevDayType]),
+      ]);
+      todayRow = todayRes.rows[0] as LrtTimetableMinutes | undefined;
+      prevRow = prevRes.rows[0] as LrtTimetableMinutes | undefined;
+    }
 
     // 5) 合并候选（「服务日 D 00:00 起秒」单轴）→ 后续 n 班
     const candSec: number[] = [];

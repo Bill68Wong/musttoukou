@@ -115,6 +115,7 @@ export async function recommend(
   const batch = await fetchLive(pool, seeds, st.routeIdx, st.segIdx, {
     todayWeekday: new Date(nowMs + 8 * 3_600_000).getUTCDay(),
     nowMs: input.nowMs,
+    lrtPre: st.lrtPre,
   });
   const liveMs = Date.now() - tLive;
 

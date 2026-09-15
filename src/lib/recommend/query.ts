@@ -8,6 +8,7 @@
  */
 import type { Pool } from "pg";
 import { loadRouteIndex } from "@/lib/dsat/route-index";
+import { buildLrtPreload, type LrtPreload } from "@/lib/lrt/next-departures";
 import type { PlanLegLite } from "@/lib/timer-flow";
 import { enumerateOptions, type PlanLite } from "./enumerate";
 import { buildSegmentIndex, type SegmentIndex } from "./segment-lookup";
@@ -32,6 +33,12 @@ export interface RecStatic {
   segIdx: SegmentIndex;
   walkIdx: WalkIndex;
   transferIdx: TransferIndex;
+  /**
+   * ★ 轻轨预载（v1.0.0 性能修复）：把轻轨的 6 次串行 DB 往返折进本层已有的并行窗口。
+   * 不这么做时，线上（函数在 iad1、主库在新加坡）每个轻轨桶恒定 1.2s 超时 → 轻轨方案被剔除。
+   * 详见 `src/lib/lrt/next-departures.ts#LrtPreload`。
+   */
+  lrtPre: LrtPreload;
   placeIds: Record<string, number>;
   /** 全部在用方案的幂等数据（plan + legs） */
   planRows: { plan: PlanLite; legs: PlanLegLite[] }[];
@@ -60,37 +67,57 @@ export async function loadStatics(pool: Pool, force = false): Promise<RecStatic>
 }
 
 async function loadStaticsUncached(pool: Pool): Promise<RecStatic> {
-  const [routeIdx, segRes, walkRes, transferRes, placeRes, planRes, legRes, colorRes] =
-    await Promise.all([
-      loadRouteIndex(pool),
-      pool.query(
-        `SELECT route_code, from_station, to_station, weekday, time_bucket, arrive_kind,
-                avg_minutes, p50_minutes, samples FROM segment_stats`,
-      ),
-      pool.query(`SELECT place_id, station_code, zone, minutes, samples FROM walk_times`),
-      // transfer_walks 在 v1.0.0 新建；表尚未建时容错为空（不阻塞推荐）
-      pool
-        .query(`SELECT from_station, to_station, minutes, samples, source FROM transfer_walks`)
-        .catch(() => ({ rows: [] as unknown[] })),
-      pool.query(`SELECT id, slug FROM places`),
-      pool.query(
-        `SELECT p.id, p.summary, pf.slug AS from_slug, pt.slug AS to_slug
-           FROM commute_plans p
-           JOIN places pf ON pf.id = p.from_place
-           JOIN places pt ON pt.id = p.to_place
-          WHERE p.is_active
-          ORDER BY p.id`,
-      ),
-      pool.query(
-        `SELECT l.plan_id, l.seq, l.leg_kind, l.route_options, l.from_station, l.to_station,
-                l.board_candidates, l.alight_candidates, l.route_meta, l.border_label
-           FROM plan_legs l
-           JOIN commute_plans p ON p.id = l.plan_id
-          WHERE p.is_active
-          ORDER BY l.plan_id, l.seq`,
-      ),
-      pool.query(`SELECT code, color FROM routes WHERE color IS NOT NULL`),
-    ]);
+  const [
+    routeIdx,
+    segRes,
+    walkRes,
+    transferRes,
+    placeRes,
+    planRes,
+    legRes,
+    colorRes,
+    lrtApiRes,
+    lrtHolRes,
+    lrtTtRes,
+  ] = await Promise.all([
+    loadRouteIndex(pool),
+    pool.query(
+      `SELECT route_code, from_station, to_station, weekday, time_bucket, arrive_kind,
+              avg_minutes, p50_minutes, samples FROM segment_stats`,
+    ),
+    pool.query(`SELECT place_id, station_code, zone, minutes, samples FROM walk_times`),
+    // transfer_walks 在 v1.0.0 新建；表尚未建时容错为空（不阻塞推荐）
+    pool
+      .query(`SELECT from_station, to_station, minutes, samples, source FROM transfer_walks`)
+      .catch(() => ({ rows: [] as unknown[] })),
+    pool.query(`SELECT id, slug FROM places`),
+    pool.query(
+      `SELECT p.id, p.summary, pf.slug AS from_slug, pt.slug AS to_slug
+         FROM commute_plans p
+         JOIN places pf ON pf.id = p.from_place
+         JOIN places pt ON pt.id = p.to_place
+        WHERE p.is_active
+        ORDER BY p.id`,
+    ),
+    pool.query(
+      `SELECT l.plan_id, l.seq, l.leg_kind, l.route_options, l.from_station, l.to_station,
+              l.board_candidates, l.alight_candidates, l.route_meta, l.border_label
+         FROM plan_legs l
+         JOIN commute_plans p ON p.id = l.plan_id
+        WHERE p.is_active
+        ORDER BY l.plan_id, l.seq`,
+    ),
+    pool.query(`SELECT code, color FROM routes WHERE color IS NOT NULL`),
+    // ── 轻轨预载三件套（v1.0.0 性能修复；都是极小静态表）──
+    pool
+      .query(`SELECT db_code, api_id, name_tc FROM lrt_api_stations`)
+      .catch(() => ({ rows: [] as unknown[] })),
+    pool.query(`SELECT to_char(holiday_date, 'YYYY-MM-DD') AS d FROM lrt_holidays`),
+    pool.query(
+      `SELECT api_station, route_no, direction, day_type, first_min, last_min, minutes
+         FROM lrt_timetables`,
+    ),
+  ]);
 
   const placeIds: Record<string, number> = {};
   for (const r of placeRes.rows as { id: number; slug: string }[]) placeIds[r.slug] = r.id;
@@ -128,6 +155,13 @@ async function loadStaticsUncached(pool: Pool): Promise<RecStatic> {
     segIdx: buildSegmentIndex(segRes.rows as unknown as SegmentStatRow[]),
     walkIdx: buildWalkIndex(walkRes.rows as unknown as WalkTimeRow[]),
     transferIdx: buildTransferIndex(transferRes.rows as unknown as TransferWalkRow[]),
+    // 站序直接复用刚加载的 routeIdx.dirStops（不再单独查 route_stations）
+    lrtPre: buildLrtPreload({
+      apiRows: lrtApiRes.rows as { db_code: string; api_id: string; name_tc: string | null }[],
+      holidayRows: lrtHolRes.rows as { d: string }[],
+      ttRows: lrtTtRes.rows as never[],
+      dirStopsAll: routeIdx.dirStops,
+    }),
     placeIds,
     planRows,
     routeColors,

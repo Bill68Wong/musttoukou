@@ -14,16 +14,26 @@
  *   · 巴士桶：`(上车站, 下车点)` 聚合出该站该方向的全部线路 → 与 `queryEta` 的
  *     MAX_ROUTES=6 对齐，超过 6 条拆成多桶（同一物理站在同一时刻可一次问多线）。
  *   · 轻轨桶：`(上车站, 线路, 下车点)` 一个（时刻表按站查，不能跨站合并）。
- * 调度：**桶间串行 × 桶内 3 并发**（对 DSAT 温和、不突刺），单桶超时 **1.2s**。
- *   超时/失败的桶 → 其线路不进 `live` → `model.ts` 按「无实时车」把相应方案排除
- *   （记入剔除计数器）→ 卡片少几张，但**绝不显示假数据**。
+ *
+ * ★ v1.0.0 性能修复（线上实测倒逼）：**桶间由「串行」改为「并发」**。
+ *   原设计「桶间串行 × 每波 3 桶」在本机（澳门，距 DSAT 11ms）没问题；
+ *   但线上函数实际跑在 **Vercel Hobby 默认区域 iad1（美东）**，
+ *   `preferredRegion="sin1"` 在 Hobby 下**不生效** → DSAT 单次往返 ~250ms、主库 ~230ms。
+ *   实测：11 个桶分 4 波 → 首波 3 个各 ~920ms 串起来 = 3.07s，**远超 2 秒门槛**。
+ *   现在每波 12 桶（覆盖本项目全部方向的桶数）→ 总耗时 ≈ 最慢的单桶。
+ *   ⚠️ 流量仍温和：本项目桶多为「1 桶 1 线」→ 实测并发 DSAT 调用 ≈ 9 次，
+ *      与既有采集器并发 6 同量级；且**只在用户点开卡片时发生一次**。
+ *
+ * 单桶超时 **1.2s**：超时/失败的桶 → 其线路不进 `live` → `model.ts` 按「无实时车」
+ * 把相应方案排除（记入剔除计数器）→ 卡片少几张，但**绝不显示假数据**。
+ * ⚠️ 轻轨桶走**预载内存**（`LrtPreload`）→ 0 次 DB 往返 → 不再有超时风险。
  *
  * ⚠️ 本模块**不做结果缓存**：缓存统一放在 `service.ts`（key=`from|to|zone`，TTL 10s），
  *    避免两套 TTL 互相打架、保证「刷新」语义清晰（force 一次穿透到底）。
  */
 import type { Pool } from "pg";
 import { queryEta, type EtaBus } from "@/lib/dsat/eta";
-import { queryLrtDepartures } from "@/lib/lrt/next-departures";
+import { queryLrtDepartures, type LrtPreload } from "@/lib/lrt/next-departures";
 import { idxsOf } from "./enumerate";
 import { lookupHop, type SegmentIndex } from "./segment-lookup";
 import {
@@ -36,10 +46,18 @@ import {
   type RouteLive,
 } from "./types";
 
-/** 单桶超时（ms）：超时即视为该桶无数据（该桶线路的方案被排除，不阻塞整页） */
+/**
+ * 单桶超时（ms）：超时即视为该桶无数据（该桶线路的方案被排除，不阻塞整页）。
+ * ⚠️ 这是**兜底安全阀**，不是性能目标 —— 巴士桶正常在 450~950ms 内返回。
+ */
 const BUCKET_TIMEOUT_MS = 1_200;
-/** 桶并发（与 queryEta 内部 BATCH_CONCURRENCY 一致：对 DSAT 温和） */
-const BUCKET_CONCURRENCY = 3;
+
+/**
+ * 每波并发桶数。
+ * 12 已覆盖本项目全部方向的桶数（实测 6 个方向多为 9~13 桶）→ 实际上 = 「全部并发」，
+ * 而单个桶的 DSAT 调用数受 `queryEta` 内部 MAX_ROUTES=6 约束 → 峰值调用量可控。
+ */
+const BUCKET_CONCURRENCY = 12;
 /** 单桶最多线路数（与 src/lib/dsat/eta.ts 的 MAX_ROUTES 对齐） */
 const MAX_ROUTES_PER_BUCKET = 6;
 /** 轻轨取几班：跨「等车 + 换乘」后仍要能找到晚于到达时刻的一班 */
@@ -172,13 +190,14 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
  *
  * @param idx 站序索引（内存）—— 供逐跳展开与方向推导，消灭 per-route DB 往返
  * @param segIdx 段统计索引（内存）—— 供逐跳时长
+ * @param opts.lrtPre 轻轨预载（内存）—— 轻轨桶 0 次 DB 往返（见 `LrtPreload`）
  */
 export async function fetchLive(
   pool: Pool,
   seeds: OptionSeed[],
   idx: RouteIndex,
   segIdx: SegmentIndex,
-  opts: { todayWeekday: number; nowMs?: number },
+  opts: { todayWeekday: number; nowMs?: number; lrtPre: LrtPreload },
 ): Promise<LiveBatch> {
   const t0 = Date.now();
   const todayWeekday = opts.todayWeekday;
@@ -240,7 +259,7 @@ export async function fetchLive(
     live.set(route, lv);
   };
 
-  // ── ③ 桶间串行 × 桶内并发 ───────────────────────────────────
+  // ── ③ 桶间并发（每波 BUCKET_CONCURRENCY 个桶；本项目实测 = 全部并发）──
   for (let i = 0; i < buckets.length; i += BUCKET_CONCURRENCY) {
     const batch = buckets.slice(i, i + BUCKET_CONCURRENCY);
     const settled = await Promise.all(
@@ -280,6 +299,8 @@ export async function fetchLive(
                 dest: b.dest,
                 take: LRT_TAKE,
                 nowMs: opts.nowMs,
+                // ★ 0 次 DB 往返（内存预载）；缺它时线上会因跨洲往返而恒定超时
+                pre: opts.lrtPre,
               }),
               BUCKET_TIMEOUT_MS,
               key,

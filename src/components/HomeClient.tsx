@@ -1,13 +1,22 @@
 "use client";
 
+/**
+ * 首页（v1.0.0：方向卡直达自动选线结果）
+ *
+ * v0.13.x → v1.0.0 的入口变更：点方向卡不再进「路线选择页」，而是直接进
+ * `/recommend`，由服务端在 2 秒内算出**最快 5 条门到门路线**，首页卡片即最终产物。
+ *   · 选方向 → 看最快路线（默认路径）
+ *   · 开发者模式开启时，`/recommend` 页底出现「查看全部路線」→ 旧 `/routes`（保留未删、带门禁）
+ *
+ * 座区在这里选（`<ZonePicker/>`，全站唯一入口）：下车后走到 B/C、N/O、R 哪一座，
+ * 步行时间差得远，所以它是**必要输入**，随方向卡一起带进 `/recommend`。
+ */
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import DevModeToggle from "./DevModeToggle";
+import ZonePicker, { useZone } from "./ZonePicker";
 import { HOME_SLUG, PAIR_ORDER, PLACE_SHORT, dirLabel, type PlanRow, type ActiveSession } from "@/lib/home-plans-shared";
 
-/**
- * 首页（v0.13.x 改版：按方向对分行）
- * 每行一对方向卡：左 = 擎天匯 → 目的地（去程），右 = 目的地 → 擎天匯（回程）；
- * 点方向卡进入 /routes?from=&to= 独立路线选择页，不再把具体方案堆在首页。
- */
 export default function HomeClient({
   plans,
   active,
@@ -18,6 +27,7 @@ export default function HomeClient({
   dbError: string | null;
 }) {
   const router = useRouter();
+  const [zone, setZone] = useZone();
 
   if (dbError) {
     return (
@@ -47,9 +57,10 @@ export default function HomeClient({
   const dirCard = (from: string, to: string, count: number, delayMs: number) => (
     <button
       className="press-card anim-fade-up"
-      onClick={() => router.push(`/routes?from=${from}&to=${to}`)}
+      // v1.0.0：直达自动选线（座区随行；服务端只在涉及澳科大的方向使用它）
+      onClick={() => router.push(`/recommend?from=${from}&to=${to}&zone=${encodeURIComponent(zone)}`)}
       style={{ minHeight: 82, animationDelay: `${delayMs}ms` }}
-      aria-label={`${dirLabel(from, to)}，${count} 条路线`}
+      aria-label={`${dirLabel(from, to)}，${count} 条路线，查看最快路线`}
     >
       <span
         className="pc-inner"
@@ -77,17 +88,17 @@ export default function HomeClient({
           </span>
           {PLACE_SHORT[to] ?? to}
         </span>
-        <span className="t-label t-muted">{count} 条路线</span>
+        <span className="t-label t-muted">看最快路線 →</span>
       </span>
     </button>
   );
 
   return (
     <main className="page">
-      <header style={{ marginBottom: 20, padding: "4px 2px" }}>
+      <header style={{ marginBottom: 16, padding: "4px 2px" }}>
         <h1 className="h-headline">MUST登校</h1>
         <p className="t-label t-muted" style={{ marginTop: 2 }}>
-          选方向 → 选路线 → 开始计时
+          選方向 → 立刻看到最快路線
         </p>
       </header>
 
@@ -95,7 +106,7 @@ export default function HomeClient({
         <button
           className="press-card press-card--ok anim-pop"
           onClick={() => router.push(`/timer/${active.id}`)}
-          style={{ marginBottom: 20, minHeight: 68 }}
+          style={{ marginBottom: 16, minHeight: 68 }}
         >
           <span className="icon-badge">▶</span>
           <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
@@ -134,7 +145,12 @@ export default function HomeClient({
         ))}
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 28 }}>
+      {/* 座区：全站唯一选择入口（影响涉及澳科大的方向） */}
+      <div style={{ marginTop: 22 }}>
+        <ZonePicker value={zone} onChange={setZone} />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 22 }}>
         <button
           className="btn btn--outline btn--sm"
           onClick={() => router.push("/records")}
@@ -158,12 +174,26 @@ export default function HomeClient({
         ⏱ 自由记站（实测站间时长）
       </button>
 
-      <p
-        className="t-label t-muted t-center"
-        style={{ marginTop: "auto", paddingTop: 20, opacity: 0.8 }}
+      <div
+        className="t-label t-muted"
+        style={{
+          marginTop: "auto",
+          paddingTop: 20,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 6,
+          opacity: 0.9,
+        }}
       >
-        数据来源：澳门交通事务局
-      </p>
+        <DevModeToggle />
+        <p style={{ margin: 0 }}>
+          数据来源：澳门交通事务局 ·{" "}
+          <Link href="/about" style={{ color: "var(--primary)" }}>
+            關於本專案
+          </Link>
+        </p>
+      </div>
     </main>
   );
 }

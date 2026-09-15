@@ -41,6 +41,22 @@ CREATE TABLE IF NOT EXISTS walk_times (
     UNIQUE (place_id, station_code, zone)
 );
 
+-- 2.3b 站点↔站点换乘步行耗时（v1.0.0：自动选线的换乘方案计时用；由 db:transferwalks 重灌）
+--   样本 = timer_events 里「alight（下车）→ 紧随的 wait_start（到站开始等车）」的间隔
+--   → 天然扣掉等车段（wait_start→board 才是等车）。0.3~20 分钟窗口，与 walk_times 一致。
+--   聚合键按**主码归一**（无专门列，由派生层归一后写首个实测原始站台码）。
+CREATE TABLE IF NOT EXISTS transfer_walks (
+    id           SERIAL PRIMARY KEY,
+    from_station TEXT NOT NULL REFERENCES stations(code),  -- 下车站（实测原始站台码，如 T355/1）
+    to_station   TEXT NOT NULL REFERENCES stations(code),  -- 换乘上车站（实测原始站台码）
+    minutes      NUMERIC(5,1),              -- 实测均值；NULL = 尚未实测
+    samples      INT NOT NULL DEFAULT 0,    -- 实测样本数（1~2 次也写入，靠此列体现可信度）
+    source       TEXT NOT NULL DEFAULT 'timer',
+    measured_at  DATE,                      -- 最近一次样本日期
+    UNIQUE (from_station, to_station)
+);
+CREATE INDEX IF NOT EXISTS idx_transfer_walks_from ON transfer_walks(from_station);
+
 -- 2.4 线路
 CREATE TABLE IF NOT EXISTS routes (
     id          SERIAL PRIMARY KEY,

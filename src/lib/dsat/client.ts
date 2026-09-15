@@ -16,7 +16,7 @@ import { RISK } from "../../config/risk";
 
 const BASE = process.env.DSAT_BASE_URL || "https://bis.dsat.gov.mo:37812/macauweb";
 
-export type DsatPurpose = "timer_grab" | "poll" | "sync";
+export type DsatPurpose = "timer_grab" | "poll" | "sync" | "recommend";
 
 /** 有序参数 → 请求体（token 放请求头，不进 body；参数顺序不可变） */
 function buildBody(params: Record<string, string>): string {
@@ -25,24 +25,35 @@ function buildBody(params: Record<string, string>): string {
     .join("&");
 }
 
-/** 统一 POST：先过风控守卫，超时即失败，结果记账 */
+/**
+ * 统一 POST：先过风控守卫，超时即失败，结果记账
+ *
+ * ★ v1.0.0：`purpose='recommend'`（自动选线）两处特殊处理：
+ *   ① **跳过熔断判定**（仍记账）—— 推荐一次页面加载 8~16 次调用，
+ *      失败几次属正常波动，不能让它熔断计时器主流程（30 分钟静默）；
+ *   ② 用 `RISK.recommend.timeoutMs`（1.5s）而非计时路径的 5s。
+ */
 async function dsatPost<T>(
   path: string,
   params: Record<string, string>,
   purpose: DsatPurpose,
   routeCode?: string,
 ): Promise<DsatResult<T>> {
-  const verdict = await guardDsatCall();
-  if (!verdict.allowed) {
-    return {
-      ok: false,
-      error: `风控拦截（${verdict.reason}）：${verdict.detail}`,
-      latencyMs: 0,
-    };
+  const isRecommend = purpose === "recommend";
+  if (!isRecommend) {
+    const verdict = await guardDsatCall();
+    if (!verdict.allowed) {
+      return {
+        ok: false,
+        error: `风控拦截（${verdict.reason}）：${verdict.detail}`,
+        latencyMs: 0,
+      };
+    }
   }
 
   const body = buildBody(params);
   const token = genToken(body);
+  const timeoutMs = isRecommend ? RISK.recommend.timeoutMs : RISK.timerGrab.timeoutMs;
 
   const started = Date.now();
   let ok = false;
@@ -59,7 +70,7 @@ async function dsatPost<T>(
         "User-Agent": DSAT_UA, // ★ 合规自证：可识别身份 + 用途（见 ./ua.ts 与 docs/数据来源合规备忘-20260914.md）
       },
       body,
-      signal: AbortSignal.timeout(RISK.timerGrab.timeoutMs),
+      signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
     });
     httpStatus = res.status;
@@ -112,8 +123,7 @@ export function getBusPositions(
   routeName: string,
   dir: string,
   purpose: DsatPurpose = "timer_grab",
-): Promise<DsatResult<BusPositionsPayload>> {
-  return dsatPost<BusPositionsPayload>(
+): Promise<DsatResult<BusPositionsPayload>> {  return dsatPost<BusPositionsPayload>(
     "/routestation/bus",
     { action: "dy", routeName, dir, lang: "zh_tw", routeType: dir, device: "web" },
     purpose,

@@ -1,0 +1,351 @@
+/**
+ * 推荐实时层（src/lib/recommend/live.ts，v1.0.0）
+ *
+ * 职责单一：为一批候选路线方案，取回「首段/各段」的实时班次，转成 `RouteLive`（纯视图）。
+ *   · 巴士 → DSAT 实时报站（`queryEta`，注入站序索引 + purpose='recommend'）
+ *   · 轻轨 → 本库时刻表本地算（`queryLrtDepartures`，零 DSAT 依赖）
+ *
+ * ⚠️ **只有首段巴士需要实时**：`model.ts` 里第 2 段起的巴士等车按「班次间隔 ÷ 2」估
+ *    （`BUS_HEADWAY_FALLBACK_SEC`）—— 因为没有第二条 DSAT 数据源可查。
+ *    轻轨则**任何段**都要时刻表：第 2 段起用「预计到达换乘站时刻之后的第一班」。
+ *
+ * ────────────────────────── 分桶与并发（性能要点）──────────────────────────
+ * 桶 = 一次 DSAT 调用的粒度：
+ *   · 巴士桶：`(上车站, 下车点)` 聚合出该站该方向的全部线路 → 与 `queryEta` 的
+ *     MAX_ROUTES=6 对齐，超过 6 条拆成多桶（同一物理站在同一时刻可一次问多线）。
+ *   · 轻轨桶：`(上车站, 线路, 下车点)` 一个（时刻表按站查，不能跨站合并）。
+ * 调度：**桶间串行 × 桶内 3 并发**（对 DSAT 温和、不突刺），单桶超时 **1.2s**。
+ *   超时/失败的桶 → 其线路不进 `live` → `model.ts` 按「无实时车」把相应方案排除
+ *   （记入剔除计数器）→ 卡片少几张，但**绝不显示假数据**。
+ *
+ * ⚠️ 本模块**不做结果缓存**：缓存统一放在 `service.ts`（key=`from|to|zone`，TTL 10s），
+ *    避免两套 TTL 互相打架、保证「刷新」语义清晰（force 一次穿透到底）。
+ */
+import type { Pool } from "pg";
+import { queryEta, type EtaBus } from "@/lib/dsat/eta";
+import { queryLrtDepartures } from "@/lib/lrt/next-departures";
+import { idxsOf } from "./enumerate";
+import { lookupHop, type SegmentIndex } from "./segment-lookup";
+import {
+  HOP_HI_FACTOR,
+  type BusArrival,
+  type BusLive,
+  type LrtLive,
+  type OptionSeed,
+  type RouteIndex,
+  type RouteLive,
+} from "./types";
+
+/** 单桶超时（ms）：超时即视为该桶无数据（该桶线路的方案被排除，不阻塞整页） */
+const BUCKET_TIMEOUT_MS = 1_200;
+/** 桶并发（与 queryEta 内部 BATCH_CONCURRENCY 一致：对 DSAT 温和） */
+const BUCKET_CONCURRENCY = 3;
+/** 单桶最多线路数（与 src/lib/dsat/eta.ts 的 MAX_ROUTES 对齐） */
+const MAX_ROUTES_PER_BUCKET = 6;
+/** 轻轨取几班：跨「等车 + 换乘」后仍要能找到晚于到达时刻的一班 */
+const LRT_TAKE = 6;
+
+export interface LiveBucketStat {
+  kind: "bus" | "lrt";
+  key: string;
+  routes: string[];
+  ms: number;
+  /** true = 在超时内拿到结果（含「该线无车」这种正常空态） */
+  ok: boolean;
+  note?: string;
+}
+
+export interface LiveBatch {
+  /** route → 实时视图（model.ts 的 Key）。同线多站冲突时取首个并记 note */
+  live: Map<string, RouteLive>;
+  stats: {
+    buckets: number;
+    dsatCalls: number;
+    timedOut: number;
+    ms: number;
+    items: LiveBucketStat[];
+  };
+}
+
+interface BusBucket {
+  kind: "bus";
+  station: string;
+  dest: string;
+  routes: string[];
+}
+interface LrtBucket {
+  kind: "lrt";
+  station: string;
+  route: string;
+  dest: string;
+}
+type Bucket = BusBucket | LrtBucket;
+
+/** 该线路的兜底单跳时长（L5 该线均值 → L6 全局均值） */
+function fallbackHop(segIdx: SegmentIndex, route: string): number {
+  const per = segIdx.routeHop.get(route);
+  if (per !== undefined && per > 0) return per;
+  return segIdx.globalHop > 0 ? segIdx.globalHop : 3;
+}
+
+/**
+ * DSAT 一辆在途车 → 到用户站的「区间」（秒）。
+ *
+ * 逐跳展开（**禁「站数 × 常数」**：各跳站间距不同）：
+ *   优先用 `queryEta` 随结果返回的 `hops`（它算 stopsAway 时用的同一段区间）——
+ *   环线（只有 dir=0 一套站序、首尾同码）在本地重新展开极可能取到**另一圈**的跳，
+ *   实测把「还有 2 站」展开成 16.8 分钟（v1.0.0 踩到）。
+ *   `hops` 缺失时才退化为本地按站序索引展开，最后退化为「该线单跳均值 × 站数」。
+ *
+ * 下限（判定能否赶上用，往短了算）：
+ *   status='1'（停靠挂载站）= 车还在站上 → 含第 1 跳
+ *   status='0'（已离挂载站驶向下一站）= 第 1 跳已在路上 → 该跳算 0
+ */
+function toBusArrival(
+  idx: RouteIndex,
+  segIdx: SegmentIndex,
+  route: string,
+  dir: string,
+  e: EtaBus,
+  todayWeekday: number,
+): BusArrival {
+  const hopMin: number[] = [];
+  const pairs: [string, string][] =
+    e.hops && e.hops.length
+      ? e.hops
+      : (() => {
+          // 退化路径：本地按索引展开（与 queryEta 同口径，但环线可能取错圈）
+          const stops = idx.dirStops.get(`${route}|${dir}`) ?? [];
+          const bi = idxsOf(stops, e.atStation)[0] ?? -1;
+          if (bi < 0 || !stops.length) return [];
+          const n = stops.length;
+          const out: [string, string][] = [];
+          for (let k = 0; k < e.stopsAway; k++) {
+            const a = stops[(bi + k) % n];
+            const b = stops[(bi + k + 1) % n];
+            if (!a || !b) break;
+            out.push([a, b]);
+          }
+          return out;
+        })();
+
+  for (const [a, b] of pairs) hopMin.push(lookupHop(segIdx, route, a, b, todayWeekday).minutes);
+  // 逐跳完全缺失（站序对不上）→ 退化为「该线单跳均值 × 站数」
+  if (!hopMin.length && e.stopsAway > 0) {
+    const per = fallbackHop(segIdx, route);
+    for (let k = 0; k < e.stopsAway; k++) hopMin.push(per);
+  }
+
+  const sum = hopMin.reduce((a, b) => a + b, 0);
+  const first = hopMin[0] ?? 0;
+  const lo = e.status === "0" ? sum - first : sum;
+  const loSec = Math.max(0, Math.round(lo * 60));
+  return {
+    stopsAway: e.stopsAway,
+    atStation: e.atStation,
+    status: e.status,
+    loSec,
+    hiSec: Math.max(loSec, Math.round(sum * 60 * HOP_HI_FACTOR)),
+    hopMin,
+  };
+}
+
+/** 超时包装：到点即抛，由调用方按「该桶无数据」处理 */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`timeout:${label}`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
+/**
+ * 取回一批候选方案的实时班次。
+ *
+ * @param idx 站序索引（内存）—— 供逐跳展开与方向推导，消灭 per-route DB 往返
+ * @param segIdx 段统计索引（内存）—— 供逐跳时长
+ */
+export async function fetchLive(
+  pool: Pool,
+  seeds: OptionSeed[],
+  idx: RouteIndex,
+  segIdx: SegmentIndex,
+  opts: { todayWeekday: number; nowMs?: number },
+): Promise<LiveBatch> {
+  const t0 = Date.now();
+  const todayWeekday = opts.todayWeekday;
+  /** 诊断用：同线多站冲突（route 只能有一个 live 视图 → 取首个） */
+  const conflicts: string[] = [];
+
+  // ── ① 收集需求 ─────────────────────────────────────────────
+  const busNeed = new Map<string, { station: string; dest: string; routes: Set<string> }>();
+  const lrtNeed = new Map<string, LrtBucket>();
+  /** route → 该线被请求的站集合（冲突检测） */
+  const stationsOfRoute = new Map<string, Set<string>>();
+  const noteStation = (route: string, station: string) => {
+    const s = stationsOfRoute.get(route) ?? new Set<string>();
+    s.add(station);
+    stationsOfRoute.set(route, s);
+  };
+
+  for (const seed of seeds) {
+    for (let i = 0; i < seed.segments.length; i++) {
+      const seg = seed.segments[i];
+      if (seg.kind === "bus") {
+        if (i !== 0) continue; // 第 2 段起按班次间隔估，无需实时（见文件头）
+        const k = `${seg.board}|${seg.alight}`;
+        const e = busNeed.get(k) ?? { station: seg.board, dest: seg.alight, routes: new Set<string>() };
+        e.routes.add(seg.route);
+        busNeed.set(k, e);
+      } else {
+        const k = `${seg.board}|${seg.route}|${seg.alight}`;
+        if (!lrtNeed.has(k)) lrtNeed.set(k, { kind: "lrt", station: seg.board, route: seg.route, dest: seg.alight });
+      }
+      noteStation(seg.route, seg.board);
+    }
+  }
+
+  // ── ② 建桶（巴士按 6 条/桶拆分）─────────────────────────────
+  const buckets: Bucket[] = [];
+  for (const [, e] of busNeed) {
+    const routes = [...e.routes].sort();
+    for (let i = 0; i < routes.length; i += MAX_ROUTES_PER_BUCKET) {
+      buckets.push({ kind: "bus", station: e.station, dest: e.dest, routes: routes.slice(i, i + MAX_ROUTES_PER_BUCKET) });
+    }
+  }
+  for (const [, e] of lrtNeed) buckets.push(e);
+
+  const live = new Map<string, RouteLive>();
+  const items: LiveBucketStat[] = [];
+  let dsatCalls = 0;
+  let timedOut = 0;
+  const seenRoute = new Map<string, string>(); // route → 已写入的站（冲突检测）
+
+  const put = (route: string, station: string, lv: RouteLive) => {
+    const prev = seenRoute.get(route);
+    if (prev !== undefined && prev !== station) {
+      // route 是 model.ts 的取用键 → 同线多站只能保一个（同方向实测不会发生，留告警以备数据变化）
+      conflicts.push(`${route}: ${prev} 与 ${station}（取 ${prev}）`);
+      return;
+    }
+    seenRoute.set(route, station);
+    live.set(route, lv);
+  };
+
+  // ── ③ 桶间串行 × 桶内并发 ───────────────────────────────────
+  for (let i = 0; i < buckets.length; i += BUCKET_CONCURRENCY) {
+    const batch = buckets.slice(i, i + BUCKET_CONCURRENCY);
+    const settled = await Promise.all(
+      batch.map(async (b): Promise<LiveBucketStat> => {
+        const bt = Date.now();
+        const key =
+          b.kind === "bus" ? `${b.station}→${b.dest} [${b.routes.join(",")}]` : `${b.station}→${b.dest} ${b.route}`;
+        try {
+          if (b.kind === "bus") {
+            // ⚠️ purpose='recommend' → 不进熔断判定 + 独立 1.5s 超时（见 dsat/client.ts）
+            const res = await withTimeout(
+              queryBusBucket(idx, b),
+              BUCKET_TIMEOUT_MS,
+              key,
+            );
+            for (const r of res) {
+              const dir = r.dir ?? "0";
+              const toArr = (e: EtaBus | undefined) =>
+                e ? toBusArrival(idx, segIdx, r.route, dir, e, todayWeekday) : null;
+              const nearest = toArr(r.nearest);
+              const second = toArr(r.second);
+              const lv: BusLive = {
+                kind: "bus",
+                route: r.route,
+                empty: !nearest && !second,
+                nearest,
+                second,
+              };
+              put(r.route, b.station, lv);
+            }
+            dsatCalls += b.routes.length;
+          } else {
+            const res = await withTimeout(
+              queryLrtDepartures(pool, {
+                station: b.station,
+                route: b.route,
+                dest: b.dest,
+                take: LRT_TAKE,
+                nowMs: opts.nowMs,
+              }),
+              BUCKET_TIMEOUT_MS,
+              key,
+            );
+            const lv: LrtLive = res.ok
+              ? {
+                  kind: "lrt",
+                  route: b.route,
+                  state: res.state,
+                  departures: res.departures.map((d) => d.depMs),
+                  clocks: res.departures.map((d) => d.clock),
+                  directionName: res.directionName,
+                  lineCode: res.lineCode,
+                }
+              : {
+                  kind: "lrt",
+                  route: b.route,
+                  state: "no_data",
+                  departures: [],
+                  clocks: [],
+                  directionName: null,
+                  lineCode: b.route,
+                };
+            put(b.route, b.station, lv);
+          }
+          return { kind: b.kind, key, routes: b.kind === "bus" ? b.routes : [b.route], ms: Date.now() - bt, ok: true };
+        } catch (err) {
+          const msg = (err as Error).message ?? String(err);
+          if (msg.startsWith("timeout:")) timedOut++;
+          return {
+            kind: b.kind,
+            key,
+            routes: b.kind === "bus" ? b.routes : [b.route],
+            ms: Date.now() - bt,
+            ok: false,
+            note: msg.slice(0, 80),
+          };
+        }
+      }),
+    );
+    items.push(...settled);
+  }
+
+  if (conflicts.length) {
+    console.warn("[recommend/live] 同线路多上车站冲突：", conflicts.join(" · "));
+  }
+
+  return {
+    live,
+    stats: {
+      buckets: buckets.length,
+      dsatCalls,
+      timedOut,
+      ms: Date.now() - t0,
+      items,
+    },
+  };
+}
+
+/** 巴士桶查询：一次问该站在同一方向的 ≤6 条线（注入站序索引 → 0 次 per-route DB 往返） */
+async function queryBusBucket(
+  idx: RouteIndex,
+  b: BusBucket,
+): Promise<
+  { route: string; ok: boolean; dir?: string; nearest?: EtaBus; second?: EtaBus }[]
+> {
+  const res = await queryEta(b.station, b.routes, "0", b.dest, false, undefined, idx, "recommend");
+  return res.results as { route: string; ok: boolean; dir?: string; nearest?: EtaBus; second?: EtaBus }[];
+}

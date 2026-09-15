@@ -1,13 +1,22 @@
 import Link from "next/link";
+import DevGate from "@/components/DevGate";
 import RoutePlanList from "@/components/RoutePlanList";
 import { dirLabel, queryPlans, queryRouteColors, type PlanRow } from "@/lib/home-plans";
 
 export const dynamic = "force-dynamic";
 
 /**
- * 路线选择页（v0.13.x 新增）
- * 首页点方向卡进入：/routes?from=home&to=school —— 列出该方向下的所有乘车方案，
+ * 路线选择页（v0.13.x 新增；v1.0.0 改为**开发者专用**）
+ *
+ * 首页点方向卡进入：`/routes?from=home&to=school` —— 列出该方向下的所有乘车方案，
  * 点击任一方案直接启动计时。
+ *
+ * v1.0.0 起首页入口已改指 `/recommend`（自动选线大卡），本页**保留但加门禁**：
+ *   开发者模式关闭 → 立刻带同一个方向参数跳去 `/recommend`（同样的起终点，新的卡片），
+ *   避免「两个入口、两套界面」让普通用户困惑。
+ *
+ * ⚠️ 门禁在客户端（`localStorage` 服务端读不到），所以这里的 `queryPlans` 仍会执行一次 ——
+ *    代价是一次只读查询，换取「门禁逻辑不散落在服务端」。见 DevGate 注释。
  */
 export default async function RoutesPage({
   searchParams,
@@ -31,6 +40,11 @@ export default async function RoutesPage({
       dbError = (err as Error).message;
     }
   }
+
+  // 非开发者：带着同样的「出发地 → 目的地」去自动选线页（比丢回首页更贴近意图）
+  const fallbackHref = valid
+    ? `/recommend?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+    : "/";
 
   return (
     <main className="page">
@@ -56,7 +70,9 @@ export default async function RoutesPage({
         </p>
       </header>
 
-      {!dbError && valid && <RoutePlanList plans={plans} routeColors={routeColors} />}
+      <DevGate fallbackHref={fallbackHref}>
+        {!dbError && valid && <RoutePlanList plans={plans} routeColors={routeColors} />}
+      </DevGate>
     </main>
   );
 }

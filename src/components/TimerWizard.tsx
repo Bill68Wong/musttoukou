@@ -210,6 +210,18 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     load();
   }, [load]);
 
+  /**
+   * v1.0.0：会话若已带座区（自动选线大卡建会话时把首页选的座区一并上报）→
+   * chips 直接预选，且**不再询问**（省掉一次与打点无关的点击）。
+   * ⚠️ 只在本地还没选过时回填（`v ?? sessionZone`）—— 用户显式改过就不覆盖。
+   */
+  const sessionFromZone = data?.session.from_zone ?? null;
+  const sessionToZone = data?.session.to_zone ?? null;
+  useEffect(() => {
+    if (sessionFromZone) setFromZone((v) => v ?? sessionFromZone);
+    if (sessionToZone) setToZone((v) => v ?? sessionToZone);
+  }, [sessionFromZone, sessionToZone]);
+
   // 已结束 → 跳结束页
   useEffect(() => {
     if (data?.session.ended_at) router.replace(`/finish/${sessionId}`);
@@ -664,6 +676,16 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
     : null;
   const curLine = (curRoute && routeColors[curRoute]) || step?.lineColor || null;
 
+  /** v1.0.0：会话已带座区 → 只回显一行（不再询问，避免与首页已选重复） */
+  const ZoneLocked = ({ label }: { label: string }) => (
+    <div className="card" style={{ padding: "10px 14px" }}>
+      <p className="t-label">
+        {label}
+        <span className="t-muted"> · 已由自動選線帶入</span>
+      </p>
+    </div>
+  );
+
   /** 分区 chips（单选可取消；不选也不阻塞打点） */
   const renderZones = (question: string, value: string | null, onChange: (v: string | null) => void) => (
     <div className="card" style={{ padding: "12px 14px" }}>
@@ -1050,9 +1072,20 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
             <p className="t-label t-muted t-center">⚡ 点下方按钮后将自动记录当时车距</p>
           )}
 
-          {/* 学校分区：离校 → 从哪个座走 / 抵校 → 到了哪个座（需求 10） */}
-          {showFromZone && renderZones("从哪个座出发？", fromZone, setFromZone)}
-          {showToZone && renderZones("到了哪个座？", toZone, setToZone)}
+          {/* 学校分区：离校 → 从哪个座走 / 抵校 → 到了哪个座（需求 10）
+              v1.0.0：会话已带座区（自动选线大卡）→ 只回显，不再询问 */}
+          {showFromZone &&
+            (fromZone ? (
+              <ZoneLocked label={`從 ${fromZone} 座出發`} />
+            ) : (
+              renderZones("从哪个座出发？", fromZone, setFromZone)
+            ))}
+          {showToZone &&
+            (toZone ? (
+              <ZoneLocked label={`到了 ${toZone} 座`} />
+            ) : (
+              renderZones("到了哪个座？", toZone, setToZone)
+            ))}
 
           {/* 上车点选择（多上车点线路：到站前一步选定去哪站，如 51 系总站/沿途、轻轨科大/路氹東）。
               v0.17.1：仅「到站，开始等车」步显示；depart/board 不再出现（用户实测反馈收敛） */}

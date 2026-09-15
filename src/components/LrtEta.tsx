@@ -349,3 +349,75 @@ export default function LrtEta({
     </div>
   );
 }
+
+/**
+ * ★ v1.0.0 自动选线专用：**内联轻轨报时**（不自取数据、零网络）。
+ *
+ * 与上方 `LrtEta` 的差别只有一个 —— 数据来源：
+ *   · `LrtEta`：自己 fetch `/api/lrt/eta`（计时页用，可手动刷新）
+ *   · 本组件：直接消费**服务端算好并随卡片下发的** `departuresMs` / `clocks`
+ *     （`RideLegView.liveDepartures` / `liveClocks`）→ SSR 出卡后不再有任何请求；
+ *     客户端只做每秒本地读秒，滚动到下一班也是纯本地（同数据）。
+ *
+ * 口径与 `LrtEta` **完全一致**：复用同一套 `tickSecLine` / `pickNext` / 45s 到站留白 /
+ * 「还有 X 分 Y 秒」vs「下一班 X 分钟」的分线策略 —— 只是不显示卡片外壳与刷新按钮。
+ */
+export function LrtEtaInline({
+  lineCode,
+  departuresMs,
+  clocks,
+  state,
+  directionName,
+}: {
+  /** 本库线路码（决定整分 / 秒级读秒） */
+  lineCode: string;
+  departuresMs?: number[];
+  clocks?: string[];
+  state?: "running" | "before_first" | "after_last" | "no_data";
+  directionName?: string | null;
+}) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const dep: LrtDeparture[] = (departuresMs ?? []).map((ms, i) => ({
+    depMs: ms,
+    clock: clocks?.[i] ?? "",
+  }));
+
+  if (state && state !== "running") {
+    return (
+      <span className="rc-live rc-live--dim">
+        {state === "before_first" ? "首班前" : state === "after_last" ? "今日已收車" : "暫無時刻"}
+      </span>
+    );
+  }
+  if (!dep.length) return <span className="rc-live rc-live--dim">暫無時刻</span>;
+
+  const nowMs = Date.now();
+  const nxt = pickNext(dep, nowMs);
+  const sec = tickSecLine(lineCode);
+  // 到站留白期（上一班刚过点 ≤45s）：与站台灯一致，静默不显示
+  if (!nxt) {
+    return <span className="rc-live rc-live--dim">{arrivalGapActive(dep, nowMs) ? "" : "今日已收車"}</span>;
+  }
+  const remainMs = nxt.depMs - nowMs;
+  const totalSec = Math.max(0, Math.floor(remainMs / 1000));
+  return (
+    <span className="rc-live">
+      {sec
+        ? totalSec < 60
+          ? "現正到達"
+          : `還有 ${Math.floor(totalSec / 60)} 分 ${totalSec % 60} 秒`
+        : remainMs >= 60_000
+          ? `下一班 ${Math.floor(remainMs / 60_000)} 分鐘`
+          : "現正到達"}
+      <span className="rc-live__sub">
+        {directionName ? `往${directionName} · ` : ""}
+        {nxt.clock} 開出
+      </span>
+    </span>
+  );
+}

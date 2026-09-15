@@ -848,3 +848,425 @@ button:disabled {
 .anim-spin {
   animation: spin 800ms linear infinite;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   v1.0.0 自动选线 · 路线大卡片（.rc-*）
+   信息层级借 Google Maps，排版密度与触感借 Google/YouTube；
+   颜色**全部走上面的 M3 令牌** → 自动跟随 prefers-color-scheme，不固定白底。
+   ══════════════════════════════════════════════════════════════════ */
+
+.rc-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.rc-title {
+  margin: 6px 0 0;
+  font-size: 21px;
+  letter-spacing: 0.2px;
+}
+
+.rc-zone {
+  font-size: 14px;
+  color: var(--on-surface-var);
+  font-weight: 400;
+}
+
+.rc-subtitle {
+  margin: 4px 0 14px;
+}
+
+.rc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── 卡片本体 ── */
+.rc {
+  padding: 14px 15px 12px;
+  cursor: pointer;
+  transition:
+    transform var(--dur-release) var(--spring-release),
+    box-shadow var(--dur-med) var(--ease-em),
+    background-color var(--dur-fast) var(--ease-em);
+  /* 顶部一条极细的强调线，暗示「这是可点的路线条目」 */
+  position: relative;
+  overflow: hidden;
+}
+
+.rc:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.rc:active {
+  transform: scale(0.985);
+  transition-duration: var(--dur-press);
+}
+
+.rc:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* 开发者模式：左上角一个小圆点，提示「点卡会进计时」 */
+.rc--dev::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--ok);
+  opacity: 0.75;
+}
+
+.rc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.rc-head__main {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.rc-total {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.5px;
+  color: var(--on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-total__unit {
+  font-size: 14px;
+  color: var(--on-surface-var);
+  font-weight: 500;
+}
+
+/* ── 时间线 ── */
+.rc-line {
+  display: flex;
+  flex-direction: column;
+}
+
+.rc-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  position: relative;
+  padding: 5px 0;
+}
+
+/* 竖线：从圆点中心往下连到下一条（最后一行不画） */
+.rc-row::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 26px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--stroke);
+  border-radius: 1px;
+}
+
+.rc-row--last::before {
+  display: none;
+}
+
+.rc-dot {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-pill);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  background: var(--surface-dim);
+  color: var(--on-surface-var);
+  z-index: 1;
+}
+
+.rc-dot--ride {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  width: 12px;
+  height: 12px;
+  margin: 4px 4px 4px 4px;
+}
+
+.rc-dot--transfer {
+  background: transparent;
+  color: var(--outline);
+  font-size: 13px;
+}
+
+.rc-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--on-surface);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.rc-text b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 线路小标签（乘车行内联） */
+.rc-route {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.rc-sub {
+  font-size: 12.5px;
+  color: var(--on-surface-var);
+}
+
+/* 站对（board → alight）：整行换行，弱化显示 */
+.rc-pair {
+  flex-basis: 100%;
+  font-size: 12.5px;
+  color: var(--on-surface-var);
+  padding-left: 1px;
+}
+
+.rc-est {
+  font-size: 11px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--surface-dim);
+  color: var(--on-surface-var);
+}
+
+/* ── 实时报时（行车行内联 / 卡内） ── */
+.rc-live {
+  font-size: 13.5px;
+  color: var(--primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-live--dim {
+  color: var(--on-surface-var);
+  font-weight: 400;
+}
+
+.rc-live__sub {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--on-surface-var);
+}
+
+/* ── 赶车分档徽章 ── */
+.rc-tier {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+  background: var(--surface-dim);
+  color: var(--on-surface-var);
+}
+
+/* 1 冲刺（最紧）→ 5 爬（最松）：色阶从「警示」到「安心」 */
+.rc-tier--1 {
+  background: var(--error-container);
+  color: var(--on-error-container);
+}
+
+.rc-tier--2 {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.rc-tier--3 {
+  background: var(--ok-container);
+  color: var(--on-ok-container);
+}
+
+.rc-tier--4,
+.rc-tier--5 {
+  background: var(--ok-container);
+  color: var(--on-ok-container);
+  opacity: 0.85;
+}
+
+.rc-tier--miss {
+  background: var(--surface-dim);
+  color: var(--on-surface-var);
+}
+
+/* ── 底部 ── */
+.rc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--stroke);
+  font-size: 12.5px;
+  color: var(--on-surface-var);
+}
+
+.rc-hint {
+  flex-shrink: 0;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.rc-warn {
+  color: var(--error);
+}
+
+.rc-err {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+/* 非开发者模式展开的文字指引 */
+.rc-hints {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--on-surface);
+}
+
+/* ── 空状态 ── */
+.rc-empty {
+  padding: 20px 16px;
+}
+
+/* ── 页脚 ── */
+.rc-devbar {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.rc-footer {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--stroke);
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--on-surface-var);
+}
+
+.rc-footer p {
+  margin: 0 0 6px;
+}
+
+.rc-footer a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.rc-footer a:hover {
+  text-decoration: underline;
+}
+
+/* ── 骨架 ── */
+.rc--skeleton {
+  cursor: default;
+}
+
+.rc-sk {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface-dim) 25%, var(--surface) 50%, var(--surface-dim) 75%);
+  background-size: 200% 100%;
+  animation: rc-shimmer 1.4s ease-in-out infinite;
+}
+
+.rc-sk--big {
+  width: 62px;
+  height: 30px;
+}
+
+.rc-sk--chip {
+  width: 84px;
+  height: 18px;
+  border-radius: var(--r-pill);
+}
+
+.rc-sk--line {
+  height: 13px;
+  margin: 5px 0;
+  width: 100%;
+}
+
+.rc-sk--short {
+  width: 55%;
+}
+
+@keyframes rc-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rc-sk {
+    animation: none;
+  }
+  .rc:active {
+    transform: none;
+  }
+}
+
+/* 窄屏（<380px）压缩一点字号，保证一行放得下 */
+@media (max-width: 379px) {
+  .rc-total {
+    font-size: 26px;
+  }
+  .rc-text {
+    font-size: 13px;
+  }
+  .rc-tier {
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+}
+
+/* ── 开发者门禁（/routes 对非开发者关闭；src/components/DevGate.tsx） ── */
+.devgate {
+  min-height: 40vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 24px 16px;
+}
+

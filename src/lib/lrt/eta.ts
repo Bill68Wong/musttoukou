@@ -39,14 +39,19 @@ export function rowCandidateSec(
   return offs.filter((o) => o >= 1440).map((o) => (o - 1440) * 60);
 }
 
-/** 取严格晚于 nowSec 的最近 2 班（绝对秒，升序；同分重复自动折叠） */
-export function nextTwo(secs: number[], nowSec: number): number[] {
+/** 取严格晚于 nowSec 的最近 n 班（绝对秒，升序；同分重复自动折叠） */
+export function nextN(secs: number[], nowSec: number, n: number): number[] {
   const out: number[] = [];
   for (const s of [...secs].sort((a, b) => a - b)) {
     if (s > nowSec && (out.length === 0 || s > out[out.length - 1])) out.push(s);
-    if (out.length === 2) break;
+    if (out.length === n) break;
   }
   return out;
+}
+
+/** 取严格晚于 nowSec 的最近 2 班（绝对秒，升序；同分重复自动折叠） */
+export function nextTwo(secs: number[], nowSec: number): number[] {
+  return nextN(secs, nowSec, 2);
 }
 
 /** 日内秒（0..86399，容忍 ≥86400 自动折回）→ 'HH:MM' */

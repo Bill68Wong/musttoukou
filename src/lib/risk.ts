@@ -21,8 +21,13 @@ export interface GuardVerdict {
 export async function guardDsatCall(now: Date = new Date()): Promise<GuardVerdict> {
   try {
     // ① 熔断：最近 failThreshold 条是否全失败
+    // ★ v1.0.0：**排除 purpose='recommend'**（自动选线）—— 推荐一次页面加载会并发 8~16 次调用，
+    //   失败若干属正常波动；若计入，一次推荐就能撞开熔断，连累计时器的自动车距快照一起哑 30 分钟。
+    //   （推荐调用只记账、不参与判定，见 src/lib/dsat/client.ts#dsatPost）
     const recent = await getPool().query(
-      `SELECT ok, created_at FROM dsat_call_logs ORDER BY id DESC LIMIT $1`,
+      `SELECT ok, created_at FROM dsat_call_logs
+        WHERE purpose IS DISTINCT FROM 'recommend'
+        ORDER BY id DESC LIMIT $1`,
       [RISK.circuitBreaker.failThreshold],
     );
     const rows = recent.rows as { ok: boolean; created_at: string }[];
@@ -53,7 +58,7 @@ export async function guardDsatCall(now: Date = new Date()): Promise<GuardVerdic
 
 /** ③ 调用后记账（尽力写入，失败不影响主流程） */
 export async function logDsatCall(entry: {
-  purpose: "timer_grab" | "poll" | "sync";
+  purpose: "timer_grab" | "poll" | "sync" | "recommend";
   route_code?: string | null;
   ok: boolean;
   http_status?: number | null;

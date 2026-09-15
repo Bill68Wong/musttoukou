@@ -1,6 +1,8 @@
 import { getPool } from "@/lib/db";
 import { getBusPositions } from "@/lib/dsat/client";
 import { findStopIdx } from "@/lib/station-match";
+import { deriveDirInMemory } from "@/lib/recommend/enumerate";
+import type { RouteIndex } from "@/lib/recommend/types";
 
 /**
  * DSAT 实时车距查询核心（src/lib/dsat/eta.ts）
@@ -43,6 +45,15 @@ export interface EtaBus {
   atStationName: string;
   status: string | null;
   speed: string | number | null;
+  /**
+   * ★ v1.0.0：挂载站 → 用户站的**逐跳站码对**（`[[a,b],...]`，长度 = stopsAway）。
+   * 仅当调用方注入 `routeIndex` 时填充（旧路径不填，保持输出字节级不变）。
+   *
+   * 意义：自动选线要按逐跳查 segment_stats 算「还有几分钟」（禁「站数 × 常数」）。
+   * 这里由 queryEta **自己**给出它算 stopsAway 时用的那段区间 —— 环线（只有 dir=0 一套站序、
+   * 首尾同码）在别处重新展开极易取到**另一圈**的跳（实测把 2 站报成 16.8 分）→ 必须同源。
+   */
+  hops?: [string, string][];
 }
 
 export interface EtaRouteResult {
@@ -138,7 +149,12 @@ export async function deriveRouteDir(
   return dir;
 }
 
-/** 查询多线路实时车距（命中 5s 缓存直接返回；force=true 绕过缓存直查并回写） */
+/** 查询多线路实时车距（命中 5s 缓存直接返回；force=true 绕过缓存直查并回写）
+ *
+ * ★ v1.0.0：新增可选 `routeIndex` 注入（自动选线用）——传入时，方向推导 / 循环线判定 /
+ *   站序与站名全部走**内存索引**，把每条线路的 3 次 DB 往返压成 0 次（12 条线 ≈ 36 次往返 → 0）。
+ *   **不传 = 完全走旧路径**（计时主流程 / LiveEta 行为字节级不变）。
+ */
 export async function queryEta(
   station: string,
   routesIn: string[],
@@ -147,6 +163,10 @@ export async function queryEta(
   force = false,
   /** v0.20.9：合并卡各线上车台不同（M9/2、M9/3、M9/4）→ 按线路指定查询站台 */
   stationByRoute?: Record<string, string>,
+  /** ★ v1.0.0：站序内存索引（不传 = 旧路径，逐条查库） */
+  routeIndex?: RouteIndex,
+  /** ★ v1.0.0：DSAT 调用用途（推荐路径用 'recommend' → 不进熔断判定 + 独立超时） */
+  purpose: "timer_grab" | "poll" | "recommend" = "timer_grab",
 ): Promise<EtaResponse> {
   const routes = routesIn
     .map((r) => r.trim())
@@ -169,20 +189,31 @@ export async function queryEta(
       const st = stationByRoute?.[route] || station;
       // 方向推导：dest 提供时按 from→to 找方向；推导不出回退 dir 参数
       // （循环线单方向 + from>to 时也回退，因循环线绕圈无所谓先后）
+      // ★ v1.0.0：注入 routeIndex 时走内存版（同一套语义，省 1 次 DB 往返）
       const queryDir = dest
-        ? await deriveRouteDir(route, st, dest, dir)
+        ? routeIndex
+          ? deriveDirInMemory(routeIndex, route, st, dest, dir)
+          : await deriveRouteDir(route, st, dest, dir)
         : dir;
 
       // 循环线判定：该线路在 DB 只有 dir=0 一套站序（双方向线会有 dir=0/1 两套）
-      const dirsRes = await pool.query(
-        `SELECT DISTINCT rs.dsat_dir FROM route_stations rs
-         JOIN routes r ON rs.route_id = r.id WHERE r.code = $1 AND r.kind = 'bus'`,
-        [route],
-      );
-      const isLoop = dirsRes.rows.length <= 1;
+      const isLoop = routeIndex
+        ? (routeIndex.dirsOf.get(route)?.length ?? 0) <= 1
+        : (
+            await pool.query(
+              `SELECT DISTINCT rs.dsat_dir FROM route_stations rs
+               JOIN routes r ON rs.route_id = r.id WHERE r.code = $1 AND r.kind = 'bus'`,
+              [route],
+            )
+          ).rows.length <= 1;
 
       // 站序 + 站名（该方向）；v0.4.0 起巴士站名带站号前缀（"T358 偉龍/科大醫院"），轻轨不带
-      const loadStops = async (d: string) => {
+      const loadStops = async (d: string): Promise<{ seq: number; code: string; name: string }[]> => {
+        if (routeIndex) {
+          const codes = routeIndex.dirStops.get(`${route}|${d}`);
+          if (!codes) return [];
+          return codes.map((code, i) => ({ seq: i, code, name: routeIndex.nameOf.get(code) ?? code }));
+        }
         const res = await pool.query(
           `SELECT rs.seq, rs.station_code AS code,
                   (CASE WHEN st.kind = 'bus' THEN rs.station_code || ' ' || st.name_tc ELSE st.name_tc END) AS name
@@ -220,13 +251,29 @@ export async function queryEta(
       }
 
       // DSAT 实时车辆
-      const res = await getBusPositions(route, effDir, "poll");
+      // ★ v1.0.0：推荐路径用 purpose='recommend' → 不进熔断判定 + 独立 1.5s 超时
+      const res = await getBusPositions(route, effDir, purpose === "recommend" ? "recommend" : "poll");
       if (!res.ok || !res.data?.routeInfo) {
         return { route, ok: false, error: res.error ?? "DSAT 无数据" };
       }
 
       const N = stops.length;
       let busCount = 0;
+      /**
+       * 从挂载站起沿行驶方向走 steps 步的逐跳站码对。
+       * 与下方 `stopsAway` 的计算**同源**（同一套 stops/索引）→ 环线绕圈也不会取到另一圈。
+       * 仅注入 routeIndex 时随结果返回（v1.0.0 自动选线用来逐跳查 segment_stats）。
+       */
+      const hopPairsOf = (fromIdx: number, steps: number): [string, string][] => {
+        const out: [string, string][] = [];
+        for (let k = 0; k < steps; k++) {
+          const a = stops[(fromIdx + k) % N];
+          const b = stops[(fromIdx + k + 1) % N];
+          if (!a || !b) break;
+          out.push([a.code, b.code]); // 站码口径 = station_code（带站台号，如 T355/1）
+        }
+        return out;
+      };
       // v0.12.2：收集在途候选车，按站距排序取前二（最近车 + 再下一班车）。
       // 总站停靠（status=1 + 挂首/末站，非用户等车站）= 未发车，不在途，直接排除——
       // 不再收集展示（原 v0.6.0「另有 N 辆总站待发」信息不可靠，用户定稿删除）。
@@ -276,6 +323,7 @@ export async function queryEta(
                 atStationName: stops[0]?.name ?? st.staCode,
                 status: b.status ?? null,
                 speed: b.speed ?? null,
+                hops: routeIndex ? [] : undefined,
               });
             }
             continue;
@@ -308,6 +356,7 @@ export async function queryEta(
             atStationName: stops[busIdx]?.name ?? st.staCode,
             status: b.status ?? null,
             speed: b.speed ?? null,
+            hops: routeIndex ? hopPairsOf(busIdx, stopsAway) : undefined,
           });
         }
       }

@@ -146,8 +146,10 @@ function gapMinutes(
  *   方案摘要里的「到站後任選」「動態下車」在实际打点时会在不同站停靠，
  *   旧逻辑把这些真实样本全部丢弃（详见 mainCode 上方注释）。
  *   区间内 pause→resume 扣除；保留 0.3~20 分钟；聚合存均值 + samples。
- *   ★ v0.28.0：聚合键的站码按**主码归一**（C690/3 → C690、M9/2 → M9）——
- *   同台多线站台是同一物理位置、步行时长一致，必须合并成一行（与读端 gap-report 一致）。
+ *   ★ v0.28.0：聚合键的站码按**主码归一**（C690/3 → C690、M9/2 → M9）—— 同台多线站台是
+ *   同一物理位置、步行时长一致，样本需合并成一行（与读端 gap-report 的 mainCode 口径一致）；
+ *   但落库的 station_code 写该组**首个实测原始站台码**：walk_times.station_code 有 FK 指向
+ *   stations.code，而 stations 里只有 T363/2 这类带站台号的行、没有主码 T363。
  */
 export async function rebuildWalkTimes(pool: Pool, opts: { dry?: boolean } = {}): Promise<WalkRebuildResult> {
   const dry = !!opts.dry;
@@ -303,9 +305,10 @@ export async function rebuildWalkTimes(pool: Pool, opts: { dry?: boolean } = {})
         const ok = g.minutes >= MIN_MIN && g.minutes <= MAX_MIN;
         samples.push({
           placeId: sp.place,
-          // v0.28.0：落库前按主码归一 —— 同台多线站台（C690/1≡/2≡/3）是一项物理量，
-          // 必须合并成一行，否则读端（gap-report 已 mainCode 归一）会看到重复项。
-          station: mainCode(g.station),
+          // v0.28.0：这里保留**实测原始站台码**（walk_times.station_code 有 FK 指向
+          // stations.code，必须是真实存在的行；stations 里只有 T363/2 这类带站台号的行，
+          // 没有主码 T363）→ 同台合并交给下方聚合键的 mainCode 归一。
+          station: g.station,
           zone,
           minutes: ok ? g.minutes : NaN,
           date: macauDate(g.fromAt),
@@ -323,7 +326,7 @@ export async function rebuildWalkTimes(pool: Pool, opts: { dry?: boolean } = {})
         const ok = g.minutes >= MIN_MIN && g.minutes <= MAX_MIN;
         samples.push({
           placeId: ep.place,
-          station: mainCode(g.station),
+          station: g.station,
           zone,
           minutes: ok ? g.minutes : NaN,
           date: macauDate(g.fromAt),
@@ -340,10 +343,13 @@ export async function rebuildWalkTimes(pool: Pool, opts: { dry?: boolean } = {})
     .filter((x) => Number.isNaN(x.minutes))
     .map((d) => ({ sid: d.sid, kind: d.kind, station: d.station, reason: d.excluded ?? "" }));
 
-  // 聚合：键 = (placeId, station, zone)
+  // 聚合：键 = (placeId, 主码(station), zone)
+  // 🚨 v0.28.0：键里的站码必须 mainCode 归一 —— 同台多线站台（C690/1≡/2≡/3、M9/2≡/3≡/4）
+  // 是同一物理位置、步行时长一致，样本要合到一行；但落库的 station_code 仍写该组**首个
+  // 实测原始站台码**（FK 要求 stations 表存在该行，主码行在库里没有）。
   const agg = new Map<string, { s: WalkSample; vals: number[] }>();
   for (const x of valid) {
-    const key = `${x.placeId}|${x.station}|${x.zone ?? ""}`;
+    const key = `${x.placeId}|${mainCode(x.station)}|${x.zone ?? ""}`;
     if (!agg.has(key)) agg.set(key, { s: x, vals: [] });
     agg.get(key)!.vals.push(x.minutes);
   }
@@ -352,7 +358,7 @@ export async function rebuildWalkTimes(pool: Pool, opts: { dry?: boolean } = {})
   for (const { s, vals } of agg.values()) {
     const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
     const latest = valid
-      .filter((x) => x.placeId === s.placeId && x.station === s.station && x.zone === s.zone)
+      .filter((x) => x.placeId === s.placeId && mainCode(x.station) === mainCode(s.station) && x.zone === s.zone)
       .map((x) => x.date)
       .sort()
       .at(-1)!;

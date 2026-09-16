@@ -43,6 +43,7 @@ import {
   LRT_MIN_PER_HOP,
   TRANSFER_FALLBACK_MIN,
   WALK_FALLBACK_MIN,
+  type AltBusView,
   type BusArrival,
   type BusLive,
   type CatchTier,
@@ -243,12 +244,25 @@ function placeLabelOf(ctx: ModelContext, slug: string): string {
 }
 
 /**
+ * `modelOption` 的产物：卡 + 本班之外的候选班次。
+ *
+ * ★ v1.1.5：为什么要把「候选班次」带出来 —— 卡内要列出后续班次，但**筛选阈值**
+ *   （「坐这一班的总时长不差于第 5 张卡」）只有等 `service.ts` 排完序取完前 N 才知道，
+ *   所以这里只负责**算出**，筛选留给 service。
+ */
+export interface ModeledOption {
+  card: RecommendCard;
+  /** 本班之外的、能赶上的候选班次（含各自的门到门总时长与档位），按总时长升序 */
+  alts: AltBusView[];
+}
+
+/**
  * 把一条候选方案算成一张卡。
  * @returns null = 该方案被排除：
  *   · 无在途车 / 已收车 / 站序缺失 → 记入 `ctx.excluded`
  *   · ★ v1.0.6 **首段赶不上** → 记入 `ctx.missed`（两者分开记账，UI 文案才能说实话）
  */
-export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard | null {
+export function modelOption(seed: OptionSeed, ctx: ModelContext): ModeledOption | null {
   const nowMs = ctx.nowMs;
   const segs = seed.segments;
   const first = segs[0];
@@ -270,6 +284,13 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
   let liveText: string;
   let liveDepartures: number[] | undefined;
   let liveClocks: string[] | undefined;
+  /**
+   * ★ v1.1.5：首段巴士的**全部可赶候选**（本班 + 后续），供卡内列出后续班次用。
+   * 轻轨不填（其后续班次由 `liveDepartures` 表达）。
+   */
+  let busPool: BusArrival[] = [];
+  /** 本班（从 `busPool` 里挑出的那一辆）—— 用于在算「后续班次」时排除它自己 */
+  let chosenBus: BusArrival | null = null;
 
   if (first.kind === "bus") {
     const lv = ctx.live.get(first.route);
@@ -277,7 +298,9 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
       ctx.excluded.push(first.route);
       return null;
     }
+    busPool = [lv.nearest, lv.second, ...(lv.more ?? [])].filter((x): x is BusArrival => x !== null);
     const chosen = pickBoardable(lv, wOut.minutes);
+    chosenBus = chosen;
     const t0 = chosen ? pickCatchTier(wOut.minutes, chosen.loSec) : null;
     if (!chosen || t0 === null) {
       // 最近两辆在途车都赶不上（连冲刺也不行）→ 不显示这张卡。
@@ -453,19 +476,47 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
   hints.push(`到 ${labelOf(ctx, last.alight)} 下车，步行 ${wIn.minutes} 分到${placeLabelOf(ctx, seed.toSlug)}`);
   if (seed.crossBorder) hints.push("跨境行程：通关时间未计入总用时");
 
+  // ── ★ v1.1.5：本班之外的后续班次 ──
+  // 「上车之后到目的地」的固定耗时（车上 + 换乘 + 末段步行）—— 对本线任何一班都相同，
+  // 所以只需算一次：后续班次的到达时刻 = 现在 + 该班 loSec + restMs。
+  // ⚠️ 近似说明：多段路线里，第 2 段起的等车是按**本班**的到达时刻定的
+  //   （巴士第 2 段恒用「班距 ÷ 2」估 → 与本班无关，精确；轻轨第 2 段取「到达后第一班」
+  //    → 换成更晚的首段车时可能赶上更晚的一班 → 该 alt 的总时长会略偏乐观）。
+  //   本字段只用于「值不值得列出来」的展示筛选，不参与排序与主数字，故接受此近似。
+  const alts: AltBusView[] = [];
+  if (first.kind === "bus" && busPool.length) {
+    const restMs = cursor - boardAtMs; // cursor 此刻已是「最终到达时刻」
+    for (const b of busPool) {
+      if (b === chosenBus) continue; // 本班已在主行展示过
+      const t = pickCatchTier(wOut.minutes, b.loSec);
+      if (t === null) continue; // 赶不上的后车不列（列了也没用）
+      alts.push({
+        stopsAway: b.stopsAway,
+        waitText: rangeText(b.loSec, b.hiSec),
+        tier: t,
+        tierText: tierTextOf(t),
+        totalMin: Math.round(((b.loSec * 1000 + restMs) / 60_000) * 10) / 10,
+      });
+    }
+    alts.sort((a, b) => a.totalMin - b.totalMin);
+  }
+
   return {
-    planId: seed.planId,
-    summary: seed.summary,
-    fromSlug: seed.fromSlug,
-    toSlug: seed.toSlug,
-    totalMin: Math.round(totalMin * 10) / 10,
-    arriveAt: cursor,
-    walkOut: wOut,
-    rides,
-    transfers,
-    walkIn: wIn,
-    hints,
-    crossBorder: seed.crossBorder,
+    card: {
+      planId: seed.planId,
+      summary: seed.summary,
+      fromSlug: seed.fromSlug,
+      toSlug: seed.toSlug,
+      totalMin: Math.round(totalMin * 10) / 10,
+      arriveAt: cursor,
+      walkOut: wOut,
+      rides,
+      transfers,
+      walkIn: wIn,
+      hints,
+      crossBorder: seed.crossBorder,
+    },
+    alts,
   };
 }
 

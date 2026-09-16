@@ -152,6 +152,26 @@ export default function RecommendCard({
               />
             )}
 
+            {/* ★ v1.1.5：本班之外的后续班次 —— 只列「坐它的门到门总时长不差于第 5 张卡」的，
+                并在右侧标出赶这一班需要的档位。动机：本班要冲刺（档 1~2）时，后面
+                「正常走就能赶上」的车原本完全不显示 → 不想跑的用户以为这条线没戏。
+                ⚠️ 只有首段（`i === 0`），且列车由服务端算好（`service.ts` 排序后回填）。 */}
+            {i === 0 && (card.altBuses?.length ?? 0) > 0 && (
+              <Row
+                dot="wait"
+                main={
+                  <span className="rc-alts">
+                    {card.altBuses!.map((a, k) => (
+                      <span key={k} className="rc-alt">
+                        後面還有 <b>{a.stopsAway}</b> 站 · {a.waitText}
+                        <span className={`rc-tier rc-tier--${a.tier}`}>{a.tierText}</span>
+                      </span>
+                    ))}
+                  </span>
+                }
+              />
+            )}
+
             {/* 乘车 */}
             <Row
               dot="ride"

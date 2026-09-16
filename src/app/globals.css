@@ -1117,6 +1117,31 @@ button:disabled {
   opacity: 0.85;
 }
 
+/* ── ★ v1.1.5：本班之外的后续班次（卡内列出，不另开卡）── */
+.rc-alts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rc-alt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--on-surface-var);
+}
+
+/* 与主行的「等车」区分开：整块略微缩进 + 左侧细线，读起来像「本班的备选」 */
+.rc-alt::before {
+  content: "";
+  flex-shrink: 0;
+  width: 2px;
+  align-self: stretch;
+  border-radius: 1px;
+  background: var(--outline);
+}
+
 .rc-tier--miss {
   background: var(--surface-dim);
   color: var(--on-surface-var);

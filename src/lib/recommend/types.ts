@@ -299,6 +299,30 @@ export interface TransferView {
   sameField: boolean;
 }
 
+/**
+ * ★ v1.1.5：**本班之外的后续班次**（卡内列出，不另开卡）。
+ *
+ * 用户口径（2026-09-16）：
+ *   「如果第二辆还有很久到就没有意义 → 限制：坐这一班的话，**门到门总时长要不差于
+ *     五张卡片方案中的第五张**；并且不止列后面一班，应列出**所有**满足该条件的车；
+ *     车的右边标注**怎样能赶上的分档**。」
+ *
+ * 场景动机：本班要求冲刺（档 1~2）时，后面「正常走就能赶上」的车原本完全不展示
+ *   → 不想跑的用户以为这条线没戏，转去选慢得多的方案。
+ */
+export interface AltBusView {
+  /** 还有 N 站 */
+  stopsAway: number;
+  /** 「約 lo~hi 分」——服务端算好，与主行同口径（`rangeText`） */
+  waitText: string;
+  /** 赶这一班的档位（1~5，恒非 null —— 赶不上的已在服务端剔除） */
+  tier: CatchTier;
+  /** 档位文案（如「正常走能赶上」） */
+  tierText: string;
+  /** 若乘这一班，门到门总时长（分钟）——用于「不差于第五张卡」的筛选 */
+  totalMin: number;
+}
+
 export interface RecommendCard {
   planId: number;
   summary: string;
@@ -316,4 +340,10 @@ export interface RecommendCard {
   hints: string[];
   /** 是否跨境（标「不含通关」） */
   crossBorder: boolean;
+  /**
+   * ★ v1.1.5：本班之外的后续班次（已按「总时长 ≤ 第 5 张卡」筛过，按总时长升序）。
+   * ⚠️ 由 `service.ts` 在排序取前 N **之后**回填 —— 因为筛选阈值依赖最终入选的第 5 张卡；
+   *    `modelOption` 只能算出候选，无法知道阈值。
+   */
+  altBuses?: AltBusView[];
 }

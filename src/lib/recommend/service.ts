@@ -20,7 +20,7 @@
  */
 import type { Pool } from "pg";
 import { fetchLive, type LiveBatch } from "./live";
-import { modelOption, sortCards } from "./model";
+import { modelOption, sortCards, type ModeledOption } from "./model";
 import { contextFor, loadStatics, optionsFor, type RecStatic } from "./query";
 import type { RecommendCard, SchoolZone } from "./types";
 
@@ -128,13 +128,26 @@ export async function recommend(
   // ④ 逐条建模
   const tModel = Date.now();
   const ctx = contextFor(st, nowMs, zone, batch.live);
-  const cards: RecommendCard[] = [];
+  const modeled: ModeledOption[] = [];
   for (const seed of seeds) {
-    const card = modelOption(seed, ctx);
-    if (card) cards.push(card);
+    const m = modelOption(seed, ctx);
+    if (m) modeled.push(m);
   }
   // ⑤ 排序取前 N
-  const top = sortCards(cards).slice(0, limit);
+  const top = sortCards(modeled.map((m) => m.card)).slice(0, limit);
+
+  // ★ v1.1.5：回填「本班之外的后续班次」——阈值是**第 N 张卡的总时长**，
+  //   所以必须在排完序取完前 N 之后才能算（`modelOption` 无法预知阈值）。
+  //   用户口径：坐这一班后车的话，**门到门总时长要不差于第 N 张卡**才值得列出来。
+  if (top.length) {
+    const threshold = top[top.length - 1].totalMin;
+    const topSet = new Set(top);
+    for (const m of modeled) {
+      if (!topSet.has(m.card)) continue;
+      const keep = m.alts.filter((a) => a.totalMin <= threshold + 1e-9);
+      if (keep.length) m.card.altBuses = keep;
+    }
+  }
   const modelMs = Date.now() - tModel;
 
   const result: RecommendResult = {

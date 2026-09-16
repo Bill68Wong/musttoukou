@@ -59,7 +59,6 @@ export function reachableFrom(
   destCodes: Set<string>,
 ): ReachableRoute[] {
   const destMain = new Set([...destCodes].map(mainCodeOf));
-  const boardMain = mainCodeOf(boardCode);
   const out: ReachableRoute[] = [];
 
   for (const [route, dirs] of routeIdx.dirsOf) {

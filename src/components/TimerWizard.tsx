@@ -1133,7 +1133,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
                       setRouteChoices((prev) => ({ ...prev, [k]: effRoute === r ? null : r }));
                     }}
                   >
-                    {r.startsWith("LRT-") ? lrtLabelOf(r) : `${r} 路`}
+                    {/* ★ v1.1.7：线路码/线路名统一用**主题色标签**（用户 2026-09-16 口径）。
+                        原先这里是纯文字「26 路」，与同页 969（RouteStack）／977（route-chip）风格不一致。
+                        ⚠️ 用 <span> 包一层（而非把 RouteStack 直接放进 <button> 的文本位），避免影响 chip 的 flex 布局。 */}
+                    <RouteStack codes={[r]} colorOf={(c) => data.routeColors?.[c]} size="sm" />
                   </button>
                 ))}
               </div>
@@ -1504,7 +1507,15 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
 
       {/* v0.12.0：撤销确认弹窗（真实确认，不点撤销直接撤） */}
       {undoTarget && (
-        <div className="dialog-backdrop" onClick={() => !undoing && setUndoTarget(null)}>
+        // ★ v1.1.7：原先遮罩 onClick 直接关窗、而 .dialog-card 未阻断冒泡 →
+        //   点在卡片内部也会关掉弹窗，用户根本看不到「撤销中…」的反馈，以为没生效而重复点。
+        //   现将关窗条件限定为「点的确实是遮罩本身」。
+        <div
+          className="dialog-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !undoing) setUndoTarget(null);
+          }}
+        >
           <div className="dialog-card" role="dialog" aria-modal="true">
             <p className="h-title" style={{ margin: 0 }}>
               撤销「{EVENT_LABELS[undoTarget.event_type] ?? undoTarget.event_type}

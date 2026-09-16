@@ -190,7 +190,10 @@ export default function RecommendClient({
         </p>
         <p>
           資料來源：澳門特別行政區交通事務局實時報站 · 澳門輕軌時刻表 ·{" "}
-          <Link href="/about">關於本專案與資料說明</Link>
+          {/* ★ v1.1.7：纯文字链接热区仅 ~19px，走路点不中 → .link-hit 撑到 44px */}
+          <Link href="/about" className="link-hit">
+            關於本專案與資料說明
+          </Link>
         </p>
         <p>
           <button

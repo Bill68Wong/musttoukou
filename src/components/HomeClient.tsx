@@ -189,7 +189,8 @@ export default function HomeClient({
         <DevModeToggle />
         <p style={{ margin: 0 }}>
           数据来源：澳门交通事务局 ·{" "}
-          <Link href="/about" style={{ color: "var(--primary)" }}>
+          {/* ★ v1.1.7：纯文字链接原热区仅 ~20px 高，走路时基本点不中 → .link-hit 撑到 44px */}
+          <Link href="/about" className="link-hit" style={{ color: "var(--primary)" }}>
             關於本專案
           </Link>
         </p>

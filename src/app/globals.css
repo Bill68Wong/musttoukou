@@ -70,6 +70,27 @@
   --accent: var(--primary);
   --danger: var(--error);
   --border: var(--stroke);
+
+  /* ── ★ v1.1.7 视觉/交互地基修复：新增令牌（**只增不改** → 老页面零影响）── */
+  /* 字号：补 12→13 之间的断档（原先 12.5 / 13.5 是裸值散落在 rc-* 里） */
+  --fs-mini: 12.5px;
+  --fs-meta: 13.5px;
+  /* 卡片内距：把原先 8 种内联 padding 收敛为两档 */
+  --pad-card: 14px 16px;
+  --pad-card-tight: 12px 14px;
+  --gap-card: 12px;
+  --gap-row: 10px;
+  /* 行高：原先 1.5 / 1.6 / 1.7 / 1.85 四种混用 → 收敛为三档 */
+  --lh-tight: 1.5;
+  --lh-body: 1.6;
+  --lh-loose: 1.8;
+  /* 投影：深色下 rgba(0,0,0,.03) 完全不可见 → 抽令牌以便深色覆写 */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.03);
+  /* 亮色线路标签的细内描边（深色下让标签与卡片分离；沿用 .route-chip 已有解法） */
+  --hairline-inset: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  /* 赶车档位徽章：4/5 档原先与 3 档同色（都是 ok-container）→ 拆出两档 */
+  --tier-4: #cfe9d8;
+  --tier-5: #eef1f8;
 }
 
 /* ---------- 设计令牌 · 深色 ---------- */
@@ -100,6 +121,11 @@
 
     --state-hover: brightness(1.07);
     --state-active: brightness(1.16);
+
+    /* ★ v1.1.7：深色覆写 —— 投影在深色下必须加重才看得见；徽章 4/5 档取深色系 */
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --tier-4: #1e3a2a;
+    --tier-5: #23262d;
   }
 }
 
@@ -154,6 +180,7 @@ body {
 }
 
 /* ---------- 可点基元：状态层 + 按压反馈 ---------- */
+/* 基元 reset（仅原生 button 需要） */
 button {
   font-family: inherit;
   font-size: inherit;
@@ -161,6 +188,17 @@ button {
   border: none;
   background: none;
   cursor: pointer;
+}
+
+/* ★ v1.1.7：**交互基元下沉到类**。
+   原先 tap-highlight / touch-action / user-select / transition / :active / :focus-visible
+   全部挂在 `button` **元素选择器**上 → 而站内大量按钮其实是 `<a class="btn">`（Link）、
+   `<span class="btn">`（骨架占位）或 `<button class="btn--undo">`（无 .btn 类）
+   ⇒ 这些元素点了**毫无反馈**、长按会选中文字。现把它们挂到 `.btn` / `.btn--undo` 上，
+   同时保留 `button` 兜底（.chip / .press-card 等未加 .btn 的原生按钮仍走 button）。 */
+button,
+.btn,
+.btn--undo {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   user-select: none;
@@ -177,7 +215,8 @@ button {
     opacity var(--dur-press) var(--spring-press);
 }
 
-button:focus-visible {
+button:focus-visible,
+.btn:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
   border-radius: 4px;
@@ -189,7 +228,8 @@ button:hover:not(:disabled) {
 
 /* v0.13.x：按下态覆写 transition 为「快速按压曲线」（90ms 快沉，不弹），
    手指松开 :active 移除 → 自动切回默认「释放曲线」（240ms back-out 超调回弹） */
-button:active:not(:disabled) {
+button:active:not(:disabled),
+.btn:active {
   transition:
     transform var(--dur-press) var(--spring-press),
     filter var(--dur-press) var(--spring-press),
@@ -202,9 +242,36 @@ button:active:not(:disabled) {
   filter: var(--state-active);
 }
 
-button:disabled {
-  opacity: 0.55;
+/* ★ v1.1.7 防回归：基元下沉后必须补回两处「不该缩放」的元素 ——
+   · .chip 在 4 列网格里，缩放会串味（M3 的 chip 本来就不缩放）
+   · .btn--icon 是圆形图标键，缩放幅度要小一点才不晃 */
+.chip:active:not(:disabled) {
+  transform: none;
+}
+
+.btn--icon:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+/* ★ v1.1.7：禁用态。
+   原先 `opacity:.55` 叠加 `.btn--text` 的主色 → 实测对比度仅 **2.58:1**，几乎读不出。
+   改为「换色不降透明」：底走 surface-dim、字走 on-surface-var（≥4.5:1）。 */
+button:disabled,
+.btn:disabled,
+button[aria-disabled="true"] {
+  opacity: 1;
+  filter: none;
   cursor: default;
+  background: var(--surface-dim);
+  color: var(--on-surface-var);
+  box-shadow: none;
+  border-color: var(--stroke);
+}
+
+/* 纯文字/幽灵按钮禁用时不铺底（否则会出现一块莫名的灰底） */
+.btn--text:disabled,
+.btn--undo:disabled {
+  background: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -293,6 +360,15 @@ button:disabled {
   padding: 0 14px;
   font-size: var(--fs-label);
   border-radius: var(--r-pill);
+  /* ★ v1.1.7：视觉保持 36px（很多地方靠它撑紧凑排版），
+     但用伪元素把**命中区**撑到 44px —— 走路单手也点得中。 */
+  position: relative;
+}
+
+.btn--sm::after {
+  content: "";
+  position: absolute;
+  inset: -4px -6px; /* 36 → 44 高 */
 }
 
 .btn--lg {
@@ -311,11 +387,34 @@ button:disabled {
 }
 
 /* ---------- 卡片 / 列表项 ---------- */
+/* ---------- 卡片 ---------- */
+/* ★ v1.1.7 新增：纯文字链接的**命中区扩容器**。
+   页脚的「關於本專案」这类链接实际热区只有 ~19px 高，走路时基本点不中；
+   套上本类后视觉尺寸不变，命中区撑到 44px（负 margin 抵消占位，不影响排版）。 */
+.link-hit {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 8px;
+  margin: -12px -8px;
+  color: inherit;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--stroke);
   border-radius: var(--r-card);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  /* ★ v1.1.7：投影抽成令牌 —— 深色下 rgba(0,0,0,.03) 完全不可见，需覆写为更重 */
+  box-shadow: var(--shadow-1);
+}
+
+/* ★ v1.1.7：**新增** —— 原 FreeRideClient 一直在用 `.card--sel` 做「已选上车站」高亮，
+   但本文件从未定义过这个类 → 选中状态实际毫无视觉反馈（用户会重复点）。
+   现补上：主色容器底 + 主色描边 + 主色前景。 */
+.card--sel {
+  background: var(--primary-container);
+  border-color: var(--primary);
+  color: var(--on-primary-container);
 }
 
 .card--dim {
@@ -338,7 +437,7 @@ button:disabled {
   color: var(--on-surface);
   border: 1px solid var(--stroke);
   border-radius: var(--r-card);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-1);
   font-size: var(--fs-body);
   line-height: 1.4;
 }
@@ -411,6 +510,9 @@ button:disabled {
   font-weight: 600;
   letter-spacing: 0.3px;
   white-space: nowrap;
+  /* ★ v1.1.7：深色下暗色线路标签会与卡片背景融成一块污渍（实测 #276299 on #1c1e24 = 2.61:1）
+     → 加细内描边把它「拎」出来。 */
+  box-shadow: var(--hairline-inset);
 }
 
 /* 乘车界面顶部行程进度条（v0.12.2 需求 6：按项目等分 + 载具主题色渐变，替代 phase-band） */
@@ -477,14 +579,16 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   color: #fff;
-  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.2px;
   line-height: 1;
   /* 左右 padding 大于斜边宽度（8px）→ 文字始终完整落在实色区内，不被斜边切到 */
   padding: 4px 14px;
   white-space: nowrap;
+  /* ⚠️ v1.1.7：原文件此处先后声明了 12px 与 13px（后写生效）→ 删掉死声明，只留 13px */
   font-size: 13px;
+  /* ★ v1.1.7：深色下让标签与卡片分离（与 .route-chip 同一解法） */
+  box-shadow: var(--hairline-inset);
   /* 每块都是平行四边形（右倾）：左/右边界皆为「右上→左下」的斜边，
      相邻块负 margin 重叠 → 斜向留白缝隙（谷歌地图样式），不再是竖直缝 */
   clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
@@ -595,7 +699,11 @@ button:disabled {
 }
 
 /* ---------- 输入框（M3 filled field 简化） ---------- */
-.field {
+/* ★ v1.1.7：`.inp` 是 FreeRideClient 三个搜索框在用的类名，但**本文件从未定义过**
+   → 输入框裸奔（无底色、无描边、无 focus 态），且高只有 43px。
+   现与 `.field` 合并为同一套样式（保留两个类名以免动 JSX）。 */
+.field,
+.inp {
   width: 100%;
   min-height: 52px;
   padding: 14px 16px;
@@ -612,12 +720,15 @@ button:disabled {
     box-shadow var(--dur-fast) var(--ease-em);
 }
 
-.field::placeholder {
+.field::placeholder,
+.inp::placeholder {
   color: var(--on-surface-var);
-  opacity: 0.75;
+  /* ★ v1.1.7：原 opacity .75 实测只有 4.2:1（压线）→ 提到 .92 */
+  opacity: 0.92;
 }
 
-.field:focus {
+.field:focus,
+.inp:focus {
   background: var(--surface);
   border-color: var(--primary);
   box-shadow: 0 0 0 2px var(--primary-container);
@@ -690,7 +801,9 @@ button:disabled {
   }
 }
 .eta-big--flash {
-  animation: eta-pulse 1.2s ease-in-out infinite;
+  /* ★ v1.1.7：原先 `infinite` 无限脉动 —— 主读数（倒计时大字）会**持续闪动抢注意力**，
+     且长时间看容易累。改为「有限次数」：只闪 3 次就停住。 */
+  animation: eta-pulse 1.2s ease-in-out 3;
 }
 
 .t-center {
@@ -724,7 +837,7 @@ button:disabled {
   gap: 8px;
   font-size: var(--fs-label);
   color: var(--on-surface-var);
-  line-height: 1.7;
+  line-height: var(--lh-loose);
 }
 
 .timeline-dot {
@@ -749,6 +862,14 @@ button:disabled {
   border-radius: var(--r-pill);
   cursor: pointer;
   flex-shrink: 0;
+  /* ★ v1.1.7：实测热区仅 38×24px（走路几乎必然点偏）。
+     视觉尺寸不动，伪元素把命中区撑到 ~54×44（时间轴里它紧邻上一行，故用 position 锚定）。 */
+  position: relative;
+}
+.btn--undo::after {
+  content: "";
+  position: absolute;
+  inset: -10px -8px; /* 24 → 44 高 */
 }
 .btn--undo:active {
   background: var(--error-container);
@@ -901,9 +1022,19 @@ button:disabled {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
+/* ★ v1.1.7：修「5 张路线大卡按下去几乎没反应 + 按下还在弹」。
+   旧写法只改 `transition-duration`、且缩放仅 0.985、不改背景，而 `.rc` 是 `div[role=button]`
+   → 继承不到 `button` 基元的 `--state-active` 加深，所以整卡几乎没有按压反馈。
+   现按 `button:active` 的写法**整条重写 transition**（按压走 90ms 快沉，松手回落走释放曲线），
+   缩放提到与其它按钮一致的 .96，并补一层 `surface-dim` 底色加深。 */
 .rc:active {
-  transform: scale(0.985);
-  transition-duration: var(--dur-press);
+  transition:
+    transform var(--dur-press) var(--spring-press),
+    filter var(--dur-press) var(--spring-press),
+    background-color var(--dur-press) var(--spring-press),
+    box-shadow var(--dur-press) var(--spring-press);
+  transform: scale(0.96);
+  background: var(--surface-dim);
 }
 
 .rc:focus-visible {
@@ -929,6 +1060,9 @@ button:disabled {
   align-items: center;
   gap: 12px;
   margin-bottom: 10px;
+  /* ★ v1.1.7：三程换乘（巴士→轻轨→巴士）的标签总宽可超 480px，
+     而 `.rc` 是 overflow:hidden → 会被**静默裁掉**。允许换行。 */
+  flex-wrap: wrap;
 }
 
 .rc-head__main {
@@ -1042,14 +1176,14 @@ button:disabled {
 }
 
 .rc-sub {
-  font-size: 12.5px;
+  font-size: var(--fs-mini);
   color: var(--on-surface-var);
 }
 
 /* 站对（board → alight）：整行换行，弱化显示 */
 .rc-pair {
   flex-basis: 100%;
-  font-size: 12.5px;
+  font-size: var(--fs-mini);
   color: var(--on-surface-var);
   padding-left: 1px;
 }
@@ -1064,7 +1198,7 @@ button:disabled {
 
 /* ── 实时报时（行车行内联 / 卡内） ── */
 .rc-live {
-  font-size: 13.5px;
+  font-size: var(--fs-meta);
   color: var(--primary);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -1110,11 +1244,18 @@ button:disabled {
   color: var(--on-ok-container);
 }
 
-.rc-tier--4,
-.rc-tier--5 {
-  background: var(--ok-container);
+/* ★ v1.1.7：修「五档徽章实际只有三档可辨」。
+   原先 3/4/5 档共用 `--ok-container`（仅 4/5 多一个 opacity:.85）→ 肉眼同色，
+   用户读不出「还有多赶」。现拆出两档：3 档绿（能赶上）、4 档浅绿（从容）、5 档中性（随便你）。
+   ⚠️ 用不透明底色而非 opacity —— 半透明会与卡片底混色，深色下尤其脏。 */
+.rc-tier--4 {
+  background: var(--tier-4);
   color: var(--on-ok-container);
-  opacity: 0.85;
+}
+
+.rc-tier--5 {
+  background: var(--tier-5);
+  color: var(--on-surface-var);
 }
 
 /* ── ★ v1.1.5：本班之外的后续班次（卡内列出，不另开卡）── */
@@ -1156,7 +1297,7 @@ button:disabled {
   margin-top: 10px;
   padding-top: 9px;
   border-top: 1px solid var(--stroke);
-  font-size: 12.5px;
+  font-size: var(--fs-mini);
   color: var(--on-surface-var);
 }
 
@@ -1180,7 +1321,7 @@ button:disabled {
   margin: 10px 0 0;
   padding-left: 20px;
   font-size: 13px;
-  line-height: 1.85;
+  line-height: var(--lh-loose);
   color: var(--on-surface);
 }
 

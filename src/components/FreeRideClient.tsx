@@ -6,7 +6,7 @@
  * 与乘车计时完全隔离（free_rides / free_ride_events 表，不入 stats/records）。
  */
 import RouteStack from "./RouteStack";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FREE_CROWD as CROWD, freeLineLabel } from "@/lib/free-shared";
 import type { FreeStop, RideDetail, RideEventRow } from "@/lib/free-shared";
@@ -71,6 +71,9 @@ export default function FreeRideClient({ restoreRideId }: { restoreRideId: numbe
   const [routes, setRoutes] = useState<RouteOpt[] | null>(null);
   const [routeKw, setRouteKw] = useState("");
   const [stations, setStations] = useState<StationOpt[] | null>(null);
+  // ★ v1.1.7：站点列表的加载/失败态（原先失败被静默吞掉 → 白屏）
+  const [stationsLoading, setStationsLoading] = useState(false);
+  const [stationsErr, setStationsErr] = useState<string | null>(null);
   const [selRoute, setSelRoute] = useState<RouteOpt | null>(null); // 已选线路
   const [selDir, setSelDir] = useState<string | null>(null);
   const [selDirLabel, setSelDirLabel] = useState<string>("");
@@ -117,6 +120,27 @@ export default function FreeRideClient({ restoreRideId }: { restoreRideId: numbe
     relSecs: (number | null)[]; // events 中每个「到站」相对上一「到站」的秒
   } | null>(null);
 
+  // ★ v1.1.7：站点列表加载抽成具名函数 —— 供「重試」按钮复用。
+  //   原先这里是 `.catch(() => {})` —— 请求失败被**静默吞掉**，
+  //   而选站列表既无加载态也无空态 → 用户看到一片空白，不知道是坏了还是没数据。
+  const loadStations = useCallback(async () => {
+    setStationsLoading(true);
+    setStationsErr(null);
+    try {
+      const d = (await (await fetch("/api/free/stations", { cache: "no-store" })).json()) as {
+        ok: boolean;
+        stations?: StationOpt[];
+        error?: string;
+      };
+      if (d.ok && d.stations) setStations(d.stations);
+      else setStationsErr(d.error ?? "站点列表加载失败");
+    } catch {
+      setStationsErr("站点列表加载失败（网络异常）");
+    } finally {
+      setStationsLoading(false);
+    }
+  }, []);
+
   // —— 首次加载选择数据 ——
   useEffect(() => {
     if (!routes) {
@@ -128,14 +152,7 @@ export default function FreeRideClient({ restoreRideId }: { restoreRideId: numbe
         })
         .catch(() => setError("选项加载失败"));
     }
-    if (!stations) {
-      fetch("/api/free/stations", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => {
-          if (d.ok) setStations(d.stations);
-        })
-        .catch(() => {});
-    }
+    if (!stations) void loadStations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -524,12 +541,18 @@ export default function FreeRideClient({ restoreRideId }: { restoreRideId: numbe
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ level }),
         })
-      ).json()) as { ok: boolean };
+      ).json()) as { ok: boolean; error?: string };
+      // ★ v1.1.7：原先只有 `if (d.ok)`、无 else、整函数无 catch →
+      //   网络失败或后端报错时按「确认」**毫无反应**，用户以为已记录、实际丢了。
       if (d.ok) {
         setRide((p) => (p ? { ...p, crowd_level: level } : p));
         setCrowdDraft(null);
         setCrowdEdit(false);
+      } else {
+        setError(d.error ?? "拥挤度保存失败，请重试");
       }
+    } catch {
+      setError("拥挤度保存失败（网络异常），请重试");
     } finally {
       setCrowdBusy(false);
     }
@@ -570,7 +593,28 @@ export default function FreeRideClient({ restoreRideId }: { restoreRideId: numbe
         </p>
       </header>
 
-      {error && <p className="t-error t-body" style={{ marginBottom: 10 }}>{error}</p>}
+      {/* ★ v1.1.7：错误横幅改成 **sticky**。
+          原先它是页顶一个普通块：而打点按钮在页面下方，用户滚下去按按钮后
+          失败提示出现在**看不见的页顶** → 以为已记录、实际丢了数据。
+          现吸附在视口顶部（z-index 高于内容），并加 role="alert" 让读屏立刻播报。 */}
+      {error && (
+        <p
+          className="t-error t-body"
+          role="alert"
+          style={{
+            position: "sticky",
+            top: 8,
+            zIndex: 5,
+            marginBottom: 10,
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: "var(--error-container)",
+            color: "var(--on-error-container)",
+          }}
+        >
+          {error}
+        </p>
+      )}
 
       {/* ==================== riding ==================== */}
       {stage === "riding" && ride && (
@@ -913,11 +957,11 @@ export default function FreeRideClient({ restoreRideId }: { restoreRideId: numbe
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <p className="t-body">
-                    {selRoute.code.startsWith("LRT-")
-                      ? freeLineLabel(selRoute.code)
-                      : `${selRoute.code} 路`}{" "}
-                    · {selDirLabel}
+                  {/* ★ v1.1.7：线路码/线路名统一用**主题色标签**（用户 2026-09-16：所有出现线路的地方都要是主题色标签）。
+                      原先这里是纯文字「26A 路 · 往蓮花」，与全站其它位置的 RouteStack 标签口径不一致。 */}
+                  <p className="t-body" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <RouteStack codes={[selRoute.code]} colorOf={() => selRoute.color ?? undefined} size="sm" />
+                    <span className="t-muted">{selDirLabel}</span>
                   </p>
                   <input
                     className="inp"
@@ -926,14 +970,18 @@ export default function FreeRideClient({ restoreRideId }: { restoreRideId: numbe
                     placeholder="搜索上车站（站名 / 站号）"
                     style={{ padding: "10px 12px", borderRadius: 10 }}
                   />
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 320, overflowY: "auto" }}>
                     {stops
                       .filter((s) => !stopKw || s.name.includes(stopKw.trim()) || s.code.includes(stopKw.trim().toUpperCase()))
                       .map((s) => (
                         <button
                           key={s.code}
                           className={`card${boardCode === s.code ? " card--sel" : ""}`}
-                          style={{ padding: "9px 12px", textAlign: "left" }}
+                          // ★ v1.1.7：原 padding 9/12 → 卡片高仅 41px、行距 6px；
+                          //   站点模式一次列 60~100 项，滚动中抬手极易选中**隔壁站**。
+                          //   现撑到 48px + 行距 10px（配合 `.card--sel` 新增的选中底色，
+                          //   选中状态也终于看得见了）。
+                          style={{ padding: "12px 14px", minHeight: 48, textAlign: "left" }}
                           onClick={() => setBoardCode(s.code)}
                         >
                           {s.name}
@@ -969,7 +1017,31 @@ export default function FreeRideClient({ restoreRideId }: { restoreRideId: numbe
                     placeholder="搜索站点（站名 / 站号，如 路环市区、C688）"
                     style={{ padding: "10px 12px", borderRadius: 10 }}
                   />
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 420, overflowY: "auto" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 420, overflowY: "auto" }}>
+                    {/* ★ v1.1.7：补「加载中 / 加载失败 / 无匹配」三态。
+                        原先 stations 为 null 时直接渲染空列表 → 用户看到**一片空白**，
+                        分不清是还在加载、坏了、还是搜不到。 */}
+                    {stationsLoading && !stations && (
+                      <p className="t-label t-muted t-center" style={{ padding: "20px 0" }}>
+                        正在載入站點列表…
+                      </p>
+                    )}
+                    {stationsErr && !stations && (
+                      <p className="t-error t-body t-center" role="alert" style={{ padding: "16px 0" }}>
+                        {stationsErr}
+                        <br />
+                        <button
+                          className="btn btn--outline btn--sm"
+                          style={{ marginTop: 10 }}
+                          onClick={() => {
+                            setStationsErr(null);
+                            void loadStations();
+                          }}
+                        >
+                          重試
+                        </button>
+                      </p>
+                    )}
                     {(stations ?? [])
                       .filter((s) => matchStation(s, stationKw))
                       .slice(0, stationKw ? 100 : 60)
@@ -977,7 +1049,8 @@ export default function FreeRideClient({ restoreRideId }: { restoreRideId: numbe
                         <button
                           key={s.code}
                           className="card"
-                          style={{ padding: "9px 12px", textAlign: "left", display: "flex", gap: 8, alignItems: "center" }}
+                          // ★ v1.1.7：与「按线路选」同一处理 —— 41px → 48px + 行距 10px，防滚动误选邻站
+                          style={{ padding: "12px 14px", minHeight: 48, textAlign: "left", display: "flex", gap: 8, alignItems: "center" }}
                           onClick={() => {
                             setSelStation(s);
                             setStationRoutes(null);
@@ -1021,9 +1094,9 @@ export default function FreeRideClient({ restoreRideId }: { restoreRideId: numbe
                         onClick={() => void pickFromStation(r, r.dirs[0] ?? "0")}
                       >
                         {kindBadge(r.kind)}
-                        <span className="t-body t-strong">
-                          {r.code.startsWith("LRT-") ? freeLineLabel(r.code) : `${r.code} 路`}
-                        </span>
+                        {/* ★ v1.1.7：单方向分支原先也是纯文字，而紧邻的多方向分支（下方）已用 RouteStack
+                            → 同一张卡两种样式，口径不一致。统一为主题色标签。 */}
+                        <RouteStack codes={[r.code]} colorOf={() => r.color ?? undefined} size="sm" />
                       </button>
                     ) : (
                       <div key={r.code} className="card" style={{ padding: "11px 13px", borderLeft: r.color ? `4px solid ${r.color}` : undefined }}>

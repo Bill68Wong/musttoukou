@@ -54,6 +54,15 @@ export interface EtaBus {
    * 首尾同码）在别处重新展开极易取到**另一圈**的跳（实测把 2 站报成 16.8 分）→ 必须同源。
    */
   hops?: [string, string][];
+  /**
+   * ★ v1.1.4：`true` = 车**已经过了**用户上车站（只是环线会绕一圈再回来，故按 `N + diff` 计站数）。
+   *
+   * 为什么要区分：推荐链路的候选池定义为「**还没到上车站的车**」（用户 2026-09-16 定）。
+   * 环线的「绕圈车」虽然理论上会回来，但往往要等一整圈（实测可达 40 分钟），
+   * 把它们算作可赶上的车会让「赶不上就整条剔除」这条规则**名存实亡**（环线永远有车）。
+   * ⇒ 推荐链路过滤掉 `passed`；计时/首页等旧调用方不读本字段，行为完全不变。
+   */
+  passed?: boolean;
 }
 
 export interface EtaRouteResult {
@@ -66,6 +75,12 @@ export interface EtaRouteResult {
   nearest?: EtaBus;
   /** v0.12.2：再下一班在途车（第二近；站数不突出显示，副行展示） */
   second?: EtaBus;
+  /**
+   * ★ v1.1.4：**追加字段** —— 第 3 辆起的全部在途车（升序，不截断）。
+   * 仅供推荐链路「候选池」使用；旧调用方不读它，行为不变。
+   * ⚠️ 条目里可能带 `passed: true`（见 `EtaBus.passed`）——推荐链路会把它过滤掉。
+   */
+  rest?: EtaBus[];
   busCount?: number;
   /** v0.13.x：等车站 = 本方向站序首站（总站/起点）——前端据此区分「暂未发车」文案 */
   headTerminal?: boolean;
@@ -342,6 +357,8 @@ export async function queryEta(
           }
           const diff = userIdx - busIdx; // >0 车在用户站后方；=0 挂用户站；<0 已过用户站
           let stopsAway: number;
+          /** ★ v1.1.4：是否「已过用户站」（环线按绕圈计）—— 推荐链路据此把它排除出候选池 */
+          let passed = false;
           if (diff > 0) {
             // 车停 busIdx（s1）或已离 busIdx 驶向 busIdx+1（s0）：到用户站还要停靠
             // busIdx+1..userIdx 共 diff 次 → 两者同值
@@ -351,6 +368,7 @@ export async function queryEta(
               stopsAway = 0; // 停靠用户站 = 已进站
             } else if (isLoop) {
               stopsAway = N; // 环线车刚离用户站：绕一圈才回，显示整环站数
+              passed = true;
             } else {
               continue; // 双方向线车刚离用户站：已过站不会再来，跳过
             }
@@ -358,12 +376,14 @@ export async function queryEta(
             // 车已过用户站：循环线绕一圈回来；双方向线跳过（不会再来）
             if (!isLoop) continue;
             stopsAway = N + diff; // 车停或已离 busIdx（均>userIdx）：绕回 userIdx 的停靠数恒 N+diff
+            passed = true;
           }
           if (stopsAway > N) stopsAway = N;
 
           inTransit.push({
             plate: b.busPlate ?? null,
             stopsAway,
+            ...(passed ? { passed: true } : {}),
             atStation: st.staCode,
             atStationName: stops[busIdx]?.name ?? st.staCode,
             status: b.status ?? null,
@@ -389,6 +409,12 @@ export async function queryEta(
         isLoop,
         nearest,
         second,
+        // ★ v1.1.4：**追加字段** —— 第 3 辆起的**全部**在途车（不截断），推荐链路由此组候选池。
+        //   旧调用方（计时 / 首页 LiveEta / eta-smooth）只读 nearest/second → 行为完全不变。
+        //   动机：只取前两辆时，两辆都赶不上就整条剔除；用户定「候选池 = 还没到上车站的所有车」
+        //   → 由 live.ts 过滤掉 `passed`（已过站、环线绕圈计的车），不再有人为上限。
+        //   ⚠️ 不额外发请求：原始响应本来就返回全部在途车（实测单线单方向最多 23 辆）。
+        rest: inTransit.slice(2),
         busCount,
         headTerminal: userIdx === 0,
       };

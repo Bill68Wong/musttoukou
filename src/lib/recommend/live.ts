@@ -287,14 +287,23 @@ export async function fetchLive(
               const dir = r.dir ?? "0";
               const toArr = (e: EtaBus | undefined) =>
                 e ? toBusArrival(idx, segIdx, r.route, dir, e, todayWeekday) : null;
-              const nearest = toArr(r.nearest);
-              const second = toArr(r.second);
+              // ★ v1.1.4：候选池 = 「**还没到用户上车站**」的全部在途车（用户 2026-09-16 定）。
+              //   · `passed`（已过站、环线按绕一圈计）→ **排除**：它们往往要等一整圈（可达 40 分钟），
+              //     留着会让「赶不上就整条剔除」名存实亡（环线永远有车）。
+              //   · **不设条数上限**：`eta.ts` 的 `rest` 给出第 3 辆起的全部。
+              //   · 池内顺序沿用 `eta.ts` 的升序（按站距）→ nearest/second/more 语义不变。
+              const pool = [r.nearest, r.second, ...(r.rest ?? [])].filter(
+                (e): e is EtaBus => !!e && !e.passed,
+              );
+              const arr = pool.map((e) => toArr(e)).filter((x): x is BusArrival => x !== null);
               const lv: BusLive = {
                 kind: "bus",
                 route: r.route,
-                empty: !nearest && !second,
-                nearest,
-                second,
+                // empty = 该方向**没有一辆还没到站的车**（不在运营时间 / 末班已过）→ 整条方案排除
+                empty: arr.length === 0,
+                nearest: arr[0] ?? null,
+                second: arr[1] ?? null,
+                more: arr.slice(2),
               };
               put(r.route, b.station, lv);
             }
@@ -373,8 +382,8 @@ async function queryBusBucket(
   idx: RouteIndex,
   b: BusBucket,
 ): Promise<
-  { route: string; ok: boolean; dir?: string; nearest?: EtaBus; second?: EtaBus }[]
+  { route: string; ok: boolean; dir?: string; nearest?: EtaBus; second?: EtaBus; rest?: EtaBus[] }[]
 > {
   const res = await queryEta(b.station, b.routes, "0", b.dest, false, undefined, idx, "recommend");
-  return res.results as { route: string; ok: boolean; dir?: string; nearest?: EtaBus; second?: EtaBus }[];
+  return res.results as { route: string; ok: boolean; dir?: string; nearest?: EtaBus; second?: EtaBus; rest?: EtaBus[] }[];
 }

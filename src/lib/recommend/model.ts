@@ -200,11 +200,16 @@ const labelOf = (ctx: ModelContext, code: string): string => ctx.nameOf.get(code
  *   → 旧行为会选中更晚的那辆（等更久，且档位偏保守）。
  *   ⚠️ 只改本模型内部，**不动 `eta.ts`**（那是计时/开发者模式共用的，改它会波及计时）。
  *
- * @returns null = 最近两辆在途车都赶不上 → 调用方**整条剔除**该方案（v1.0.6）
+ * ★ v1.1.4：候选从**两辆放宽到五辆**（`nearest` + `second` + `lv.more`，见 `types.ts#BusLive`）。
+ *   结论先行：这是**纯增益**——`service.ts` 按总用时升序取前 5，等待更久的路线只会排到后面
+ *   （填满空位或不显示），**不会挤掉更优的方案**。放宽只是把「前两辆都赶不上 → 整条剔除」
+ *   的路线救回来（改由第 3~5 辆兜底）。
+ *
+ * @returns null = 前五辆在途车都赶不上 → 调用方**整条剔除**该方案（v1.0.6）
  */
 function pickBoardable(lv: BusLive, walkMin: number): BusArrival | null {
   let best: BusArrival | null = null;
-  for (const cand of [lv.nearest, lv.second]) {
+  for (const cand of [lv.nearest, lv.second, ...(lv.more ?? [])]) {
     if (!cand) continue;
     if (pickCatchTier(walkMin, cand.loSec) === null) continue;
     if (!best || cand.loSec < best.loSec) best = cand;

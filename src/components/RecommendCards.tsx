@@ -20,12 +20,17 @@ export default function RecommendCards({
   cards,
   colors,
   zone,
+  fromSlug,
+  toSlug,
   excluded = [],
   missed = [],
 }: {
   cards: CardData[];
   colors: Record<string, string>;
   zone: SchoolZone | null;
+  /** ★ v1.1.8：卡片点击要跳详情页，需要带上起终点（详情页 URL 契约） */
+  fromSlug: string;
+  toSlug: string;
   /** 被排除的线路（无在途车 / 已收车）——不足目标张数 / 空状态时用于解释原因 */
   excluded?: string[];
   /** ★ v1.0.6：因「首段赶不上」被剔除的路线（与 excluded 分开，文案要说实话） */
@@ -66,7 +71,18 @@ export default function RecommendCards({
         </p>
       )}
       {cards.map((c, i) => (
-        <RecommendCard key={`${c.planId}-${c.rides.map((r) => `${r.route}${r.alight}`).join("_")}`} card={c} colors={colors} devMode={devMode} zone={zone} rank={i + 1} />
+        <RecommendCard
+          key={`${c.planId}-${c.rides.map((r) => `${r.route}${r.alight}`).join("_")}`}
+          card={c}
+          colors={colors}
+          devMode={devMode}
+          zone={zone}
+          rank={i + 1}
+          fromSlug={fromSlug}
+          toSlug={toSlug}
+          /* ★ v1.1.8：入场错峰（原先 5 张卡同时同速上浮，既没方向感也白花一次动画预算） */
+          delayMs={i * 40}
+        />
       ))}
     </div>
   );

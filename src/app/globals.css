@@ -1436,3 +1436,317 @@ button[aria-disabled="true"] {
   padding: 24px 16px;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   ★ v1.1.8：预测卡片详情页（/card）与精简版外卡片
+   用户口径：详情页承载全部信息；外卡片只留「决策坐哪条线」必需的。
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 外卡片新增：头部到达时刻 / 上车地点 / 后续班车逐行 ── */
+.rc-arrive {
+  margin-left: auto;
+  font-size: var(--fs-mini);
+  color: var(--on-surface-var);
+  white-space: nowrap;
+}
+
+.rc-arrive b {
+  color: var(--on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-board {
+  font-weight: 500;
+}
+
+/* 后续班车：**一班一行**、字号比本班小（用户口径） */
+.rc-altrows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-left: 29px; /* 与 .rc-text 左缘对齐（圆点 20 + gap 9） */
+}
+
+.rc-altrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--fs-mini);
+  color: var(--on-surface-var);
+  line-height: var(--lh-body);
+}
+
+.rc-altrow b {
+  color: var(--on-surface);
+}
+
+.rc-altrow__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* ── 详情页壳 ── */
+.rc-detail {
+  gap: 14px;
+}
+
+.rc-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rc-block__title {
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--on-surface-var);
+  margin: 0 2px 6px;
+}
+
+/* 座区兜底选择器（URL 缺 zone 时出现） */
+.rc-zonebar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+/* 实时降级提示 */
+.rc-warn-block {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--r-field);
+  background: var(--error-container);
+  color: var(--on-error-container);
+  font-size: var(--fs-label);
+}
+
+/* ── 折叠栏 ── */
+.rc-fold {
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-card);
+  padding: var(--pad-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+/* 本班：始终显示、字号更大 */
+.rc-fold__first {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.rc-fold__firstline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rc-fold__live {
+  font-size: var(--fs-title);
+  font-weight: 500;
+}
+
+.rc-fold__meta {
+  margin: 0;
+  font-size: var(--fs-label);
+  color: var(--on-surface-var);
+}
+
+/* 后续班次：始终显示、字号更小 */
+.rc-fold__alts {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--stroke);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 折叠头（该站台其他线路） */
+.rc-fold__head {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: var(--on-surface);
+  font-size: var(--fs-body);
+  text-align: left;
+}
+
+.rc-fold__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+/* 折叠栏一行 = 一条线路 */
+.rc-report {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 0;
+  border-top: 1px solid var(--stroke);
+  font-size: var(--fs-mini);
+}
+
+.rc-report__live {
+  flex: 1;
+  min-width: 0;
+  color: var(--on-surface-var);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rc-report__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.rc-report__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -6px -6px 0;
+  border-radius: var(--r-pill);
+  color: var(--primary);
+  font-size: 18px;
+  text-decoration: none;
+}
+
+/* ── 纵向站条 ── */
+.rc-strip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0 10px 26px;
+}
+
+/* 左侧线路主题色纵条 */
+.rc-strip__rail {
+  position: absolute;
+  left: 9px;
+  top: 12px;
+  bottom: 18px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--strip-color, var(--primary));
+}
+
+.rc-strip__node {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 14px;
+  line-height: var(--lh-body);
+}
+
+.rc-strip__node--end {
+  padding: 7px 0;
+}
+
+.rc-strip__dot {
+  position: absolute;
+  left: -21px;
+  top: 9px;
+  width: 9px;
+  height: 9px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  border: 2px solid var(--strip-color, var(--primary));
+}
+
+.rc-strip__dot--end {
+  width: 11px;
+  height: 11px;
+  left: -22px;
+  top: 9px;
+  background: var(--strip-color, var(--primary));
+}
+
+.rc-strip__label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rc-strip__hop {
+  font-size: var(--fs-mini);
+  color: var(--on-surface-var);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rc-strip__toggle {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 10px;
+  margin-left: -10px;
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  font-size: var(--fs-label);
+  text-align: left;
+}
+
+.rc-strip__toggle--collapse {
+  color: var(--on-surface-var);
+}
+
+.rc-strip__caret {
+  margin-left: 6px;
+  font-size: 10px;
+}
+
+/* 转车行：上一趟终点 + 换乘站台（巴士）/ 换乘步行时长（轻轨） */
+.rc-strip__transfer {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 0 4px -21px;
+  padding: 6px 10px;
+  border-radius: var(--r-field);
+  background: var(--surface-dim);
+  font-size: var(--fs-mini);
+  color: var(--on-surface-var);
+}
+
+/* 站条内联的小色块（比 .rc-route 更紧凑） */
+.rc-route--inline {
+  padding: 1px 8px;
+  font-size: var(--fs-mini);
+}
+
+/* ── 详情页骨架 ── */
+.cd-sk {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+

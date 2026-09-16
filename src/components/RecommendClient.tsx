@@ -167,6 +167,8 @@ export default function RecommendClient({
         cards={data.cards}
         colors={data.colors}
         zone={zone}
+        fromSlug={fromSlug}
+        toSlug={toSlug}
         excluded={data.excluded}
         missed={data.missed}
       />

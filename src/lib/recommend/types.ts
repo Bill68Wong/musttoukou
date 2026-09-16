@@ -347,3 +347,84 @@ export interface RecommendCard {
    */
   altBuses?: AltBusView[];
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ★ v1.1.8：预测卡片**详情页**的视图类型（用户 2026-09-16 口径）
+   · 站条 = 一趟一条；中间站默认收起；左侧线路主题色轨；中间站之间给模型预测行驶时间
+   · 折叠栏 = 该站台**剩余所有可达线路**的报站（每条旁可链接到各自详情页）
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** 站条上的一个节点 */
+export interface StripStop {
+  code: string;
+  /** 显示名（「C653 金峰南岸/金譽峰」；轻轨不带站号前缀） */
+  label: string;
+  /** 到下一站模型预测分钟（末站 = 0）；lrt 为表定逐跳值 */
+  minToNext: number;
+  /** 该跳的命中层级 1~6（≥3 = 估算/兜底 → UI 标「估算」）；末站 = 0 */
+  level: number;
+  /** 是否上车站 / 下车站（UI 默认展开这两端） */
+  role: "board" | "alight" | "mid";
+}
+
+/** 一段载具的纵向站条（**一趟一条**） */
+export interface SegmentStrip {
+  route: string;
+  kind: "bus" | "lrt";
+  board: string;
+  alight: string;
+  boardLabel: string;
+  alightLabel: string;
+  /** 上车站 → 下车站的有序节点（含两端） */
+  stops: StripStop[];
+  /** 车上时长（**与 `card.rides[i].minutes` 同源同值** —— 同一串 hops + 同一个 lookupHop） */
+  rideMin: number;
+  /** 该段之后的换乘（最后一段为 null）—— 用户口径：巴士标上一趟终点 + 换乘站台；轻轨写明换乘步行时长 */
+  transferAfter: TransferView | null;
+}
+
+/** 折叠栏里一行 = 该站台一条可达线路 */
+export interface ReachReport {
+  route: string;
+  kind: "bus" | "lrt";
+  boardLabel: string;
+  alightLabel: string;
+  /** 实时报站主文案（「還有 3 站 · 約 4~6 分」/「15:32 開出」） */
+  liveText: string;
+  /** 轻轨读秒用（与卡片首段同口径，只含「走到站台之后」的班次） */
+  liveDepartures?: number[];
+  liveClocks?: string[];
+  /** 该线在本站台的全部可行下车点 */
+  alightCandidates: string[];
+  /**
+   * 门到门总时长（分钟）。
+   * ⚠️ `null` = **该线不在任何在用方案表里**（没有 seed）→ 算不出总时长，
+   *    只展示报站、不参与「优于第 N 张卡」的筛选。例：C690/3 的 `N5`。
+   */
+  minutes: number | null;
+  tier: CatchTier | null;
+  tierText: string;
+  /** 该线自己的详情页地址（`/card?...`）；无法定位时为 null */
+  href: string | null;
+  /** false = 本轮没拿到实时数据（超时 / 收车 / 不在营运时段） */
+  live: boolean;
+}
+
+/** `/api/card` 的完整返回 */
+export interface CardDetailPayload {
+  fromSlug: string;
+  toSlug: string;
+  zone: SchoolZone | null;
+  /** 命中的那张卡（含 altBuses） */
+  card: RecommendCard;
+  colors: Record<string, string>;
+  /** 每段载具的站条（一趟一条） */
+  strips: SegmentStrip[];
+  /** 折叠栏：该站台剩余所有可达线路（含本卡自己，按 minutes 升序、null 排最后） */
+  reports: ReachReport[];
+  /** 筛选阈值 = 第 N 张卡的总时长（用户口径「速度優於五張卡片最慢方案」） */
+  thresholdMin: number;
+  generatedAt: number;
+  /** true = 折叠栏那一批实时数据整体超时/失败 → UI 应提示「實時報站暫不可用」 */
+  liveDegraded: boolean;
+}

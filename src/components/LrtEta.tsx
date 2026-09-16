@@ -377,6 +377,17 @@ export function LrtEtaInline({
   directionName?: string | null;
 }) {
   const [, tick] = useState(0);
+  /**
+   * ★ v1.0.6：挂载门控。
+   * 本组件在 render 期直接读 `Date.now()` —— 服务端渲染时读到的是**服务器时间**，
+   * 客户端接管时读到的是**手机时间**，两者差 1~2 秒 → 文本必然对不上（水合告警 + 闪字）。
+   * 挂载前统一渲染占位符，挂载后再交给每秒 tick 的真实读数。
+   * 这不影响「每秒重算」这条口径 —— 只是把**首帧**让给占位符。
+   */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(t);
@@ -395,6 +406,7 @@ export function LrtEtaInline({
     );
   }
   if (!dep.length) return <span className="rc-live rc-live--dim">暫無時刻</span>;
+  if (!mounted) return <span className="rc-live rc-live--dim">—</span>;
 
   const nowMs = Date.now();
   const nxt = pickNext(dep, nowMs);

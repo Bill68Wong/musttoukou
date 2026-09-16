@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
         cards: r.cards,
         colors: r.colors,
         excluded: r.excluded,
+        missed: r.missed,
         stats: r.stats,
       },
       // 结果本身有 10s 缓存，但**响应必须不缓存**（刷新语义由 force 控制）

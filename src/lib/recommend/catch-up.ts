@@ -6,8 +6,14 @@
  *  - 基准 3 = 正常走 = 实测步行样本均值（`walk_times`）。
  *
  * 判据：**不留额外安全余量** —— 保守性改由「报时取区间下限」实现（见 busArrivalWindow）。
+ *
+ * ⚠️ `waitSec` 的语义**只有一种**：从「现在」起，车辆还有多少秒到站。
+ *    · 巴士：直接传 `BusArrival.loSec`（区间下限，往短了算）✅
+ *    · 轻轨首段：必须传 `(depMs − nowMs) / 1000`；
+ *      ★ v1.0.6 修正：早期误传 `depMs − 你走到站台的时刻`（走完才剩的余量），
+ *        参照系错位 → 判据偏保守 → 实测把「正常走能赶上」误报成「赶不上」。
  */
-import { OVERHEAD_SEC, SPEED_RATIO, TIER_TEXT, TIER_MISS_TEXT, type CatchTier } from "./types";
+import { OVERHEAD_SEC, SPEED_RATIO, TIER_TEXT, type CatchTier } from "./types";
 
 /** 以某档速度走完给定基准时长，所需秒数 */
 export function requiredSec(baseMin: number, tier: CatchTier): number {
@@ -30,9 +36,9 @@ export function pickCatchTier(baseMin: number, waitSec: number): CatchTier | nul
   return null;
 }
 
-/** 档位文案（null → 「本班赶不上，等下一班」） */
-export function tierTextOf(tier: CatchTier | null): string {
-  return tier === null ? TIER_MISS_TEXT : TIER_TEXT[tier];
+/** 档位文案（★ v1.0.6：不再有 null 分支 —— 赶不上的路线已被整条剔除） */
+export function tierTextOf(tier: CatchTier): string {
+  return TIER_TEXT[tier];
 }
 
 /**

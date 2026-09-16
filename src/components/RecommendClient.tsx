@@ -19,9 +19,55 @@ import type { RecommendCard, SchoolZone } from "@/lib/recommend/types";
 interface Payload {
   cards: RecommendCard[];
   colors: Record<string, string>;
+  /** 被排除的线路（无在途车 / 已收车） */
   excluded: string[];
+  /** ★ v1.0.6：因「首段赶不上」被剔除的线路（与 excluded 分开，空状态文案要区分） */
+  missed: string[];
   generatedAt: number;
   count: number;
+}
+
+/**
+ * 方向标题：学校**在任一侧**都标出座区。
+ * ★ v1.0.6：旧版只在 `toSlug === "school"`（去学校）时标 —— 但座区对「从学校出发」的
+ *   出门步行**同样生效**（`walk_times` 是 (place, 站主码, zone) 合并键、不分出发/到达），
+ *   界面不标会让人以为回程没吃座区。
+ */
+function DirectionTitle({
+  fromSlug,
+  toSlug,
+  fromLabel,
+  toLabel,
+  zone,
+}: {
+  fromSlug: string;
+  toSlug: string;
+  fromLabel: string;
+  toLabel: string;
+  zone: SchoolZone | null;
+}) {
+  const badge = zone ? <span className="rc-zone">（{zone} 座）</span> : null;
+  if (zone && toSlug === "school") {
+    return (
+      <>
+        {fromLabel} → {toLabel}
+        {badge}
+      </>
+    );
+  }
+  if (zone && fromSlug === "school") {
+    return (
+      <>
+        {fromLabel}
+        {badge} → {toLabel}
+      </>
+    );
+  }
+  return (
+    <>
+      {fromLabel} → {toLabel}
+    </>
+  );
 }
 
 export default function RecommendClient({
@@ -56,6 +102,7 @@ export default function RecommendClient({
         cards?: RecommendCard[];
         colors?: Record<string, string>;
         excluded?: string[];
+        missed?: string[];
         stats?: unknown;
         error?: string;
       };
@@ -64,6 +111,7 @@ export default function RecommendClient({
         cards: body.cards,
         colors: body.colors ?? initial.colors, // 线路色来自静态层，通常不变
         excluded: body.excluded ?? [],
+        missed: body.missed ?? [],
         generatedAt: Date.now(),
         count: body.cards.length,
       });
@@ -101,8 +149,13 @@ export default function RecommendClient({
       </header>
 
       <h1 className="h-headline rc-title">
-        {fromLabel} → {toLabel}
-        {toSlug === "school" && zone ? <span className="rc-zone">（{zone} 座）</span> : null}
+        <DirectionTitle
+          fromSlug={fromSlug}
+          toSlug={toSlug}
+          fromLabel={fromLabel}
+          toLabel={toLabel}
+          zone={zone}
+        />
       </h1>
       <p className="t-label t-muted rc-subtitle">
         現在出發 · 最快 {data.count} 條 · 更新於 {hhmm}
@@ -110,7 +163,13 @@ export default function RecommendClient({
 
       {err && <p className="t-error rc-err">{err}</p>}
 
-      <RecommendCards cards={data.cards} colors={data.colors} zone={zone} excluded={data.excluded} />
+      <RecommendCards
+        cards={data.cards}
+        colors={data.colors}
+        zone={zone}
+        excluded={data.excluded}
+        missed={data.missed}
+      />
 
       {devMode && (
         <div className="rc-devbar">

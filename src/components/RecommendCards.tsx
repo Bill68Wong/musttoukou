@@ -21,14 +21,22 @@ export default function RecommendCards({
   colors,
   zone,
   excluded = [],
+  missed = [],
 }: {
   cards: CardData[];
   colors: Record<string, string>;
   zone: SchoolZone | null;
-  /** 被排除的线路（无在途车 / 已收车）——空状态时用于解释原因 */
+  /** 被排除的线路（无在途车 / 已收车）——不足目标张数 / 空状态时用于解释原因 */
   excluded?: string[];
+  /** ★ v1.0.6：因「首段赶不上」被剔除的路线（与 excluded 分开，文案要说实话） */
+  missed?: string[];
 }) {
   const devMode = useDevMode();
+
+  // 剔除原因（分两类：没车 vs 赶不上）—— 合并成一个数组只用于文案拼接
+  const reasons: string[] = [];
+  if (excluded.length > 0) reasons.push(`${excluded.length} 條線路無實時車輛`);
+  if (missed.length > 0) reasons.push(`${missed.length} 條路線趕不上首班車`);
 
   if (!cards.length) {
     return (
@@ -36,7 +44,7 @@ export default function RecommendCards({
         <p className="h-title">暫時沒有可用的班次</p>
         <p className="t-body t-muted" style={{ marginTop: 6, lineHeight: 1.7 }}>
           現在這個時段，通往該方向的線路大多已收班或暫時沒有在途車輛。
-          {excluded.length > 0 && <>（{excluded.length} 條線路無實時車輛）</>}
+          {reasons.length > 0 && <>（{reasons.join("・")}）</>}
         </p>
         <p className="t-label t-muted" style={{ marginTop: 8, lineHeight: 1.6 }}>
           建議：稍後再試，或改用其他交通方式。輕軌服務時間約 06:30–23:30。
@@ -48,14 +56,12 @@ export default function RecommendCards({
   return (
     <div className="rc-list">
       {/* ★ v1.0.2：不足目标张数时说明原因（用户 2026-09-16 拍板：真实几张就几张 + 明确提示，
-          不用估算卡凑满）。少的原因可能是「该时段已收班」或「暂未取到实时班次」，
-          因此文案把两种可能都写上，不假装是深夜。 */}
+          不用估算卡凑满）。★ v1.0.6：原因分两类——「没实时车」与「首班赶不上」，
+          后者已整条剔除而不是塞一张带估算等车的卡。 */}
       {cards.length < TARGET_CARDS && (
-        <p
-          className="t-label t-muted"
-          style={{ margin: "0 2px 8px", lineHeight: 1.6 }}
-        >
-          目前僅 {cards.length} 條路線可用 · 其餘路線此時段已收班或暫未取到實時班次
+        <p className="t-label t-muted" style={{ margin: "0 2px 8px", lineHeight: 1.6 }}>
+          目前僅 {cards.length} 條路線可用
+          {reasons.length > 0 && <>・{reasons.join("・")}</>}
           （列出均為實時結果，不含估算）
         </p>
       )}

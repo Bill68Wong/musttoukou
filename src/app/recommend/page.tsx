@@ -61,6 +61,7 @@ async function CardsSection({ from, to, zone }: { from: string; to: string; zone
         cards: r.cards,
         colors: r.colors,
         excluded: r.excluded,
+        missed: r.missed,
         generatedAt: r.generatedAt,
         count: r.cards.length,
       }}
@@ -70,6 +71,8 @@ async function CardsSection({ from, to, zone }: { from: string; to: string; zone
 
 /** 页壳骨架（Suspense fallback）：形状与真卡片一致，避免填入时跳动 */
 function RecommendSkeleton({ from, to, zone }: { from: string; to: string; zone: SchoolZone }) {
+  // 座区：学校在**任一侧**都标（与 RecommendClient 的标题口径一致）
+  const zoneBadge = <span className="rc-zone">（{zone} 座）</span>;
   return (
     <main className="page">
       <div className="rc-top">
@@ -77,8 +80,21 @@ function RecommendSkeleton({ from, to, zone }: { from: string; to: string; zone:
         <span className="btn btn--text btn--sm">↻ 刷新</span>
       </div>
       <h1 className="h-headline rc-title">
-        {labelOf(from)} → {labelOf(to)}
-        {to === "school" ? <span className="rc-zone">（{zone} 座）</span> : null}
+        {to === "school" ? (
+          <>
+            {labelOf(from)} → {labelOf(to)}
+            {zoneBadge}
+          </>
+        ) : from === "school" ? (
+          <>
+            {labelOf(from)}
+            {zoneBadge} → {labelOf(to)}
+          </>
+        ) : (
+          <>
+            {labelOf(from)} → {labelOf(to)}
+          </>
+        )}
       </h1>
       <p className="t-label t-muted rc-subtitle">正在計算最快路線…</p>
       <div className="rc-list">

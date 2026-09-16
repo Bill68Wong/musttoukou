@@ -1,5 +1,5 @@
 /**
- * 路线总耗时模型（src/lib/recommend/model.ts，v1.0.0）
+ * 路线总耗时模型（src/lib/recommend/model.ts，v1.0.6）
  *
  * 门到门链条（全部从「现在」串行推进）：
  *   T_total = walkOut(出发地→上车站)
@@ -13,7 +13,20 @@
  *   · `wait_2+`：**按「到达换乘站的时刻」取班次**（轻轨查时刻表本地算；巴士按间隔 ÷ 2 估）
  *     —— 不能用「现在最近的在途车」，否则换乘方案总耗时被系统性低估
  *   · `transfer`：同场（站码相同且非轻轨）= 0；轻轨站内换乘读 `transfer_walks`
- *   · 巴士查不到可达班次 → 退回 `second`（第二辆在途车，`queryEta` 本来就返回，零额外调用）
+ *
+ * ★ v1.0.6 三处修正（线上只读取证实测倒逼）：
+ *   ① **首段赶不上 → 整条剔除**（`ctx.missed`），不再退回「班距÷2」估算卡。
+ *      旧行为：巴士两辆在途车都赶不上 → 等车按 180s 估、卡面却写「还有 0 站 · 约 0 分」
+ *      + 徽章「本班赶不上」→ 自相矛盾且总用时偏小；轻轨更是**直接用赶不上的那班车**算总用时。
+ *   ② **第 2 段起的等车分钟真正回填**：旧代码在 push 本段后才去写 `rides[i + 1]`，
+ *      而那一刻下标 `i+1` 尚不存在 → 赋值恒为 no-op（`nx` 永远 undefined）→
+ *      第 2 段等车**计入了总用时却显示 0**，卡面加总对不上（线上实测缺 2~11 分钟）。
+ *      现在改为「先算出来、下一轮 push 时写进去」。
+ *   ③ **轻轨首段的赶车档判据参照修正**（详见 `catch-up.ts` 顶部注释）。
+ *
+ * ⚠️ zone（澳科大座区）判据是 `slug === "school"`，**与方向无关** ——
+ *    去程的 `walkIn` 与回程的 `walkOut` 都会吃到它（`walk_times` 本来就是
+ *    `(place, 站主码, zone)` 合并键、不分出发/到达）。
  */
 import { PLACE_SHORT } from "@/lib/home-plans-shared";
 import { hhmmOf } from "@/lib/lrt/eta";
@@ -27,7 +40,6 @@ import {
   type BusArrival,
   type BusLive,
   type CatchTier,
-  type LrtLive,
   type OptionSeed,
   type RecommendCard,
   type RideLegView,
@@ -154,19 +166,28 @@ export interface ModelContext {
   placeIds: Record<string, number>;
   /** 站码 → 显示名（巴士带站号前缀） */
   nameOf: Map<string, string>;
-  /** 澳科大座区（仅 school 侧生效） */
+  /** 澳科大座区（★ 只要**任一侧**是 school 就生效，与出发/到达方向无关） */
   zone: SchoolZone | null;
   /** route → 实时视图 */
   live: Map<string, RouteLive>;
-  /** 被排除的线路（无在途车 / 已收车）→ 静默剔除计数器 */
+  /** 被排除的线路（无在途车 / 已收车 / 站序缺失）→ 静默剔除计数器 */
   excluded: string[];
+  /**
+   * ★ v1.0.6：因「**首段赶不上**」被剔除的线路（与 `excluded` 分开记账）。
+   * 分开的理由：UI 要能区分「这条线现在没车」与「这班你赶不上」——
+   * 合成一个数组会让文案与诊断都失真。
+   */
+  missed: string[];
   /** 今天星期（0 = 周日 … 6 = 周六） */
   todayWeekday: number;
 }
 
 const labelOf = (ctx: ModelContext, code: string): string => ctx.nameOf.get(code) ?? code;
 
-/** 从实时视图里挑「能赶上的最早一班」（判据用**区间下限**，往短了算） */
+/**
+ * 从实时视图里挑「能赶上的最早一班」（判据用**区间下限**，往短了算）。
+ * @returns null = 最近两辆在途车都赶不上 → 调用方**整条剔除**该方案（v1.0.6）
+ */
 function pickBoardable(lv: BusLive, walkMin: number): BusArrival | null {
   for (const cand of [lv.nearest, lv.second]) {
     if (!cand) continue;
@@ -175,35 +196,13 @@ function pickBoardable(lv: BusLive, walkMin: number): BusArrival | null {
   return null;
 }
 
-/** 轻轨报站文案（口径与 `LrtEta` 一致：氹仔线整分 / 石排湾·横琴线秒级） */
-const tickSecLine = (code: string) =>
-  code.includes("石排") || code.includes("横琴") || code.includes("橫琴");
-
-function lrtDisplay(
-  route: string,
-  lv: LrtLive,
-  depMs: number,
-  nowMs: number,
-): { text: string; sub: string | null } {
-  const remainSec = Math.max(0, Math.floor((depMs - nowMs) / 1000));
-  const clock = hhmmOf(((depMs + 8 * 3_600_000) % 86_400_000) / 1000);
-  const dir = lv.directionName ? `往${lv.directionName} · ` : "";
-  if (tickSecLine(route)) {
-    return {
-      text: remainSec < 60 ? "现正到达" : `还有 ${Math.floor(remainSec / 60)} 分 ${remainSec % 60} 秒`,
-      sub: `${dir}${clock} 开出`,
-    };
-  }
-  return {
-    text: remainSec >= 60 ? `下一班 ${Math.floor(remainSec / 60)} 分钟` : "现正到达",
-    sub: `${dir}${clock} 开出`,
-  };
-}
-
 // ─────────────────────────── 主模型 ───────────────────────────
 
 function walkView(ctx: ModelContext, slug: string, station: string): WalkLegView {
   const pid = ctx.placeIds[slug];
+  // ⚠️ 判据只看「这个 place 是不是学校」，**不看它是起点还是终点** ——
+  //    `walk_times` 是 (place, 站主码, zone) 合并键、不分出发/到达口径，
+  //    所以「去学校」与「从学校出发」两侧都该吃同一个座区样本。
   const zone: SchoolZone | null = slug === "school" ? (ctx.zone ?? null) : null;
   const r = lookupWalk(ctx.walkIdx, pid ?? -1, station, zone);
   return {
@@ -216,9 +215,17 @@ function walkView(ctx: ModelContext, slug: string, station: string): WalkLegView
   };
 }
 
+/** place 展示名：学校侧带上座区（起点/终点都用它，保证两个方向都能看到座区） */
+function placeLabelOf(ctx: ModelContext, slug: string): string {
+  if (slug === "school" && ctx.zone) return `澳科大（${ctx.zone} 座）`;
+  return PLACE_SHORT[slug] ?? slug;
+}
+
 /**
  * 把一条候选方案算成一张卡。
- * @returns null = 该方案被排除（无在途车 / 已收车 / 站序缺失），并记入 `ctx.excluded`
+ * @returns null = 该方案被排除：
+ *   · 无在途车 / 已收车 / 站序缺失 → 记入 `ctx.excluded`
+ *   · ★ v1.0.6 **首段赶不上** → 记入 `ctx.missed`（两者分开记账，UI 文案才能说实话）
  */
 export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard | null {
   const nowMs = ctx.nowMs;
@@ -231,15 +238,15 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
 
   const rides: RideLegView[] = [];
   const transfers: TransferView[] = [];
-  /** 上一段的「下车时刻」（ms） */
+  /** 「到达上车站」的时刻（ms）—— 首段等车以它为基准 */
   let cursor = nowMs + walkOutMs;
 
   // ── 第 1 段：等车（DSAT 实时 / 轻轨时刻表）──
+  // ★ v1.0.6：首段赶不上 → **整条剔除**（不再退回估算）。
   let boardAtMs: number;
   let waitMin0: number;
-  let tier: CatchTier | null;
+  let tier: CatchTier;
   let liveText: string;
-  let liveSub: string | null = null;
   let liveDepartures: number[] | undefined;
   let liveClocks: string[] | undefined;
 
@@ -250,17 +257,17 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
       return null;
     }
     const chosen = pickBoardable(lv, wOut.minutes);
-    if (chosen) {
-      boardAtMs = nowMs + chosen.loSec * 1000;
-      tier = pickCatchTier(wOut.minutes, chosen.loSec);
-      liveText = `还有 ${chosen.stopsAway} 站 · ${rangeText(chosen.loSec, chosen.hiSec)}`;
-    } else {
-      // 本班都赶不上（连冲刺也不行）→ 等下一班：按班次间隔 ÷ 2 估
-      boardAtMs = cursor + (BUS_HEADWAY_FALLBACK_SEC / 2) * 1000;
-      tier = null;
-      const n = lv.nearest ?? lv.second;
-      liveText = n ? `还有 ${n.stopsAway} 站 · ${rangeText(n.loSec, n.hiSec)}` : "暂无实时班次";
+    const t0 = chosen ? pickCatchTier(wOut.minutes, chosen.loSec) : null;
+    if (!chosen || t0 === null) {
+      // 最近两辆在途车都赶不上（连冲刺也不行）→ 不显示这张卡。
+      // 旧行为是「按班距 ÷ 2 估一个等车值」，但卡面同时又写「还有 0 站 · 约 0 分」
+      // 与「本班赶不上」→ 三个数字互相打架，且总用时偏小会把它排到很前面。
+      ctx.missed.push(first.route);
+      return null;
     }
+    boardAtMs = nowMs + chosen.loSec * 1000;
+    tier = t0;
+    liveText = `还有 ${chosen.stopsAway} 站 · ${rangeText(chosen.loSec, chosen.hiSec)}`;
     waitMin0 = Math.max(0, (boardAtMs - cursor) / 60_000);
   } else {
     const lv = ctx.live.get(first.route);
@@ -275,10 +282,20 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
     }
     boardAtMs = depMs;
     waitMin0 = Math.max(0, (depMs - cursor) / 60_000);
-    tier = pickCatchTier(wOut.minutes, waitMin0 * 60);
-    const d = lrtDisplay(first.route, lv, depMs, cursor);
-    liveText = d.text;
-    liveSub = d.sub;
+    // ★ 判据必须取「**从现在起**车还有多久到站」（与巴士侧的 `chosen.loSec` 同语义）。
+    //   旧代码误传 `waitMin0 * 60`（= 你走完站台后才剩的余量）→ 参照系错位 →
+    //   档位系统性偏保守，实测把「正常走能赶上」误报成「本班赶不上」。
+    const t0 = pickCatchTier(wOut.minutes, (depMs - nowMs) / 1000);
+    if (t0 === null) {
+      // 连冲刺都赶不上这一班 → 整条剔除（旧行为是直接用这班车算总用时 → 必然低估）
+      ctx.missed.push(first.route);
+      return null;
+    }
+    tier = t0;
+    // ★ 首段倒计时**只由客户端**每秒重算（`<LrtEtaInline>` 消费 `liveDepartures`）：
+    //   服务端再下发一份冻结文案，同一行就会出现两个数字 —— 而且两者参照系不同
+    //   （冻结那份用 `cursor` = 你走到站台的时刻，客户端那份用「现在」）→ 会互相矛盾。
+    liveText = "";
     liveDepartures = lv.departures;
     liveClocks = lv.clocks;
   }
@@ -286,8 +303,18 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
   cursor = boardAtMs;
 
   // ── 逐段：行驶 + 换乘 + 下一段等车 ──
+  // ★ v1.0.6：等车分钟必须写进**它自己那一段**。
+  //   旧写法是 push 完本段后去改 `rides[i + 1]`，而那一刻下标 `i+1` 还不存在
+  //   （数组长度恰好是 `i + 1`，合法索引只到 `i`）→ `nx` 恒为 `undefined` → 整个
+  //   回填块是**静默死代码** → 第 2 段起等车计入总用时却显示 0，卡面加总对不上。
+  //   现在改成「**先算出来、下一轮 push 时直接写进去**」，顺序与旧版完全一致。
+  let waitNext = waitMin0;
+  let liveTextNext = liveText;
   for (let i = 0; i < segs.length; i++) {
     const seg = segs[i];
+    const waitMin = waitNext;
+    const legText = liveTextNext;
+
     const ride =
       seg.kind === "lrt"
         ? { minutes: seg.hops.length * LRT_MIN_PER_HOP, levels: [] as number[] }
@@ -304,9 +331,8 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
       minutes: Math.round(ride.minutes * 10) / 10,
       hops: seg.hops.length,
       levels: ride.levels,
-      waitMin: i === 0 ? Math.round(waitMin0 * 10) / 10 : 0,
-      liveText: i === 0 ? liveText : "",
-      liveSub: i === 0 ? liveSub : null,
+      waitMin: Math.round(waitMin * 10) / 10,
+      liveText: legText,
       liveDepartures: i === 0 ? liveDepartures : undefined,
       liveClocks: i === 0 ? liveClocks : undefined,
       tier: i === 0 ? tier : null,
@@ -339,10 +365,10 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
     }
 
     // ── 下一段等车：按「到达换乘站的时刻」取班次 ──
-    // ★ v1.0.0：等车分钟回填到**该段自己**的 waitMin。
-    //   否则换乘卡的时间分解会出现缺口：总用时含第 2 段等车，但该段 waitMin 恒 0 →
-    //   用户按「步行 + 车上 + 换乘」加总会对不上总数，以为算错（实测发现）。
-    const nx = rides[i + 1];
+    // ★ v1.0.6：结果只写进 `waitNext` / `liveTextNext`（局部变量），由**下一轮**
+    //   在 push 那一段时一并写入 —— 旧代码在这里直接改 `rides[i + 1]`，而下标 `i+1`
+    //   此刻还不存在 → 赋值静默失效 → 第 2 段等车「算了却看不到」。
+    //   ⚠️ `cursor` 的推进顺序与旧版完全一致，因此**总用时数值不变**，只是卡面显示补全。
     if (next.kind === "lrt") {
       const lv = ctx.live.get(next.route);
       if (!lv || lv.kind !== "lrt" || lv.state !== "running") {
@@ -354,21 +380,15 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
         ctx.excluded.push(next.route);
         return null;
       }
-      const wm = Math.max(0, (depMs - cursor) / 60_000);
+      waitNext = Math.max(0, (depMs - cursor) / 60_000);
       cursor = depMs;
-      if (nx) {
-        nx.waitMin = Math.round(wm * 10) / 10;
-        // 轻轨第 2 段拿到的是**真实班次时刻** → 文案与首段同口径（HH:MM 開出）
-        nx.liveText = `${hhmmOf(((depMs + 8 * 3_600_000) % 86_400_000) / 1000)} 開出`;
-      }
+      // 轻轨第 2 段拿到的是**真实班次时刻** → 文案用绝对时刻（就是你会坐的那一班）
+      liveTextNext = `${hhmmOf(((depMs + 8 * 3_600_000) % 86_400_000) / 1000)} 開出`;
     } else {
-      const wm = BUS_HEADWAY_FALLBACK_SEC / 2 / 60;
+      waitNext = BUS_HEADWAY_FALLBACK_SEC / 2 / 60;
       cursor += (BUS_HEADWAY_FALLBACK_SEC / 2) * 1000;
-      if (nx) {
-        nx.waitMin = Math.round(wm * 10) / 10;
-        // 巴士第 2 段没有第二路实时数据源 → 明说是估算（口径见 types.ts 常量注释）
-        nx.liveText = "按班次間隔估算";
-      }
+      // 巴士第 2 段没有第二路实时数据源 → 明说是估算（口径见 types.ts 常量注释）
+      liveTextNext = "按班次間隔估算";
     }
   }
 
@@ -380,8 +400,13 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
   const totalMin = Math.max(0, (cursor - nowMs) / 60_000);
 
   // ── 乘车/换乘提示（开发者模式关闭时点击卡片展开）──
+  // ★ v1.0.6：起点侧若是学校，指引里也写出发座区（否则「标题有座区、指引没有」会让人怀疑没生效）
   const hints: string[] = [];
-  hints.push(`在 ${labelOf(ctx, first.board)} 上车，乘 ${first.route}`);
+  hints.push(
+    seed.fromSlug === "school" && ctx.zone
+      ? `從澳科大（${ctx.zone} 座）步行出發，在 ${labelOf(ctx, first.board)} 上车，乘 ${first.route}`
+      : `在 ${labelOf(ctx, first.board)} 上车，乘 ${first.route}`,
+  );
   for (let i = 0; i + 1 < segs.length; i++) {
     const t = transfers[i];
     const next = segs[i + 1];
@@ -391,11 +416,7 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
         : `到 ${labelOf(ctx, segs[i].alight)} 下车，步行 ${t?.minutes ?? TRANSFER_FALLBACK_MIN} 分换乘 ${next.route}`,
     );
   }
-  hints.push(
-    `到 ${labelOf(ctx, last.alight)} 下车，步行 ${wIn.minutes} 分到${
-      seed.toSlug === "school" && ctx.zone ? `澳科大（${ctx.zone} 座）` : (PLACE_SHORT[seed.toSlug] ?? seed.toSlug)
-    }`,
-  );
+  hints.push(`到 ${labelOf(ctx, last.alight)} 下车，步行 ${wIn.minutes} 分到${placeLabelOf(ctx, seed.toSlug)}`);
   if (seed.crossBorder) hints.push("跨境行程：通关时间未计入总用时");
 
   return {

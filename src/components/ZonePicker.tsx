@@ -1,10 +1,14 @@
 "use client";
 
 /**
- * 座区选择（src/components/ZonePicker.tsx，v1.0.0）
+ * 座区选择（src/components/ZonePicker.tsx，v1.0.6）
  *
  * 澳科大按教学楼分三个座区（B/C、N/O、R）—— 下车后走到哪一座，步行时间完全不同，
  * 所以座区是**门到门时长的必要输入**，不是可选装饰。
+ *
+ * ★ v1.0.6：说明文字去掉「到達」二字。座区对**两个方向都生效**：
+ *   去学校 → 影响「下车后走到校舍」；从学校出发 → 影响「从校舍走到上车站」。
+ *   旧文案只写「到達澳科大哪一座？」，字面像只管去程，容易让人以为回程没用上座区。
  *
  * 设计：座区选择**只在首页**（v1.0.0 起），`/recommend` 只读 `?zone=` ——
  *   避免用户在两处看到同一个选择器，也不会在结果页切换时产生「结果与所选不一致」的困惑。
@@ -62,7 +66,7 @@ export default function ZonePicker({
   return (
     <div className="zone-picker">
       <p className="t-label t-muted" style={{ marginBottom: 6 }}>
-        {hint ?? "到達澳科大哪一座？（影響下車後步行時間）"}
+        {hint ?? "你在澳科大哪一座？（去程影響下車後步行、回程影響出門到站步行）"}
       </p>
       <div className="chip-row">
         {SCHOOL_ZONES.map((z) => (

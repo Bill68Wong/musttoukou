@@ -120,26 +120,26 @@ export default function RecommendCard({
 
         {card.rides.map((r, i) => (
           <div key={`${r.route}-${i}`}>
-            {/* 等车（含第 2 段起；巴士第 2 段为间隔估算，文案已注明） */}
-            {(r.waitMin > 0 || r.liveText) && (
+            {/* 等车（第 1 段 = 实时班次；第 2 段起：轻轨 = 绝对开出时刻，巴士 = 间隔估算） */}
+            {(r.waitMin > 0 || r.liveText || !!r.liveDepartures?.length) && (
               <Row
                 dot="wait"
                 main={
-                  <>
-                    {r.liveText || `等 ${r.waitMin} 分`}
-                    {r.kind === "lrt" && r.liveDepartures?.length ? (
-                      <>
-                        {" · "}
-                        <LrtEtaInline
-                          lineCode={r.route}
-                          departuresMs={r.liveDepartures}
-                          clocks={r.liveClocks}
-                          state="running"
-                          directionName={null}
-                        />
-                      </>
-                    ) : null}
-                  </>
+                  r.kind === "lrt" && r.liveDepartures?.length ? (
+                    /* ★ v1.0.6：轻轨首段的倒计时**只此一份**，由客户端每秒重算。
+                       旧版这里还并排一个服务端冻结的文案 → 同一行出现两个数字，
+                       而且两者参照系不同（冻结那份量的是「你走到站台后还要等多久」，
+                       这份量的是「车还有多久到站」）→ 甚至会出现「现正到达 + 赶不上」。 */
+                    <LrtEtaInline
+                      lineCode={r.route}
+                      departuresMs={r.liveDepartures}
+                      clocks={r.liveClocks}
+                      state="running"
+                      directionName={null}
+                    />
+                  ) : (
+                    <>{r.liveText || `等 ${r.waitMin} 分`}</>
+                  )
                 }
                 aside={i === 0 && r.tierText ? <TierBadge card={card} /> : null}
               />
@@ -224,16 +224,15 @@ export default function RecommendCard({
   );
 }
 
-/** 赶车分档徽章：5 档配色 + 连冲刺都赶不上时的「等下一班」 */
+/**
+ * 赶车分档徽章：5 档配色。
+ * ★ v1.0.6：**不再有「本班赶不上，等下一班」这一档** —— 首段赶不上的路线已被整条剔除
+ *   （见 `model.ts#modelOption`）。这里只可能在 5 档之间取值，兜底返回 null。
+ */
 function TierBadge({ card }: { card: CardData }) {
-  const tier = card.rides[0]?.tier ?? null;
-  const text = card.rides[0]?.tierText || "本班趕不上，等下一班";
-  return (
-    <span className={`rc-tier rc-tier--${tier ?? "miss"}`}>
-      {tier === null ? "🚏 " : ""}
-      {text}
-    </span>
-  );
+  const r0 = card.rides[0];
+  if (!r0 || r0.tier === null || !r0.tierText) return null;
+  return <span className={`rc-tier rc-tier--${r0.tier}`}>{r0.tierText}</span>;
 }
 
 /** 时间线一行：圆点 + 竖线 + 内容 */

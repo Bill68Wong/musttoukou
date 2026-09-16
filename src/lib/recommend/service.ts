@@ -57,8 +57,14 @@ export interface RecommendResult {
   cards: RecommendCard[];
   /** 线路码 → 主题色（静态层带出，省一次查询；刷新时可原样复用） */
   colors: Record<string, string>;
-  /** 被排除的线路（无在途车 / 已收车 / 站序缺失）→ 静默剔除计数器 */
+  /** 被排除的线路（**无在途车 / 已收车 / 站序缺失**）→ 静默剔除计数器 */
   excluded: string[];
+  /**
+   * ★ v1.0.6：因「**首段赶不上**」被剔除的线路。
+   * 与 `excluded` 分开：前者是「现在这条线没车」，后者是「车来了但你赶不上」——
+   * UI 文案要能分辨，诊断也要能分辨。
+   */
+  missed: string[];
   stats: RecommendStats;
   /** 结果生成时刻（ms） */
   generatedAt: number;
@@ -138,6 +144,7 @@ export async function recommend(
     cards: top,
     colors: st.routeColors,
     excluded: [...new Set(ctx.excluded)],
+    missed: [...new Set(ctx.missed)],
     stats: {
       candidates: seeds.length,
       staticMs,

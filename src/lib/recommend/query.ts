@@ -273,6 +273,7 @@ export function contextFor(
     zone,
     live,
     excluded: [],
+    missed: [],
     todayWeekday: macau.getUTCDay(),
   };
 }

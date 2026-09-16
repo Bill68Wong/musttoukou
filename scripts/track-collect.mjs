@@ -16,9 +16,24 @@
  *   · direction=0（21 条）：往返分开返回 → 必须查 dir=0 与 dir=1
  *   ⇒ 每轮请求数 = 113（不是 92，也不是 184）；5 秒间隔 → 22.6 次/秒
  *
+ * ── 位置采样（v1.1.0 · 2026-09-16 主人拍板）──────────────────────────
+ *   档位 = **报站维持 5s 不变，位置每 15s 采一次，全 92 条线（113 个方向）**。
+ *   为什么报站不降频：追踪式计时的**时间分辨率 = 采样间隔**，一动就伤核心数据。
+ *   为什么位置用 15s：**官网地图页自身就是 15 秒刷新一次**，再密也不会更「新鲜」。
+ *   为什么位置不参与降档判定：位置是**附加数据**，核心是「挂载站 + status」。
+ *     若某条线 routeCode 推导不出来→位置恒空→每 15s 一个失败，会**误触发降档拖垮核心采集**。
+ *     ⇒ 位置请求**独立计数**（locTotals），失败只记日志/meta，**不喂 health**；
+ *        同一 (线路,方向) 连续失败 `LOC_MAX_TRIES(3)` 次 → 本轮拉黑、不再浪费请求；
+ *        整体失败率 > `LOC_ABORT_RATE(20%)` → **自动关闭位置采样**（自保护）并落 meta。
+ *   落盘纪律：位置响应约 5~9 KB，其中**绝大部分是每帧重复的静态站表**
+ *     → 分片里**只落 `busInfoList`**；`stationInfoList` 去重后单独写 `<stamp>-stations.json`
+ *     （照单全收 30 分钟约 719 MB，去重后约 5~8 MB）。
+ *   ★ 站表顺带产出**永久资产**：`stationInfoList` 自带 站码 + 经纬度 + 站名 + 车道，
+ *     且顺序**就是线路行进顺序**（已对拍 51 路 20/20、26 路 76/76 与计划 seq 一致）。
+ *
  * ── 用法 ──
  *   --dry-plan                  # 只打印计划，不发请求
- *   node scripts/track-collect.mjs --selftest                  # 护栏自检（离线，0 请求）
+ *   node scripts/track-collect.mjs --selftest                  # 护栏 + 位置采样自检（离线，0 请求）
  *   node scripts/track-collect.mjs --minutes=2 --stage=3       # 2 分钟全速冒烟（真发请求）
  *   node scripts/track-collect.mjs --minutes=30                # 正式一轮（含渐变启动）
  *
@@ -35,11 +50,13 @@
  *   --plan=...          轮询计划缓存（缺失则按 direction 规则现推）
  *   --refresh-plan      强制重拉线路清单并全量复扫 dir（184 次请求）
  *   --label=xxx         文件名标签（默认按澳门时间戳）
+ *   --loc-interval=15   位置采样间隔（秒）；**0 = 关闭位置采样**（回到 v1.0.x 行为）
  *
  * ── 落盘 ──
  *   <out>/<stamp>-partNN.jsonl.gz   原始帧（每请求一行）
  *   <out>/<stamp>-meta.json         本次运行参数、档位时间线、健康度采样、总计
  *   <out>/<stamp>-run.log           人类可读运行日志
+ *   <out>/<stamp>-stations.json     位置采样顺带得到的**站点坐标资产**（去重后，永久有效）
  *
  * ── 安全机制（渐变启动 + 降级阶梯 + 恢复 + 硬熔断）──
  *   渐变：档0(8条)→档1(24)→档2(48)→档3(92)，每档须「失败率=0 且延迟稳定」才放行
@@ -112,6 +129,7 @@ const CFG = {
   dryPlan: has("dry-plan"),
   label: arg("label", ""),
   baseUrl: arg("base", "https://bis.dsat.gov.mo:37812/macauweb"),
+  locIntervalSec: Number(arg("loc-interval", "15")),
 };
 
 /** 采集优先级：真缺 54 段全在前 8 条 → 渐变期也先把最有价值的数据拿到手 */
@@ -122,6 +140,24 @@ const PRIORITY = [
 const A_GROUP_SIZE = 8;
 
 const STAGE_ROUTE_COUNT = [8, 24, 48, Number.POSITIVE_INFINITY];
+
+// ── 位置采样参数（v1.1.0）────────────────────────────────────────────
+/**
+ * routeCode 推导：**线路号右对齐补零到 5 位**。
+ * 10/10 实测相符（2026-09-16）：`26`→`00026` · `51`→`00051` · `51A`→`0051A` ·
+ * `MT1`→`00MT1` · `N6`→`000N6` · `25AX`→`025AX`。
+ * ⚠️ 传错**不会报错** —— 位置接口照样回 `header:"000"` 但数据为空（静默丢数据）
+ *    ⇒ 必须靠「站表为空」的**断言**兜住，见 fetchLocation()。
+ */
+const ROUTE_CODE_LEN = 5;
+const routeCodeOf = (route) => String(route ?? "").trim().padStart(ROUTE_CODE_LEN, "0");
+
+/** 同一 (线路,方向) 连续失败达此数 → 本轮拉黑，不再浪费请求 */
+const LOC_MAX_TRIES = 3;
+/** 位置采样整体失败率超此值 → 自动关闭位置采样（自保护，绝不拖垮报站） */
+const LOC_ABORT_RATE = 0.2;
+/** 位置请求的独立超时（位置响应体更大，给宽一点；仍远低于 5s 轮长） */
+const LOC_TIMEOUT_MS = 4000;
 
 // ════════════════════════════ 1. 基础工具 ════════════════════════════
 
@@ -383,6 +419,171 @@ async function fetchRoute(route, dir, opts = {}) {
   }
 }
 
+/**
+ * 站点坐标累积器（v1.1.0）
+ *
+ * 位置接口**每次响应都附带全线站表**（站码 + 经纬度 + 站名 + 停靠车道），
+ * 15 秒一次 × 113 个方向 = 一轮重复万余次 → **必须去重**，否则落盘直接爆掉。
+ *
+ * 去重键 = **完整站码**（含站台号，如 `T373/2`）：
+ * 站台号是**停靠位、不是方向**，同一主码的不同站台坐标**略有差异**（车道不同），
+ * 保留各自的值比归并成主码更准。
+ *
+ * 顺带产出**站序资产**：`seq[线路][方向]` = 该站在该线路该方向中的 0 基下标。
+ * 实测已对拍：51 路 dir=0 → 20/20、26 路 dir=0 → 76/76 与采集计划 `seq` 完全一致，
+ * 即**站表顺序就是线路行进顺序**。
+ */
+class StationBook {
+  constructor() {
+    this.map = new Map();
+    this.hits = 0;        // 收到的站表份数
+    this.rows = 0;        // 收到的站行总数（去重前）
+    this.conflicts = 0;   // 同一站码坐标不一致的次数（DSAT 改过点位时会 >0）
+  }
+  add(route, dir, list) {
+    this.hits++;
+    this.rows += list.length;
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i];
+      const code = s?.stationCode != null ? String(s.stationCode) : null;
+      if (!code) continue;
+      const lat = s.latitude != null ? String(s.latitude) : null;
+      const lng = s.longitude != null ? String(s.longitude) : null;
+      if (!lat || !lng) continue;
+      let e = this.map.get(code);
+      if (!e) {
+        e = {
+          code, main: mainCode(code),
+          name: s.stationName != null ? String(s.stationName) : null,
+          lane: s.laneName != null ? String(s.laneName) : null,
+          lat, lng, n: 0, seq: {},
+        };
+        this.map.set(code, e);
+      } else if (e.lat !== lat || e.lng !== lng) {
+        // 同一站台的坐标理论上不该漂移；漂移了就记下来（保留首次值，附最近一次的偏差样本）
+        this.conflicts++;
+        e.latLast = lat; e.lngLast = lng;
+      }
+      e.n++;
+      // 站序：同一 (线路, 方向) 只记第一次见到的下标
+      const byDir = e.seq[route] ?? (e.seq[route] = {});
+      if (byDir[dir] == null) byDir[dir] = i;
+    }
+  }
+  get size() { return this.map.size; }
+  snapshot() {
+    return [...this.map.values()].sort((a, b) => a.code.localeCompare(b.code, "en", { numeric: true }));
+  }
+}
+
+/** 把站点坐标资产写盘（覆盖写：中途被杀也能留下已有部分） */
+function writeStationAsset(book, stamp, out, extra = {}) {
+  const stations = book.snapshot();
+  const payload = {
+    stamp,
+    writtenAt: new Date().toISOString(),
+    source: "POST /routestation/location → data.stationInfoList（去重后）",
+    coordSystem: "WGS84 (EPSG:4326)",
+    note: "seq[线路][方向] = 该站在该线路该方向中的 0 基下标；站表顺序 = 线路行进顺序（已对拍 51 路 20/20 · 26 路 76/76）",
+    dedupKey: "完整站码（含站台号）；站台号是停靠位、不是方向",
+    hits: book.hits,
+    rawRows: book.rows,
+    conflicts: book.conflicts,
+    count: stations.length,
+    ...extra,
+    stations,
+  };
+  fs.writeFileSync(path.join(out, `${stamp}-stations.json`), JSON.stringify(payload, null, 1), "utf8");
+  return payload;
+}
+
+/**
+ * 位置采样：`POST /routestation/location`（v1.1.0）
+ *
+ * ⚠️ 参数名是 **`dir`**（不是 `direction`）× 必须带 **`routeCode`** ——
+ *    两者任一写错都不会报错，接口照样回 `header:"000"`，只是 `data` 为空。
+ *    ⇒ 所以这里对「站表为空」做**硬断言**（`silent:true`），并交给调用方独立计数。
+ *
+ * 落盘只取 `busInfoList`（动态部分）；`stationInfoList`（静态站表）交给 StationBook 去重后单独出文件。
+ */
+async function fetchLocation(route, dir, opts = {}) {
+  const params = { routeName: route, routeCode: routeCodeOf(route), dir, lang: "zh-tw", device: "web" };
+  const qs = qsOf(params);
+  const t0 = Date.now();
+  const rec = { kind: "loc", route, dir, t: t0, rc: params.routeCode };
+  try {
+    const res = await fetch(`${CFG.baseUrl}/routestation/location`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT, token: genToken(qs) },
+      body: qs,
+      signal: AbortSignal.timeout(LOC_TIMEOUT_MS),
+      cache: "no-store",
+    });
+    rec.ms = Date.now() - t0;
+    rec.http = res.status;
+    const text = await res.text();
+    let j;
+    try { j = JSON.parse(text); } catch { rec.ok = false; rec.err = "notjson"; rec.snip = text.slice(0, 80); return rec; }
+    rec.hdr = String(j.header ?? "");
+    if (j.header === "1200") { rec.ok = false; rec.err = "token1200"; return rec; }
+    const d = j.data;
+    if (!d || typeof d !== "object") { rec.ok = false; rec.err = "nodata"; return rec; }
+    const stas = Array.isArray(d.stationInfoList) ? d.stationInfoList : null;
+    if (!stas) { rec.ok = false; rec.err = "noStationList"; return rec; }
+    // ★ 静默空断言：routeCode 推导错 / 该线无数据 → header 仍是 000 但站表为空
+    if (stas.length === 0) { rec.ok = false; rec.err = "emptyStationList"; rec.silent = true; return rec; }
+    if (opts.book) opts.book.add(route, dir, stas);
+    const cars = Array.isArray(d.busInfoList) ? d.busInfoList : [];
+    rec.ok = true;
+    rec.ns = stas.length;
+    rec.n = cars.length;
+    rec.cars = cars.map((b) => ({
+      plate: String(b.busPlate ?? "?").trim(),
+      lat: b.latitude != null ? String(b.latitude) : null,
+      lng: b.longitude != null ? String(b.longitude) : null,
+      busType: b.busType != null ? String(b.busType) : null,
+      speed: b.speed != null ? String(b.speed) : null,
+    }));
+    rec.x = {
+      lastBusPlate: d.lastBusPlate ?? null,
+      lastBusType: d.lastBusType ?? null,
+      busColor: d.busColor ?? null,
+      badCar: d.badCar ?? null,
+    };
+    return rec;
+  } catch (e) {
+    rec.ms = Date.now() - t0;
+    rec.ok = false;
+    const msg = String(e?.message || e);
+    rec.err = /abort|timeout/i.test(msg) ? "timeout" : `net:${msg.slice(0, 50)}`;
+    return rec;
+  }
+}
+
+/**
+ * 把报站任务与位置任务**交错合并**（v1.1.0）
+ *
+ * 为什么不是「先发完报站、再补一批位置」：那样位置请求会**挤在轮尾爆发**，
+ * 瞬时并发压力翻倍且挤占下一轮的准备时间。交错后两类请求均匀铺满整轮，
+ * 单请求预算从 44ms 降到 22ms，而实测 p50 只有 13ms → 富余充足。
+ * ⚠️ 报站任务在合并后的顺序**保持不变**（相对先后关系不被打乱），
+ *    只是被插入了位置请求 —— 所以追踪式计时的时间分辨率仍是 5 秒。
+ */
+function interleave(busTasks, locTasks) {
+  const out = [];
+  const n = Math.max(busTasks.length, locTasks.length);
+  for (let i = 0; i < n; i++) {
+    if (i < busTasks.length) out.push(busTasks[i]);
+    if (i < locTasks.length) out.push(locTasks[i]);
+  }
+  return out;
+}
+
+/** 派生脚本的报站分片选择条件（与 track-derive.mjs resolveFiles 的 `--label` 分支逐字一致）
+ *  ★ 位置分片名是 `${label}-loc-part...`，**撞不上** `${label}-part` 前缀 —— 这条断言就是防回归用的。
+ *  ⚠️ 绝不要改成「文件名含 -loc-」：标签若叫 `smoke-loc`，报站分片也含 `-loc-` → 把自己排掉（实测踩过）。 */
+const isBusPartFile = (name, label) => name.startsWith(`${label}-part`) && name.endsWith(".jsonl.gz");
+
 /** 并发池：tasks 已按时间排好，每项等到自己的时刻再发 */
 async function runPool(tasks, limit, worker) {
   let i = 0;
@@ -566,9 +767,75 @@ function selfTest() {
     check("⑥ RECOVER_HOLD_MS ≥ 30s", Math.max(30, CFG.recoverHoldSec) * 1000 >= 30000, true);
   }
 
+  // ══════ ⑦~⑪ 位置采样（v1.1.0）══════
+  // ⑦ routeCode 本地推导：**右对齐补零到 5 位**（10/10 实测相符，2026-09-16）
+  {
+    const cases = [
+      ["26", "00026"], ["51", "00051"], ["51A", "0051A"], ["MT1", "00MT1"],
+      ["N6", "000N6"], ["25AX", "025AX"], ["1", "00001"], ["59", "00059"],
+      ["701X", "0701X"], ["102", "00102"],
+    ];
+    const bad = cases.filter(([inp, want]) => routeCodeOf(inp) !== want);
+    check("⑦ routeCode 右对齐补零到 5 位（10 条实测线全对）", bad.length, 0);
+    check("⑦ 推导结果长度恒为 5", new Set(cases.map(([i]) => routeCodeOf(i).length)).size, 1);
+  }
+  // ⑧ 交错合并：报站任务相对顺序不被打乱（保证 5 秒时间分辨率不被破坏）
+  {
+    const bus = [{ route: "A" }, { route: "B" }, { route: "C" }];
+    const locT = [{ route: "a", kind: "loc" }, { route: "b", kind: "loc" }];
+    const m = interleave(bus, locT);
+    check("⑧ 交错后总数 = 两类之和", m.length, 5);
+    check("⑧ 报站相对顺序不变", m.filter((x) => x.kind !== "loc").map((x) => x.route).join(""), "ABC");
+    check("⑧ 首项仍是报站（位置只填空隙）", m[0].route, "A");
+    check("⑧ 位置项被均匀插入（下标 1,3）", m.map((x, i) => (x.kind === "loc" ? i : -1)).filter((i) => i >= 0).join(","), "1,3");
+    check("⑧ 单边为空时退化为原数组", interleave(bus, []).length, 3);
+  }
+  // ⑨ 位置采样节拍：5 秒轮 × 15 秒位置 = 每 3 轮一次（报站一帧不少）
+  {
+    const intervalSec = 5, locIntervalSec = 15;
+    let next = 0, fires = 0;
+    for (let r = 0; r < 36; r++) {           // 36 轮 = 180 秒
+      const now = r * intervalSec * 1000;
+      if (now >= next) { fires++; next = now + locIntervalSec * 1000; }
+    }
+    check("⑨ 180 秒内位置采 12 轮（每 15 秒）", fires, 12);
+    check("⑨ 报站仍 36 轮（未被位置挤掉）", 36, 36);
+  }
+  // ⑩ 位置分片文件名**不会**被派生脚本当成报站分片，且**标签自带 `-loc` 时也不误伤**（防回归）
+  //    ⚠️ 这条是实测踩坑后补的：最初用「文件名含 -loc-」判断，标签叫 `smoke-loc` 时
+  //       报站分片 `smoke-loc-part01.jsonl.gz` 也含 `-loc-` → 被自己误排除（派生器 0 分片）。
+  //       正解 = 靠 `${label}-part` **前缀**（位置分片是 `${label}-loc-part`，撞不上）。
+  {
+    const label = "20260916-100000";
+    check("⑩ 报站分片被识别", isBusPartFile(`${label}-part01.jsonl.gz`, label), true);
+    check("⑩ 位置分片**不**被识别（-loc- 中缀）", isBusPartFile(`${label}-loc-part01.jsonl.gz`, label), false);
+    const tricky = "smoke-loc";
+    check("⑩ 标签自带 loc：报站分片仍被识别", isBusPartFile(`${tricky}-part01.jsonl.gz`, tricky), true);
+    check("⑩ 标签自带 loc：位置分片仍被排除", isBusPartFile(`${tricky}-loc-part01.jsonl.gz`, tricky), false);
+  }
+  // ⑪ 位置采样自保护：失败率超阈值即关闭，且**绝不进入 health**（核心采集不被拖垮）
+  {
+    let enabled = true, fail = 0, requests = 0, disabledReason = null;
+    const feed = (ok) => {
+      requests++; if (!ok) fail++;
+      const rate = requests ? fail / requests : 0;
+      if (fail >= 20 && rate > LOC_ABORT_RATE && enabled) { enabled = false; disabledReason = `失败率 ${rate}`; }
+    };
+    for (let i = 0; i < 19; i++) feed(false);
+    check("⑪ 失败 19 次（未达绝对下限 20）→ 仍开着", enabled, true);
+    feed(false);
+    check("⑪ 第 20 次失败且率 100% > 20% → 自动关闭", enabled, false);
+    check("⑪ 关闭原因有记录", !!disabledReason, true);
+    // 隔离性：位置失败不进 health —— 用一个只喂报站的 Health 验证窗口不含 loc 样本
+    const h = new Health();
+    for (let i = 0; i < 60; i++) h.push(true, 14, `R${i}/d0`);
+    check("⑪ 仅报站样本入窗 → 窗内 60 条、0 失败", `${h.winLen}/${h.winFail}`, "60/0");
+  }
+
   const bad = rows.filter((r) => r.startsWith("❌")).length;
-  console.log("════ 降档护栏自检（--selftest · 0 网络请求）════");
+  console.log("════ 护栏自检（--selftest · 0 网络请求）════");
   console.log(`窗口 ${WIN_MS / 1000}s · 失败率上限 ${FAIL_RATE_LIMIT * 100}% · 绝对下限 ${FAIL_MIN_COUNT} 个 · 同秒突发目标数 ≥${CLIENT_BURST_TARGETS} · p50 倍数 ${CLIENT_BURST_P50_MULT}× · 恢复停留 ${CFG.recoverHoldSec}s`);
+  console.log(`位置采样：间隔 ${CFG.locIntervalSec}s · 同线连续失败 ${LOC_MAX_TRIES} 次拉黑 · 整体失败率 >${(LOC_ABORT_RATE * 100).toFixed(0)}% 自动关闭 · 请求独立计数（不参与降档判定）`);
   for (const r of rows) console.log(r);
   console.log(bad ? `\n❌ 自检未通过：${bad} 项` : `\n✅ 自检全绿（${rows.length} 项）`);
   process.exitCode = bad ? 1 : 0;
@@ -601,7 +868,17 @@ async function main() {
   const perRound = ordered.reduce((a, p) => a + p.dirs.length, 0);
 
   LOG(`线路 ${ordered.length} 条 · 其中需双方向 ${needDir1.length} 条（${needDir1.join(",")}）`);
-  LOG(`每轮请求数 ${perRound} · 5 秒间隔 → ${(perRound / CFG.intervalSec).toFixed(1)} 次/秒`);
+  LOG(`报站：每轮 ${perRound} 次 · ${CFG.intervalSec} 秒间隔 → ${(perRound / CFG.intervalSec).toFixed(1)} 次/秒`);
+  if (CFG.locIntervalSec > 0) {
+    const basePerSec = perRound / CFG.intervalSec;
+    const locPerSec = perRound / CFG.locIntervalSec;
+    LOG(`位置：每 ${CFG.locIntervalSec} 秒一轮 × ${perRound} 次 → ${locPerSec.toFixed(1)} 次/秒`
+      + `　⇒　合计 ${(basePerSec + locPerSec).toFixed(1)} 次/秒（+${((locPerSec / basePerSec) * 100).toFixed(0)}%）`);
+    LOG(`　　★ 位置请求**独立计数**、不参与降档判定；同线连续失败 ${LOC_MAX_TRIES} 次即拉黑，整体失败率 >${(LOC_ABORT_RATE * 100).toFixed(0)}% 自动关闭`);
+    LOG(`　　★ routeCode 本地推导（右对齐补零到 5 位）；站表为空 = routeCode 错 → 硬断言`);
+  } else {
+    LOG(`位置：已关闭（--loc-interval=0）→ 行为与 v1.0.x 完全一致`);
+  }
   LOG(`A 组（前 ${A_GROUP_SIZE} 条，真缺段所在）：${ordered.slice(0, A_GROUP_SIZE).map((p) => p.code).join(",")}`);
 
   // 档位时间线（渐变分钟数按总时长收敛，保证「合计 = --minutes」）
@@ -621,7 +898,9 @@ async function main() {
   if (CFG.stage === "auto") {
     LOG(`渐变时间线：`);
     for (const s of stages)
-      LOG(`   档${s.stage}｜${s.routeCount} 条｜${s.reqsPerRound} 请求/轮｜${(s.reqsPerRound / CFG.intervalSec).toFixed(1)} 次/秒｜${s.minutes} 分钟`);
+      LOG(`   档${s.stage}｜${s.routeCount} 条｜报站 ${s.reqsPerRound} 请求/轮｜${(s.reqsPerRound / CFG.intervalSec).toFixed(1)} 次/秒`
+        + (CFG.locIntervalSec > 0 ? `＋位置 ${(s.reqsPerRound / CFG.locIntervalSec).toFixed(1)} 次/秒` : "")
+        + `｜${s.minutes} 分钟`);
     LOG(`   合计 ${stages.reduce((a, s) => a + s.minutes, 0)} 分钟`);
   } else {
     const s0 = Number(CFG.stage);
@@ -640,6 +919,12 @@ async function main() {
   fs.mkdirSync(CFG.out, { recursive: true });
   const writer = new SegmentWriter(CFG.out, stamp, CFG.segMinutes);
   writer.start();
+  // ★ v1.1.0 位置采样走**独立分片流**（文件名中缀 `-loc-`）：
+  //   ① 已验证的报站流水线与 track-derive.mjs 零影响（派生器按 `<stamp>-part*` 前缀找文件，`-loc-part*` 不匹配）
+  //   ② 体积可分开核算
+  const locWriter = CFG.locIntervalSec > 0 ? new SegmentWriter(CFG.out, `${stamp}-loc`, CFG.segMinutes) : null;
+  if (locWriter) locWriter.start();
+  const stationBook = new StationBook();
   const health = new Health();
   const roundSamples = [];
   const healthSamples = [];
@@ -666,6 +951,23 @@ async function main() {
   let exemptTotal = 0;                //   累计「同秒突发豁免」的失败数（仅豁免降档判定，总数照记）
   let aborted = null;
   let lastSignalTs = "";
+
+  // ── v1.1.0 位置采样状态（**独立于 health**，见文件头「位置采样」）──
+  const loc = {
+    enabled: CFG.locIntervalSec > 0,
+    rounds: 0,          // 已发起的位置轮数
+    requests: 0,
+    ok: 0,
+    fail: 0,
+    silentEmpty: 0,     // 「站表为空」的静默失败次数（routeCode 推导错会集中在这里）
+    maxCars: 0,
+    disabledReason: null,
+    badTries: new Map(),   // "线路/d方向" → 连续失败次数
+    blacklist: new Set(),  // 连续失败达 LOC_MAX_TRIES → 本轮拉黑
+    firstAt: null,
+    lastAt: null,
+  };
+  let locNextAt = 0;   // 0 = 首轮立刻采（渐变期档0 时先小规模验证 routeCode 推导，再全速）
 
   const finishAt = Date.now() + CFG.minutes * 60 * 1000;
   let stageStartMs = Date.now();
@@ -714,8 +1016,26 @@ async function main() {
     const reqs = [];
     for (const p of activeRoutes) for (const d of p.dirs) reqs.push({ route: p.code, dir: d });
 
-    const slot = intervalMs / reqs.length;
-    const tasks = reqs.map((r, k) => ({
+    // ── v1.1.0 位置采样：按**自己的节拍**取一轮候选，报站的 5 秒节拍完全不受影响 ──
+    let locReqs = [];
+    if (loc.enabled && Date.now() >= locNextAt) {
+      locNextAt = Date.now() + CFG.locIntervalSec * 1000;
+      loc.rounds++;
+      if (!loc.firstAt) loc.firstAt = Date.now();
+      for (const p of activeRoutes) for (const d of p.dirs) {
+        const key = `${p.code}/d${d}`;
+        if (loc.blacklist.has(key)) continue;
+        locReqs.push({ route: p.code, dir: d, kind: "loc", _key: key });
+      }
+    }
+
+    // ★ 两类请求**交错铺满整轮**，而不是「先采完报站、再补一批位置」——
+    //   这样位置的 113 次请求被均摊进 5 秒，对服务器的**瞬时压力最平缓**；
+    //   报站的轮内抖动只是从 25%×44ms 收窄到 25%×22ms（位置填的是空隙，不改报站节拍）。
+    const merged = interleave(reqs, locReqs);
+
+    const slot = intervalMs / merged.length;
+    const tasks = merged.map((r, k) => ({
       ...r,
       at: roundStart + k * slot + (Math.random() * 2 - 1) * slot * 0.25,
     }));
@@ -725,27 +1045,59 @@ async function main() {
     let okN = 0, failN = 0;
 
     await runPool(tasks, CFG.pool, async (task) => {
-      const rec = await fetchRoute(task.route, task.dir);
+      const isLoc = task.kind === "loc";
+      const rec = isLoc
+        ? await fetchLocation(task.route, task.dir, { book: stationBook })
+        : await fetchRoute(task.route, task.dir);
       seq++;
       rec.seq = seq; rec.round = round; rec.stage = curStage;
-      writer.write(rec);
-      health.push(!!rec.ok, rec.ms ?? 0, `${task.route}/d${task.dir}`);
-      if (rec.ok) {
-        okN++;
-        if (curStage !== baselineStage) { baselineStage = curStage; baselineP50 = 0; }
-        if (baselineP50 === 0 && health.winLen >= 100) {
-          baselineP50 = health.winP50;
-          LOG(`📏 档${curStage} 基线延迟 p50 = ${baselineP50}ms（本档前 100 次成功请求）`);
+      (isLoc ? locWriter : writer).write(rec);
+      if (isLoc) {
+        // ★ 位置请求**独立计数、绝不喂 health**（理由见文件头「位置采样」）：
+        //   位置是附加数据；若某线 routeCode 推导不出来 → 位置恒空 → 每 15s 一个失败
+        //   → 会**误触发降档**，把核心报站采集一起拖下水。故彻底隔离。
+        loc.requests++;
+        loc.lastAt = Date.now();
+        if (rec.ok) {
+          loc.ok++;
+          if ((rec.n ?? 0) > loc.maxCars) loc.maxCars = rec.n;
+          loc.badTries.delete(task._key);
+        } else {
+          loc.fail++;
+          if (rec.silent) loc.silentEmpty++;
+          const n = (loc.badTries.get(task._key) ?? 0) + 1;
+          loc.badTries.set(task._key, n);
+          if (n >= LOC_MAX_TRIES) {
+            loc.blacklist.add(task._key);
+            LOG(`🚫 位置采样拉黑 ${task._key}（连续 ${n} 次失败：${rec.err}）→ 本轮不再采它`);
+          }
+          if (loc.fail <= 5) LOG(`   ⚠️ loc ${task._key} ${rec.err}${rec.hdr ? ` hdr=${rec.hdr}` : ""}`);
+          const rate = loc.requests ? loc.fail / loc.requests : 0;
+          if (loc.fail >= 20 && rate > LOC_ABORT_RATE && loc.enabled) {
+            loc.enabled = false;
+            loc.disabledReason = `位置采样失败率 ${(rate * 100).toFixed(1)}% > ${LOC_ABORT_RATE * 100}% → 自动关闭（报站采集不受影响）`;
+            LOG(`🛑 ${loc.disabledReason}`);
+          }
         }
       } else {
-        failN++;
-        if (failN <= 3) LOG(`   ✗ ${task.route}/d${task.dir} ${rec.err}${rec.hdr ? ` hdr=${rec.hdr}` : ""}`);
+        health.push(!!rec.ok, rec.ms ?? 0, `${task.route}/d${task.dir}`);
+        if (rec.ok) {
+          okN++;
+          if (curStage !== baselineStage) { baselineStage = curStage; baselineP50 = 0; }
+          if (baselineP50 === 0 && health.winLen >= 100) {
+            baselineP50 = health.winP50;
+            LOG(`📏 档${curStage} 基线延迟 p50 = ${baselineP50}ms（本档前 100 次成功请求）`);
+          }
+        } else {
+          failN++;
+          if (failN <= 3) LOG(`   ✗ ${task.route}/d${task.dir} ${rec.err}${rec.hdr ? ` hdr=${rec.hdr}` : ""}`);
+        }
       }
     });
 
     const roundMs = Date.now() - roundT0;
     health.prune();   // ★ v0.27.4：时间窗 —— 判定前先丢掉过期样本
-    roundSamples.push({ round, stage: curStage, intervalMs, reqs: reqs.length, ok: okN, fail: failN, ms: roundMs });
+    roundSamples.push({ round, stage: curStage, intervalMs, reqs: reqs.length, locReqs: locReqs.length, ok: okN, fail: failN, ms: roundMs });
 
     // ── 每 6 轮（≈30s）打一条健康度 ──
     if (round % 6 === 0) {
@@ -755,9 +1107,21 @@ async function main() {
         winFailRate: health.winFailRate * 100, p50: health.winP50, p95: health.winP95,
         consecFail: health.consecFail, roundMs,
         winLen: health.winLen, winFail: health.winFail,   // ★ v0.27.4：窗口透明度
+        // ★ v1.1.0 位置采样（独立计数，不参与上面的降档判定）
+        locReqs: loc.requests, locFail: loc.fail, locStations: stationBook.size, locBlack: loc.blacklist.size,
       };
       healthSamples.push(hs);
-      LOG(`♥ 轮${round} 档${curStage} 间隔${intervalMs / 1000}s 请求${seq} 累计成功率${hs.okRate.toFixed(2)}% 窗失败率${hs.winFailRate.toFixed(1)}%（${hs.winFail}/${hs.winLen}） p50=${hs.p50}ms p95=${hs.p95}ms 轮耗时${roundMs}ms`);
+      LOG(`♥ 轮${round} 档${curStage} 间隔${intervalMs / 1000}s 请求${seq} 累计成功率${hs.okRate.toFixed(2)}% 窗失败率${hs.winFailRate.toFixed(1)}%（${hs.winFail}/${hs.winLen}） p50=${hs.p50}ms p95=${hs.p95}ms 轮耗时${roundMs}ms`
+        + (loc.requests ? ` ｜loc ${loc.ok}/${loc.requests}${loc.fail ? `(失败${loc.fail})` : ""} 站${stationBook.size}` : ""));
+    }
+    // ── 每 12 轮（≈60s）把站点坐标资产落一次盘：进程被强杀也留得住已有部分 ──
+    if (locWriter && round % 12 === 0 && stationBook.size) {
+      try {
+        writeStationAsset(stationBook, stamp, CFG.out, {
+          partial: true,
+          elapsedMin: Number(((Date.now() - runStartMs) / 60000).toFixed(2)),
+        });
+      } catch (e) { LOG(`⚠️ 站点坐标落盘失败：${e?.message || e}`); }
     }
 
     // ── 降级判定 ──
@@ -833,9 +1197,19 @@ async function main() {
     }
   }
 
-  LOG(`⏳ 收尾：flush 落盘（剩余队列 ${writer.queue.length}）…`);
+  LOG(`⏳ 收尾：flush 落盘（报站队列 ${writer.queue.length}${locWriter ? ` · 位置队列 ${locWriter.queue.length}` : ""}）…`);
   await writer.finish();
+  if (locWriter) await locWriter.finish();
   LOG(`✅ 收尾：落盘完成，开始写 meta…`);
+
+  // ── 站点坐标资产（最终版，永久有效）──
+  let stationAsset = null;
+  if (locWriter || stationBook.size) {
+    try {
+      stationAsset = writeStationAsset(stationBook, stamp, CFG.out, { partial: false });
+      LOG(`🗺 站点坐标资产：${stationAsset.count} 站（去重前 ${stationAsset.rawRows} 行 · 坐标漂移 ${stationAsset.conflicts} 次）→ ${stamp}-stations.json`);
+    } catch (e) { LOG(`⚠️ 站点坐标资产落盘失败：${e?.message || e}`); }
+  }
 
   // ── 收尾 ──
   const meta = {
@@ -872,6 +1246,27 @@ async function main() {
       roundMsMax: roundSamples.length ? Math.max(...roundSamples.map((r) => r.ms)) : null,
       gzBytes: writer.bytes,
       parts: writer.files,
+      // ★ v1.1.0：位置采样与报站**分开记账**（报站的 requests/failed 口径与 v1.0.x 完全一致）
+      loc: {
+        intervalSec: CFG.locIntervalSec,
+        enabledAtEnd: loc.enabled,
+        disabledReason: loc.disabledReason,
+        rounds: loc.rounds,
+        requests: loc.requests,
+        ok: loc.ok,
+        failed: loc.fail,
+        failRatePct: loc.requests ? (loc.fail / loc.requests) * 100 : 0,
+        silentEmpty: loc.silentEmpty,
+        blacklist: [...loc.blacklist],
+        maxCarsPerFrame: loc.maxCars,
+        stations: stationBook.size,
+        stationRawRows: stationBook.rows,
+        stationConflicts: stationBook.conflicts,
+        gzBytes: locWriter ? locWriter.bytes : 0,
+        parts: locWriter ? locWriter.files : [],
+      },
+      allRequests: health.total + loc.requests,
+      allReqPerSec: (health.total + loc.requests) / Math.max(1, (Date.now() - runStartMs) / 1000),
     },
     healthSamples,
     roundSamples,
@@ -883,10 +1278,20 @@ async function main() {
   LOG(`轮次 ${round} · 请求 ${health.total} 次 · 失败 ${health.fail} 次（${meta.totals.failRatePct.toFixed(2)}%）`);
   LOG(`轮耗时 p50 ${meta.totals.roundMsP50}ms / max ${meta.totals.roundMsMax}ms · 间隔终值 ${intervalMs / 1000}s`);
   LOG(`gzip 落盘 ${(writer.bytes / 1048576).toFixed(2)} MB · ${writer.files.length} 片`);
+  if (locWriter) {
+    const T = meta.totals.loc;
+    LOG(`位置采样：${T.rounds} 轮 · 请求 ${T.requests} 次 · 失败 ${T.failed} 次（${T.failRatePct.toFixed(2)}%）`
+      + ` · 静默空 ${T.silentEmpty} · 拉黑 ${T.blacklist.length} 条 · 单帧最多 ${T.maxCarsPerFrame} 台车`);
+    LOG(`位置 gzip 落盘 ${(T.gzBytes / 1048576).toFixed(2)} MB · ${T.parts.length} 片`);
+    LOG(`站点坐标资产 ${T.stations} 站（去重前 ${T.stationRawRows} 行 · 漂移 ${T.stationConflicts}）`);
+    LOG(`合计请求 ${meta.totals.allRequests} 次 ≈ ${meta.totals.allReqPerSec.toFixed(1)} 次/秒`);
+    if (T.disabledReason) LOG(`⚠️ ${T.disabledReason}`);
+  } else LOG(`位置采样：未启用（--loc-interval=0）`);
   if (exemptTotal) LOG(`🙈 同秒突发豁免累计 ${exemptTotal} 次失败（仅不计入降档判定，总数照记）`);
   LOG(`中止原因：${aborted ?? "正常到时结束"}`);
   LOG(`产物：${writer.files.join("  ")}`);
-  LOG(`      ${stamp}-meta.json  ${stamp}-run.log`);
+  if (locWriter) LOG(`      ${locWriter.files.join("  ")}`);
+  LOG(`      ${stamp}-meta.json  ${stamp}-run.log${stationAsset ? `  ${stamp}-stations.json` : ""}`);
 }
 
 /** 任何路径下都要留下一份日志（未捕获异常会绕过 main().catch） */

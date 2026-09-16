@@ -40,6 +40,13 @@
  *   <out>/<label>-derived.json          结构化样本（按共享键 / 按线路键聚合）
  *   <out>/<label>-derived-report.txt    人读报告（含与 segment_stats 真值的对照）
  *
+ * ── 输入（v1.1.0 起要分清两类分片）────────────────────────────────
+ *   ✅ `<stamp>-partNN.jsonl.gz`      报站分片：含 `veh`（挂载站 + status）→ **本脚本的唯一输入**
+ *   ⛔ `<stamp>-loc-partNN.jsonl.gz`  位置分片：只含 `cars`（经纬度 + 速度），**没有挂载站/status**
+ *      ⇒ 本脚本**两道排除**：① `resolveFiles` 用 `${label}-part` 前缀（位置分片撞不上）
+ *        ② `loadFrames` 按**帧本身** `kind === "loc"` 剔除（对 `--in=<glob>` 也生效）
+ *      ⚠️ 绝不能改用「文件名含 -loc-」判断 —— 标签若叫 `smoke-loc`，报站分片也含 `-loc-`，会把自己排掉。
+ *
  * ── 用法 ──
  *   node scripts/track-derive.mjs --label=20260913-0700
  *   node scripts/track-derive.mjs --in=data/tracking/<label>-part*.jsonl.gz --truth=cloud
@@ -101,6 +108,11 @@ function resolveFiles() {
   }
   if (!CFG.label) throw new Error("必须给 --label=<stamp> 或 --in=<glob>");
   return fs.readdirSync(CFG.out)
+    // ★ v1.1.0：位置分片名是 `<stamp>-loc-partNN.jsonl.gz`，**不会**命中 `${label}-part` 前缀，
+    //   所以这个前缀过滤天然就是对的。
+    //   ⚠️ 绝对不要改用「文件名含 -loc-」这类子串判断！实测踩过：
+    //      标签一旦叫 `smoke-loc`，报站分片 `smoke-loc-part01.jsonl.gz` 也含 `-loc-`
+    //      → 报站分片被自己误排除（0 分片）。**唯一可靠的区分在帧层面：`kind === "loc"`**（见 loadFrames）。
     .filter((f) => f.startsWith(`${CFG.label}-part`) && f.endsWith(".jsonl.gz"))
     .sort()
     .map((f) => path.join(CFG.out, f));
@@ -108,7 +120,7 @@ function resolveFiles() {
 
 function loadFrames(files) {
   const frames = [];
-  let bad = 0;
+  let bad = 0, locSkipped = 0;
   for (const f of files) {
     const buf = fs.readFileSync(f);
     let text;
@@ -116,9 +128,15 @@ function loadFrames(files) {
     catch { bad++; L(`  ⚠️ ${path.basename(f)} 解压失败（进程被强杀时的残片），已跳过`); continue; }
     for (const line of text.split("\n")) {
       if (!line) continue;
-      try { frames.push(JSON.parse(line)); } catch { bad++; }
+      let fr;
+      try { fr = JSON.parse(line); } catch { bad++; continue; }
+      // ★ v1.1.0：位置帧（`kind === "loc"`）只有经纬度、**没有 veh**（挂载站 + status），
+      //   喂进状态机只会污染统计 → 按**帧本身**剔除（不看文件名，因为标签可能自带 `-loc`）。
+      if (fr?.kind === "loc") { locSkipped++; continue; }
+      frames.push(fr);
     }
   }
+  if (locSkipped) L(`  ⏭ 已剔除 ${locSkipped} 个位置帧（kind=loc，仅含经纬度、无挂载站/status）`);
   return { frames, bad };
 }
 

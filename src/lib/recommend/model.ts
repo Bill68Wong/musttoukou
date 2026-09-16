@@ -486,10 +486,16 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): ModeledOption 
   const alts: AltBusView[] = [];
   if (first.kind === "bus" && busPool.length) {
     const restMs = cursor - boardAtMs; // cursor 此刻已是「最终到达时刻」
+    // ★ v1.1.6：按 `loSec` 去重 —— DSAT 常把**同一站台的多辆车**一起上报（如 M172/16 三辆），
+    //   同站同状态的车算出**完全相同**的 loSec ⇒ 行内容一模一样 ⇒ 卡面出现重复行，纯噪声。
+    //   同时跳过与**本班** loSec 相同者（乘它到达时刻不变，列出来没有任何新信息）。
+    const seenSec = new Set<number>([chosenBus?.loSec ?? -1]);
     for (const b of busPool) {
       if (b === chosenBus) continue; // 本班已在主行展示过
+      if (seenSec.has(b.loSec)) continue; // 到达时刻与本班或已列出的某辆相同 → 无新信息
       const t = pickCatchTier(wOut.minutes, b.loSec);
       if (t === null) continue; // 赶不上的后车不列（列了也没用）
+      seenSec.add(b.loSec);
       alts.push({
         stopsAway: b.stopsAway,
         waitText: rangeText(b.loSec, b.hiSec),

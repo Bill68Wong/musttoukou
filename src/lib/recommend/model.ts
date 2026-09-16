@@ -14,8 +14,7 @@
  *     —— 不能用「现在最近的在途车」，否则换乘方案总耗时被系统性低估
  *   · `transfer`：同场（站码相同且非轻轨）= 0；轻轨站内换乘读 `transfer_walks`
  *
- * ★ v1.0.6 三处修正（线上只读取证实测倒逼）：
- *   ① **首段赶不上 → 整条剔除**（`ctx.missed`），不再退回「班距÷2」估算卡。
+ * ★ v1.0.6 三处修正（线上只读取证实测倒逼）： *   ① **首段赶不上 → 整条剔除**（`ctx.missed`），不再退回「班距÷2」估算卡。
  *      旧行为：巴士两辆在途车都赶不上 → 等车按 180s 估、卡面却写「还有 0 站 · 约 0 分」
  *      + 徽章「本班赶不上」→ 自相矛盾且总用时偏小；轻轨更是**直接用赶不上的那班车**算总用时。
  *   ② **第 2 段起的等车分钟真正回填**：旧代码在 push 本段后才去写 `rides[i + 1]`，
@@ -27,6 +26,13 @@
  * ⚠️ zone（澳科大座区）判据是 `slug === "school"`，**与方向无关** ——
  *    去程的 `walkIn` 与回程的 `walkOut` 都会吃到它（`walk_times` 本来就是
  *    `(place, 站主码, zone)` 合并键、不分出发/到达）。
+ *
+ * ──────────────────── ★ v1.1.3 两处修正（用户实测倒逼）────────────────────
+ *   ① **轻轨首段的发车表只下发「你走得到的那几班」**：旧版把全部班次交给客户端读秒，
+ *      客户端取第一班 → 显示的是「马上就要开、但人还在路上」那班，与 `waitMin`
+ *      自相矛盾（实测步行 4.6 分却显示「1.8 分后开」）。现按 `> cursor` 过滤。
+ *   ② **巴士两辆候选改取「到站更早」的那辆**：见 `pickBoardable` 注释 ——
+ *      `eta.ts` 的排序不区分 `status`，旧写法会选中实际更晚的车。**只改本模型，不动 `eta.ts`**。
  */
 import { PLACE_SHORT } from "@/lib/home-plans-shared";
 import { hhmmOf } from "@/lib/lrt/eta";
@@ -186,14 +192,24 @@ const labelOf = (ctx: ModelContext, code: string): string => ctx.nameOf.get(code
 
 /**
  * 从实时视图里挑「能赶上的最早一班」（判据用**区间下限**，往短了算）。
+ *
+ * ★ v1.1.3：改为在**两辆都可能赶上**时取 `loSec` 更小的那辆（= 到站更早）。
+ *   旧写法取列表序第一个，而 `eta.ts` 的 `inTransit` 只按 `stopsAway` 排序、
+ *   **不区分 `status`** —— 同站同站数时「已离站驶向下一站」(status=0，第 1 跳已算 0)
+ *   其实比「仍停靠该站」(status=1，含第 1 跳) **更早到**，却可能被排在后面
+ *   → 旧行为会选中更晚的那辆（等更久，且档位偏保守）。
+ *   ⚠️ 只改本模型内部，**不动 `eta.ts`**（那是计时/开发者模式共用的，改它会波及计时）。
+ *
  * @returns null = 最近两辆在途车都赶不上 → 调用方**整条剔除**该方案（v1.0.6）
  */
 function pickBoardable(lv: BusLive, walkMin: number): BusArrival | null {
+  let best: BusArrival | null = null;
   for (const cand of [lv.nearest, lv.second]) {
     if (!cand) continue;
-    if (pickCatchTier(walkMin, cand.loSec) !== null) return cand;
+    if (pickCatchTier(walkMin, cand.loSec) === null) continue;
+    if (!best || cand.loSec < best.loSec) best = cand;
   }
-  return null;
+  return best;
 }
 
 // ─────────────────────────── 主模型 ───────────────────────────
@@ -296,8 +312,16 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
     //   服务端再下发一份冻结文案，同一行就会出现两个数字 —— 而且两者参照系不同
     //   （冻结那份用 `cursor` = 你走到站台的时刻，客户端那份用「现在」）→ 会互相矛盾。
     liveText = "";
-    liveDepartures = lv.departures;
-    liveClocks = lv.clocks;
+    // ★★ v1.1.3：下发给客户端的发车表**必须从「你能赶上的那一班」开始**。
+    //   旧写法原样下发 `lv.departures`（含**早于你到达站台**的班次）→ 客户端取第一班做倒计时
+    //   → 显示的是「马上就要开、但你还在路上」的那班，与 `waitMin`（按 `cursor` 之后第一班算）
+    //     自相矛盾。实测：步行出门 4.6 分，却显示「1.8 分后开」→ 用户怀疑「显示的不是能赶上的班次」。
+    //   现在只下发 `> cursor` 的班次，客户端的第一班 ≡ 模型用的那一班。
+    const afterWalk = lv.departures
+      .map((d, k) => ({ d, c: lv.clocks[k] ?? "" }))
+      .filter((x) => x.d > cursor);
+    liveDepartures = afterWalk.map((x) => x.d);
+    liveClocks = afterWalk.map((x) => x.c);
   }
 
   cursor = boardAtMs;

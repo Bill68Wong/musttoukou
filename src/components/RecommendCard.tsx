@@ -9,6 +9,10 @@
  * 时间线自上而下 = 门到门的真实推进顺序：
  *   步行出门 → [等车 → 乘车] ×N（段间插换乘行）→ 步行进校
  * 每行的分钟数之和 + 各段等车 = 卡片顶部的大字总用时（可加总核对，不留缺口）。
+ * ⚠️ **唯一例外**：首段档位为 1~2（要比常速更快）时，顶部大字按**该档速度**算，
+ *    而「步行」那一行显示的是**常速实测均值** → 可见项之和会比大字大（相差 = 省下的秒数）。
+ *    大字本身正确（「现在出门、跑到站能赶上的话几点到」），故在该行补一句
+ *    `rides[0].tierHint`（「需較常速快 X 分」）说明差额，而不是改数字。
  *
  * 点击行为由**开发者模式**分流：
  *   · 开 → `POST /api/timer` 建会话（带上本条的线路/上下车站/座区）→ `/timer/[id]` 打点计时
@@ -114,6 +118,9 @@ export default function RecommendCard({
             <>
               步行 <b>{card.walkOut.minutes}</b> 分 → {card.walkOut.toLabel}
               {card.walkOut.estimated && <span className="rc-est">估算</span>}
+              {/* ★ v1.1.2：档 1~2（要小跑/冲刺）时说明差额 —— 这一行显示的是**常速**均值，
+                  而顶部大字按该档速度算 ⇒ 逐项相加会比大字大。见 model.ts 同名注释。 */}
+              {first?.tierHint && <span className="rc-sub">（{first.tierHint}）</span>}
             </>
           }
         />

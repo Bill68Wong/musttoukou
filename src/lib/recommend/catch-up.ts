@@ -42,6 +42,26 @@ export function tierTextOf(tier: CatchTier): string {
 }
 
 /**
+ * ★ v1.1.2：档位差额提示 —— **只在比常速更快时（档 1~2）**给出。
+ *
+ * 为什么要这句话：卡片顶部大字用的是「**按该档速度走**」的到达时刻，而卡面那一行
+ * 「步行 X 分」显示的是**常速实测均值**（`walk_times`），两者天生差一截
+ * → 把卡面上看得见的每一项相加，会比顶部大字**多**（实测 5 张里 2 张差 1.4 分，
+ *   理论上限约 4 分钟）。**大字本身没有算错**（它回答的是「现在出门、跑到站能赶上的话几点到」），
+ * 缺的只是一句解释 → 由这里补出「需較常速快 X 分」。
+ *
+ * @param baseMin 该段步行的「正常走」基准时长（分钟）—— 必须与卡面显示的同一份
+ * @returns 档 3~5（无需加速）或差额 < 30 秒 → `""`（不占版面）
+ */
+export function tierHintOf(baseMin: number, tier: CatchTier): string {
+  if (tier >= 3) return "";
+  const saveSec = requiredSec(baseMin, 3) - requiredSec(baseMin, tier);
+  if (saveSec < 30) return "";
+  const m = Math.round((saveSec / 60) * 10) / 10;
+  return `需較常速快 ${m} 分`;
+}
+
+/**
  * 分档剩余秒 → 「约 lo~hi 分」文案（往短了算，区间下限即缓冲）。
  *
  * ⚠️ 区间可能异常宽：`lo` 剔掉了「已过的那一跳」，而某跳的 segment_stats 样本本身可能偏大

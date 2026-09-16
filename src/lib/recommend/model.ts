@@ -30,7 +30,7 @@
  */
 import { PLACE_SHORT } from "@/lib/home-plans-shared";
 import { hhmmOf } from "@/lib/lrt/eta";
-import { pickCatchTier, rangeText, tierTextOf } from "./catch-up";
+import { pickCatchTier, rangeText, tierHintOf, tierTextOf } from "./catch-up";
 import { mainCodeOf, rideOfHops, type SegmentIndex } from "./segment-lookup";
 import {
   BUS_HEADWAY_FALLBACK_SEC,
@@ -337,6 +337,11 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): RecommendCard 
       liveClocks: i === 0 ? liveClocks : undefined,
       tier: i === 0 ? tier : null,
       tierText: i === 0 ? tierTextOf(tier) : "",
+      // ★ v1.1.2：档 1~2（要比常速更快）时补一句「需較常速快 X 分」——
+      //   卡面那一行「步行 X 分」是**常速实测均值**，而总用时按该档速度算
+      //   ⇒ 可见项直接相加会比顶部大字大。大字没错，缺的是这句解释。
+      //   字段挂在 rides[0]，但渲染在卡面第一行「步行」上（差额正出在那一行）。
+      tierHint: i === 0 ? tierHintOf(wOut.minutes, tier) : "",
     });
 
     if (i + 1 >= segs.length) break;

@@ -176,8 +176,38 @@ function toBusArrival(
   };
 }
 
-/** 超时包装：到点即抛，由调用方按「该桶无数据」处理 */
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+/**
+ * ★ v1.2.0：`queryEta` 的一条线路结果 → `BusLive`（供 `fetchLive` 与 `fetchStationLive` 共用）。
+ *
+ * 候选池口径（v1.1.4，用户 2026-09-16 定）：「**还没到用户上车站**」的全部在途车 ——
+ *   · `passed`（已过站、环线按绕一圈计）→ **排除**：它们往往要等一整圈（可达 40 分钟），
+ *     留着会让「赶不上就整条剔除」名存实亡（环线永远有车）。
+ *   · **不设条数上限**：`eta.ts` 的 `rest` 给出第 3 辆起的全部。
+ *   · 池内顺序沿用 `eta.ts` 的升序（按站距）→ nearest/second/more 语义不变。
+ */
+function buildBusLive(
+  r: { route: string; dir?: string; nearest?: EtaBus; second?: EtaBus; rest?: EtaBus[] },
+  idx: RouteIndex,
+  segIdx: SegmentIndex,
+  todayWeekday: number,
+): BusLive {
+  const dir = r.dir ?? "0";
+  const toArr = (e: EtaBus | undefined) =>
+    e ? toBusArrival(idx, segIdx, r.route, dir, e, todayWeekday) : null;
+  const pool = [r.nearest, r.second, ...(r.rest ?? [])].filter((e): e is EtaBus => !!e && !e.passed);
+  const arr = pool.map((e) => toArr(e)).filter((x): x is BusArrival => x !== null);
+  return {
+    kind: "bus",
+    route: r.route,
+    // empty = 该方向**没有一辆还没到站的车**（不在运营时间 / 末班已过）→ 整条方案排除
+    empty: arr.length === 0,
+    nearest: arr[0] ?? null,
+    second: arr[1] ?? null,
+    more: arr.slice(2),
+  };
+}
+
+/** 超时包装：到点即抛，由调用方按「该桶无数据」处理 */function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`timeout:${label}`)), ms);
     p.then(
@@ -283,30 +313,7 @@ export async function fetchLive(
               BUCKET_TIMEOUT_MS,
               key,
             );
-            for (const r of res) {
-              const dir = r.dir ?? "0";
-              const toArr = (e: EtaBus | undefined) =>
-                e ? toBusArrival(idx, segIdx, r.route, dir, e, todayWeekday) : null;
-              // ★ v1.1.4：候选池 = 「**还没到用户上车站**」的全部在途车（用户 2026-09-16 定）。
-              //   · `passed`（已过站、环线按绕一圈计）→ **排除**：它们往往要等一整圈（可达 40 分钟），
-              //     留着会让「赶不上就整条剔除」名存实亡（环线永远有车）。
-              //   · **不设条数上限**：`eta.ts` 的 `rest` 给出第 3 辆起的全部。
-              //   · 池内顺序沿用 `eta.ts` 的升序（按站距）→ nearest/second/more 语义不变。
-              const pool = [r.nearest, r.second, ...(r.rest ?? [])].filter(
-                (e): e is EtaBus => !!e && !e.passed,
-              );
-              const arr = pool.map((e) => toArr(e)).filter((x): x is BusArrival => x !== null);
-              const lv: BusLive = {
-                kind: "bus",
-                route: r.route,
-                // empty = 该方向**没有一辆还没到站的车**（不在运营时间 / 末班已过）→ 整条方案排除
-                empty: arr.length === 0,
-                nearest: arr[0] ?? null,
-                second: arr[1] ?? null,
-                more: arr.slice(2),
-              };
-              put(r.route, b.station, lv);
-            }
+            for (const r of res) put(r.route, b.station, buildBusLive(r, idx, segIdx, todayWeekday));
             dsatCalls += b.routes.length;
           } else {
             const res = await withTimeout(
@@ -386,4 +393,60 @@ async function queryBusBucket(
 > {
   const res = await queryEta(b.station, b.routes, "0", b.dest, false, undefined, idx, "recommend");
   return res.results as { route: string; ok: boolean; dir?: string; nearest?: EtaBus; second?: EtaBus; rest?: EtaBus[] }[];
+}
+
+/**
+ * ★ v1.2.0：任意「站 × 线路组 × 下车点」的实时班次查询 —— 供**详情页**的
+ * 「该站台剩余所有能到达目的地的路线」用（用户 2026-09-16 口径）。
+ *
+ * 为什么不复用 `fetchLive`：
+ *   `fetchLive` 的桶由 `OptionSeed` 反推（只覆盖**本卡方案表**里的线路），
+ *   而详情页要的是「该站台**所有**可达线路」——可能包含方案表外的线（实测 C653 就有 `N3`）。
+ *   → 这里接受**显式构造的 jobs**，按 `(station, dest)` 分桶、每桶 ≤ `MAX_ROUTES_PER_BUCKET` 条线。
+ *
+ * ⚠️ 纯追加导出：**不改 `fetchLive` 的任何行为**；返回值按 `route@station` 键（同站多线不冲突，
+ *    与 `fetchLive` 的「route → 首站」键不同，故不会互相污染）。
+ * ⚠️ 同样走 `purpose='recommend'`（不进熔断判定、独立超时）。
+ */
+export async function fetchStationLive(
+  pool: Pool,
+  jobs: { station: string; dest: string; routes: string[] }[],
+  idx: RouteIndex,
+  segIdx: SegmentIndex,
+  opts: { todayWeekday: number; nowMs?: number },
+): Promise<Map<string, BusLive>> {
+  void pool; // 巴士侧不需要 pool（走 DSAT + 注入索引）；保留参数以对齐 fetchLive 签名
+  const todayWeekday = opts.todayWeekday;
+  const out = new Map<string, BusLive>();
+
+  // 分桶：(station, dest) → routes（再按 MAX_ROUTES_PER_BUCKET 切片）
+  const byKey = new Map<string, { station: string; dest: string; routes: string[] }>();
+  for (const j of jobs) {
+    const k = `${j.station}|${j.dest}`;
+    const cur = byKey.get(k) ?? { station: j.station, dest: j.dest, routes: [] };
+    for (const r of j.routes) if (!cur.routes.includes(r)) cur.routes.push(r);
+    byKey.set(k, cur);
+  }
+  const buckets: BusBucket[] = [];
+  for (const b of byKey.values()) {
+    for (let i = 0; i < b.routes.length; i += MAX_ROUTES_PER_BUCKET) {
+      buckets.push({ kind: "bus", station: b.station, dest: b.dest, routes: b.routes.slice(i, i + MAX_ROUTES_PER_BUCKET) });
+    }
+  }
+
+  for (let i = 0; i < buckets.length; i += BUCKET_CONCURRENCY) {
+    const batch = buckets.slice(i, i + BUCKET_CONCURRENCY);
+    await Promise.all(
+      batch.map(async (b) => {
+        const key = `${b.station}→${b.dest} [${b.routes.join(",")}]`;
+        try {
+          const res = await withTimeout(queryBusBucket(idx, b), BUCKET_TIMEOUT_MS, key);
+          for (const r of res) out.set(`${r.route}@${b.station}`, buildBusLive(r, idx, segIdx, todayWeekday));
+        } catch {
+          // 超时/失败 → 该桶的线路不出现在结果里（调用方按「无实时数据」降级展示）
+        }
+      }),
+    );
+  }
+  return out;
 }

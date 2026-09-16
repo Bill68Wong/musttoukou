@@ -208,6 +208,8 @@ async function buildReports(
     });
 
     let minutes: number | null = null;
+    /** 是否出现在在用方案表里（有 seed）—— `minutes === null` 时必须靠它区分两种成因 */
+    const inPlan = !!seed;
     let tier: CatchTier | null = null;
     let tierText = "";
     let liveText = "";
@@ -248,7 +250,10 @@ async function buildReports(
           });
         }
       } else {
-        liveText = "暫無實時報站";
+        // ★ v1.1.8 修正：原先这里直接把 minutes 留成 null → 会和「方案表外」混为一谈。
+        //   现在 minutes 仍为 null（本轮确实没有车、算不出门到门时长），
+        //   但 UI 靠 inPlan 区分文案：「暫無實時車」（在方案里但没车）vs「未收錄於方案」（没 seed）。
+        liveText = "暫無實時車";
       }
     } else {
       // 轻轨：直接问下一班（**必须带 pre**，否则线上跨洲往返恒定超时）
@@ -288,6 +293,7 @@ async function buildReports(
       liveClocks,
       alightCandidates: r.alights,
       minutes,
+      inPlan,
       tier,
       tierText,
       href,

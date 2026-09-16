@@ -264,8 +264,11 @@ export default function CardDetailClient({
                       全程 {Math.round(rp.minutes)} 分
                       {rp.tierText && <span className={`rc-tier rc-tier--${rp.tier}`}>{rp.tierText}</span>}
                     </>
+                  ) : rp.inPlan ? (
+                    // 在方案表里，但本轮没有在途车（收车 / 不在营运时段）→ 不编数字
+                    <span className="t-muted t-label">暫無實時車</span>
                   ) : (
-                    // 方案表外的线（如 N5）：算不出门到门总时长 → 只展示报站，不编数字
+                    // 方案表外的线（如 N5）→ 永远算不出门到门总时长，只展示报站
                     <span className="t-muted t-label">未收錄於方案</span>
                   )}
                   {rp.href && (

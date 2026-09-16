@@ -398,10 +398,14 @@ export interface ReachReport {
   alightCandidates: string[];
   /**
    * 门到门总时长（分钟）。
-   * ⚠️ `null` = **该线不在任何在用方案表里**（没有 seed）→ 算不出总时长，
-   *    只展示报站、不参与「优于第 N 张卡」的筛选。例：C690/3 的 `N5`。
+   * ⚠️ `null` 有**两种**成因，必须配合 `inPlan` 区分（v1.1.8 修正）：
+   *    · `inPlan === false` → **该线不在任何在用方案表里**（没有 seed）→ 永远算不出总时长
+   *    · `inPlan === true`  → 在方案表里，但**本轮没有在途车**（收车/不在营运时段）→ 暂时算不出
+   *    两者在 UI 上文案不同（「未收錄於方案」vs「暫無實時車」），**不可混为一谈**。
    */
   minutes: number | null;
+  /** 该线是否出现在在用方案表里（有 seed ⇒ 有实时车时就能算出门到门总时长） */
+  inPlan: boolean;
   tier: CatchTier | null;
   tierText: string;
   /** 该线自己的详情页地址（`/card?...`）；无法定位时为 null */

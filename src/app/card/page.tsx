@@ -15,6 +15,7 @@ import { Suspense } from "react";
 import CardDetailClient from "@/components/card/CardDetailClient";
 import { getPool } from "@/lib/db";
 import { PLACE_SHORT } from "@/lib/home-plans-shared";
+import { isAuthed } from "@/lib/auth-server";
 import { cardDetail } from "@/lib/recommend/card";
 import { parseCardQuery } from "@/lib/recommend/card-link";
 
@@ -67,6 +68,8 @@ async function DetailSection({
     board: params.board,
     alight: params.alight,
   });
+  // ★ v1.1.10：开发者入口（開始計時）只对已过口令门的人渲染（本页对公众公开）
+  const authed = await isAuthed();
 
   return (
     <CardDetailClient
@@ -76,6 +79,7 @@ async function DetailSection({
       toLabel={toLabel}
       zone={params.zone}
       rank={rank}
+      authed={authed}
       initial={r.ok ? r.data : null}
       error={r.ok ? null : r.error}
     />

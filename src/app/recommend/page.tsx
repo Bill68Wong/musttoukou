@@ -13,6 +13,7 @@
  */
 import { Suspense } from "react";
 import RecommendClient from "@/components/RecommendClient";
+import { isAuthed } from "@/lib/auth-server";
 import { getPool } from "@/lib/db";
 import { PLACE_SHORT } from "@/lib/home-plans-shared";
 import { recommend } from "@/lib/recommend/service";
@@ -50,6 +51,9 @@ export default async function Page({
 async function CardsSection({ from, to, zone }: { from: string; to: string; zone: SchoolZone }) {
   const r = await recommend(getPool(), { fromSlug: from, toSlug: to, zone, limit: 5 });
 
+  // ★ v1.1.10：开发者入口只对已过口令门的人渲染（本页对公众公开）
+  const authed = await isAuthed();
+
   return (
     <RecommendClient
       fromSlug={from}
@@ -57,6 +61,7 @@ async function CardsSection({ from, to, zone }: { from: string; to: string; zone
       fromLabel={labelOf(from)}
       toLabel={labelOf(to)}
       zone={zone}
+      authed={authed}
       initial={{
         cards: r.cards,
         colors: r.colors,

@@ -76,6 +76,7 @@ export default function RecommendClient({
   fromLabel,
   toLabel,
   zone,
+  authed,
   initial,
 }: {
   fromSlug: string;
@@ -83,9 +84,13 @@ export default function RecommendClient({
   fromLabel: string;
   toLabel: string;
   zone: SchoolZone | null;
+  /** ★ v1.1.10：是否已过口令门 —— 开发者入口只对已登录者渲染（本页对公众公开） */
+  authed: boolean;
   initial: Payload;
 }) {
-  const devMode = useDevMode();
+  const devModeRaw = useDevMode();
+  // 只在已登录时开发者模式才「生效」（开关本身对公众不渲染）
+  const devMode = devModeRaw && authed;
   const [data, setData] = useState<Payload>(initial);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -198,13 +203,17 @@ export default function RecommendClient({
           </Link>
         </p>
         <p>
-          <button
-            className="btn btn--text btn--sm"
-            onClick={() => writeDevMode(!devMode)}
-            aria-pressed={devMode}
-          >
-            開發者模式：{devMode ? "已開啟" : "已關閉"}
-          </button>
+          {/* ★ v1.1.10：开发者开关只对已登录者显示（「开发者模式只有我能开」）。
+              公众看到的是干净的推荐信息 + 关于说明。 */}
+          {authed && (
+            <button
+              className="btn btn--text btn--sm"
+              onClick={() => writeDevMode(!devModeRaw)}
+              aria-pressed={devModeRaw}
+            >
+              開發者模式：{devModeRaw ? "已開啟" : "已關閉"}
+            </button>
+          )}
         </p>
       </footer>
     </main>

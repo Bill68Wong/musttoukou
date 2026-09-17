@@ -31,6 +31,7 @@ export default function CardDetailClient({
   toLabel,
   zone,
   rank,
+  authed,
   initial,
   error,
 }: {
@@ -40,6 +41,8 @@ export default function CardDetailClient({
   toLabel: string;
   zone: SchoolZone | null;
   rank?: number;
+  /** ★ v1.1.10：是否已过口令门 —— 「開始計時」按钮只对已登录者渲染 */
+  authed: boolean;
   initial: CardDetailPayload | null;
   error: string | null;
 }) {
@@ -308,7 +311,7 @@ export default function CardDetailClient({
       </section>
 
       {/* ⑥ 开发者模式按钮（计时入口） */}
-      {devMode && <CardDevActions card={card} zone={zone} />}
+      {devMode && authed && <CardDevActions card={card} zone={zone} />}
 
       <footer className="rc-footer">
         <p>

@@ -21,10 +21,13 @@ export default function HomeClient({
   plans,
   active,
   dbError,
+  authed,
 }: {
   plans: PlanRow[];
   active: ActiveSession | null;
   dbError: string | null;
+  /** ★ v1.1.10：是否已过口令门 —— 开发者入口只对已登录者渲染（公众看到的是纯推荐功能） */
+  authed: boolean;
 }) {
   const router = useRouter();
   const [zone, setZone] = useZone();
@@ -150,29 +153,36 @@ export default function HomeClient({
         <ZonePicker value={zone} onChange={setZone} />
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 22 }}>
-        <button
-          className="btn btn--outline btn--sm"
-          onClick={() => router.push("/records")}
-          style={{ flex: 1, minHeight: 44, fontWeight: 500 }}
-        >
-          📋 通勤记录
-        </button>
-        <button
-          className="btn btn--outline btn--sm"
-          onClick={() => router.push("/stats")}
-          style={{ flex: 1, minHeight: 44, fontWeight: 500 }}
-        >
-          📊 通勤统计
-        </button>
-      </div>
-      <button
-        className="btn btn--outline btn--sm"
-        onClick={() => router.push("/free")}
-        style={{ width: "100%", minHeight: 44, fontWeight: 500, marginTop: 8 }}
-      >
-        ⏱ 自由记站（实测站间时长）
-      </button>
+      {/* ★ v1.1.10：以下入口全部指向**口令保护区**（記錄/統計/自由記站）。
+          网站要公开给别人用，而这些是「只有我能看」的数据页 → 只对已登录者显示，
+          公众看到的是干净的推荐入口，不会点进一口令墙。 */}
+      {authed && (
+        <>
+          <div style={{ display: "flex", gap: 8, marginTop: 22 }}>
+            <button
+              className="btn btn--outline btn--sm"
+              onClick={() => router.push("/records")}
+              style={{ flex: 1, minHeight: 44, fontWeight: 500 }}
+            >
+              📋 通勤記錄
+            </button>
+            <button
+              className="btn btn--outline btn--sm"
+              onClick={() => router.push("/stats")}
+              style={{ flex: 1, minHeight: 44, fontWeight: 500 }}
+            >
+              📊 通勤統計
+            </button>
+          </div>
+          <button
+            className="btn btn--outline btn--sm"
+            onClick={() => router.push("/free")}
+            style={{ width: "100%", minHeight: 44, fontWeight: 500, marginTop: 8 }}
+          >
+            ⏱ 自由記站（實測站間時長）
+          </button>
+        </>
+      )}
 
       <div
         className="t-label t-muted"
@@ -186,7 +196,8 @@ export default function HomeClient({
           opacity: 0.9,
         }}
       >
-        <DevModeToggle />
+        {/* ★ v1.1.10：开发者模式开关只对已登录者显示（「开发者模式只有我能开」） */}
+        {authed && <DevModeToggle />}
         <p style={{ margin: 0 }}>
           数据来源：澳门交通事务局 ·{" "}
           {/* ★ v1.1.7：纯文字链接原热区仅 ~20px 高，走路时基本点不中 → .link-hit 撑到 44px */}

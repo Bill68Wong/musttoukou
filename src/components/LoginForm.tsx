@@ -1,12 +1,25 @@
 "use client";
 
+/**
+ * 登录表单（v1.1.11 改：参数由 props 传入，不再用 useSearchParams）
+ *
+ * 为什么改：`useSearchParams()` 必须包在 `<Suspense>` 里 → 首屏只出 fallback，
+ * 表单要等客户端水合。登录页是口令门的唯一入口，不该依赖水合才可见（见 `app/login/page.tsx`）。
+ */
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { writeDevMode } from "@/lib/dev-mode";
 
-export default function LoginForm() {
+export default function LoginForm({
+  from = null,
+  dev = false,
+}: {
+  /** 登录成功后回跳的站内路径（已由服务端校验为相对路径） */
+  from?: string | null;
+  /** 是否从「開發者模式：需口令」那个开关点进来的 —— 是则登录后顺手开启开发者模式 */
+  dev?: boolean;
+}) {
   const router = useRouter();
-  const params = useSearchParams();
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -25,10 +38,10 @@ export default function LoginForm() {
         const data = (await res.json()) as { error?: string };
         throw new Error(data.error ?? "登录失败");
       }
-      // ★ v1.1.11：若是从「開發者模式：需口令」那个开关点进来的（dev=1），
-      //   登录成功就顺手把开发者模式打开 —— 用户点一次开关就到位，不用再点第二次。
-      if (params.get("dev") === "1") writeDevMode(true);
-      router.push(params.get("from") || "/");
+      // ★ v1.1.11：从开发者开关点进来（dev=1）→ 登录成功就顺手把开发者模式打开，
+      //   用户点一次开关就到位，不用再点第二次。
+      if (dev) writeDevMode(true);
+      router.push(from || "/");
       router.refresh();
     } catch (err) {
       setError((err as Error).message);

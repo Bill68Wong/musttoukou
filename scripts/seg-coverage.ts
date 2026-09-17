@@ -18,10 +18,10 @@ try {
   /* .env 不存在 */
 }
 
-const target = (process.argv[2] ?? "local") as "local" | "cloud";
+const target = (process.argv[2] ?? "cloud") as "local" | "cloud";
 const minArg = process.argv.find((a) => a.startsWith("--min="));
 const MIN = minArg ? Number(minArg.split("=")[1]) : 2;
-const dbUrl = target === "cloud" ? process.env.DATABASE_URL : process.env.DATABASE_URL_LOCAL;
+const dbUrl = target === "cloud" ? process.env.DATABASE_URL : (process.env.DATABASE_URL_LOCAL ?? process.env.DATABASE_URL);
 if (!dbUrl) throw new Error(`未找到 ${target === "cloud" ? "DATABASE_URL" : "DATABASE_URL_LOCAL"}`);
 const u = new URL(dbUrl);
 const pool = new Pool({

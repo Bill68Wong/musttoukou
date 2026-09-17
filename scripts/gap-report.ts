@@ -18,14 +18,14 @@ try {
   /* .env 不存在 */
 }
 
-const target = (process.argv[2] ?? "local") as "local" | "cloud";
+const target = (process.argv[2] ?? "cloud") as "local" | "cloud";
 const argOf = (k: string, d: string) =>
   process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
 const FROM = argOf("from", "home");
 const TO = argOf("to", "school");
 const MIN = Number(argOf("min", "2"));
 
-const dbUrl = target === "cloud" ? process.env.DATABASE_URL : process.env.DATABASE_URL_LOCAL;
+const dbUrl = target === "cloud" ? process.env.DATABASE_URL : (process.env.DATABASE_URL_LOCAL ?? process.env.DATABASE_URL);
 if (!dbUrl) throw new Error(`未找到 ${target === "cloud" ? "DATABASE_URL" : "DATABASE_URL_LOCAL"}`);
 const u = new URL(dbUrl);
 const pool = new Pool({

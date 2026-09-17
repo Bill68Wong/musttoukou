@@ -19,8 +19,8 @@ try {
 }
 
 const dry = process.argv.includes("--dry");
-const target = (process.argv[2] ?? "local") as "local" | "cloud";
-const dbUrl = target === "cloud" ? process.env.DATABASE_URL : process.env.DATABASE_URL_LOCAL;
+const target = (process.argv[2] ?? "cloud") as "local" | "cloud";
+const dbUrl = target === "cloud" ? process.env.DATABASE_URL : (process.env.DATABASE_URL_LOCAL ?? process.env.DATABASE_URL);
 if (!dbUrl) throw new Error(`未找到 ${target === "cloud" ? "DATABASE_URL" : "DATABASE_URL_LOCAL"}`);
 const u = new URL(dbUrl);
 const pool = new Pool({

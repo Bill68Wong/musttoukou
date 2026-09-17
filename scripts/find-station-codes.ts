@@ -22,7 +22,7 @@ const TARGETS = [
 
 async function main() {
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL_LOCAL || process.env.DATABASE_URL,
+    connectionString: (process.env.DATABASE_URL_LOCAL ?? process.env.DATABASE_URL) || process.env.DATABASE_URL,
     max: 1,
   });
   for (const t of TARGETS) {

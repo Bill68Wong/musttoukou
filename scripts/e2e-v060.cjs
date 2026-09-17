@@ -16,7 +16,7 @@ const BASE = "http://localhost:3000";
 const OUT = path.join(os.tmpdir(), "musttoukou-e2e-v060");
 fs.mkdirSync(OUT, { recursive: true });
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL_LOCAL, max: 1 });
+const pool = new Pool({ connectionString: (process.env.DATABASE_URL_LOCAL ?? process.env.DATABASE_URL), max: 1 });
 let pass = 0, fail = 0;
 function ok(cond, msg) {
   if (cond) { pass++; console.log("  ✅", msg); }

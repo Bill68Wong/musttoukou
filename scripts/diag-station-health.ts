@@ -20,8 +20,8 @@ const connStr =
   target === "cloud"
     ? process.env.DATABASE_URL
     : target === "local"
-      ? process.env.DATABASE_URL_LOCAL
-      : (process.env.DATABASE_URL_LOCAL || process.env.DATABASE_URL);
+      ? (process.env.DATABASE_URL_LOCAL ?? process.env.DATABASE_URL)
+      : ((process.env.DATABASE_URL_LOCAL ?? process.env.DATABASE_URL) || process.env.DATABASE_URL);
 if (!connStr) {
   console.error("❌ 未找到连接串");
   process.exit(1);

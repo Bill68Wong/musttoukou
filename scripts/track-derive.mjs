@@ -256,7 +256,7 @@ function flagOutliers(samples) {
 async function loadTruth() {
   if (CFG.truth === "none") return null;
   try { process.loadEnvFile(path.join(ROOT, ".env")); } catch { /* 无 .env */ }
-  const conn = CFG.truth === "cloud" ? process.env.DATABASE_URL : process.env.DATABASE_URL_LOCAL;
+  const conn = CFG.truth === "cloud" ? process.env.DATABASE_URL : (process.env.DATABASE_URL_LOCAL ?? process.env.DATABASE_URL);
   if (!conn) { L(`⚠️ --truth=${CFG.truth} 但未找到连接串，跳过对照`); return null; }
   const { default: pg } = await import("pg");
   const pool = new pg.Pool({ connectionString: conn, max: 1, ssl: conn.includes("supabase") ? { rejectUnauthorized: false } : undefined });

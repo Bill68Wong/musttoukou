@@ -15,6 +15,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import DevModeToggle from "./DevModeToggle";
 import ZonePicker, { useZone } from "./ZonePicker";
+import { useDevMode } from "@/lib/dev-mode";
 import { HOME_SLUG, PAIR_ORDER, PLACE_SHORT, dirLabel, type PlanRow, type ActiveSession } from "@/lib/home-plans-shared";
 
 export default function HomeClient({
@@ -31,6 +32,8 @@ export default function HomeClient({
 }) {
   const router = useRouter();
   const [zone, setZone] = useZone();
+  /** ★ v1.1.11：数据入口按「开发者模式」显示（开关未登录时会先引导去登录） */
+  const devMode = useDevMode();
 
   if (dbError) {
     return (
@@ -153,10 +156,11 @@ export default function HomeClient({
         <ZonePicker value={zone} onChange={setZone} />
       </div>
 
-      {/* ★ v1.1.10：以下入口全部指向**口令保护区**（記錄/統計/自由記站）。
-          网站要公开给别人用，而这些是「只有我能看」的数据页 → 只对已登录者显示，
-          公众看到的是干净的推荐入口，不会点进一口令墙。 */}
-      {authed && (
+      {/* ★ v1.1.10：以下入口指向**口令保护区**（記錄/統計/自由記站）。
+          ★ v1.1.11 改口径（用户 2026-09-17）：「开启开发者模式才需要密钥」——
+            所以这些入口不再按「已登录」藏，而是按**开发者模式**显示：
+            公众看到的开关点了会去登录页；登录后打开开关，这些入口才出现。 */}
+      {devMode && authed && (
         <>
           <div style={{ display: "flex", gap: 8, marginTop: 22 }}>
             <button
@@ -196,8 +200,9 @@ export default function HomeClient({
           opacity: 0.9,
         }}
       >
-        {/* ★ v1.1.10：开发者模式开关只对已登录者显示（「开发者模式只有我能开」） */}
-        {authed && <DevModeToggle />}
+        {/* ★ v1.1.11：开关**始终可见** —— 它同时是通往登录页的入口。
+            未登录时点它 → /login；登录后即可正常开/关。 */}
+        <DevModeToggle authed={authed} />
         <p style={{ margin: 0 }}>
           数据来源：澳门交通事务局 ·{" "}
           {/* ★ v1.1.7：纯文字链接原热区仅 ~20px 高，走路时基本点不中 → .link-hit 撑到 44px */}

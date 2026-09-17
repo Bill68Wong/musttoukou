@@ -12,8 +12,9 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import DevModeToggle from "./DevModeToggle";
 import RecommendCards from "./RecommendCards";
-import { useDevMode, writeDevMode } from "@/lib/dev-mode";
+import { useDevMode } from "@/lib/dev-mode";
 import type { RecommendCard, SchoolZone } from "@/lib/recommend/types";
 
 interface Payload {
@@ -203,17 +204,9 @@ export default function RecommendClient({
           </Link>
         </p>
         <p>
-          {/* ★ v1.1.10：开发者开关只对已登录者显示（「开发者模式只有我能开」）。
-              公众看到的是干净的推荐信息 + 关于说明。 */}
-          {authed && (
-            <button
-              className="btn btn--text btn--sm"
-              onClick={() => writeDevMode(!devModeRaw)}
-              aria-pressed={devModeRaw}
-            >
-              開發者模式：{devModeRaw ? "已開啟" : "已關閉"}
-            </button>
-          )}
+          {/* ★ v1.1.11：开关**始终可见**（用户口径「开启开发者模式才需要密钥」）。
+              未登录时点它 → /login；登录后即可正常开/关。与首页共用同一组件，行为一致。 */}
+          <DevModeToggle authed={authed} />
         </p>
       </footer>
     </main>

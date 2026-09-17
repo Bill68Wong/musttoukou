@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { writeDevMode } from "@/lib/dev-mode";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -24,6 +25,9 @@ export default function LoginForm() {
         const data = (await res.json()) as { error?: string };
         throw new Error(data.error ?? "登录失败");
       }
+      // ★ v1.1.11：若是从「開發者模式：需口令」那个开关点进来的（dev=1），
+      //   登录成功就顺手把开发者模式打开 —— 用户点一次开关就到位，不用再点第二次。
+      if (params.get("dev") === "1") writeDevMode(true);
       router.push(params.get("from") || "/");
       router.refresh();
     } catch (err) {
@@ -55,6 +59,8 @@ export default function LoginForm() {
         </h1>
         <p className="t-label t-muted t-center" style={{ marginBottom: 28 }}>
           请输入访问口令
+          <br />
+          <span style={{ opacity: 0.75 }}>開發者模式與數據頁需要口令</span>
         </p>
         <form
           onSubmit={submit}

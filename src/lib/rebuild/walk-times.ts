@@ -10,6 +10,41 @@
  * 口径细节见 rebuildWalkTimes 上方注释（与 v0.24.0 定稿一致）。
  */
 import type { Pool } from "pg";
+import { SPEED_RATIO, WALK_BASE_M_PER_MIN } from "@/lib/recommend/types";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🚨 防「双重缩档」断言（v1.2.0 · 三层防线的第 1 层）
+//
+// 背景：读端 `src/lib/recommend/catch-up.ts#requiredSec` **已经**对步行分钟做了分档缩放：
+//     requiredSec(min, tier) = OVERHEAD + (min*60 − OVERHEAD) × SPEED_RATIO[tier]
+// 而本模块负责把「高德步行距离」折成 `walk_times.minutes`。
+//
+// 🚫 **落库只能存「常速基准分钟」**（= distance_m ÷ WALK_BASE_M_PER_MIN）。
+//    若在这里也按「分档速度」算，读端会再乘一次 ⇒ **双重缩档** ✗
+//
+// 这条断言守住「基准速度」与「SPEED_RATIO 的归一基准」不脱钩：
+//   `SPEED_RATIO[3] === 1` 意味着档 3（正常走）就是基准 ⇒ WALK_BASE_M_PER_MIN / 60
+//   必须等于那个基准速度。一旦有人改了其中一个而忘了另一个，这里直接抛错。
+//
+// 三道防线（缺一层都会有人踩进去）：
+//   ① 本断言（运行时，成本一行）
+//   ② `src/lib/amap/**` 禁止 import `catch-up.ts` / `SPEED_RATIO`（见 client.ts 文件头）
+//   ③ `walk_times.minutes` 的 COMMENT 写死禁令（见 db/migrate-v1200.ts）
+// ═══════════════════════════════════════════════════════════════════════════
+const WALK_BASE_MPS = WALK_BASE_M_PER_MIN / 60; // 应为 1.4 m/s
+if (SPEED_RATIO[3] !== 1) {
+  throw new Error(
+    `[walk-times] SPEED_RATIO[3] 必须 === 1（它是「正常走」的归一基准），实际为 ${SPEED_RATIO[3]}。` +
+      ` 若有意改动，请同步核对 WALK_BASE_M_PER_MIN 与 docs/步行速度五档-文献依据-20260918.md。`,
+  );
+}
+if (Math.abs(WALK_BASE_MPS - 1.4) > 1e-9) {
+  throw new Error(
+    `[walk-times] WALK_BASE_M_PER_MIN 必须对应 1.4 m/s（= 84 米/分钟），实际 ${WALK_BASE_M_PER_MIN}` +
+      `（${WALK_BASE_MPS.toFixed(3)} m/s）。` +
+      ` 🚫 改它会全局影响所有卡片的步行分钟数；且必须与 SPEED_RATIO[3] 的基准口径一致。`,
+  );
+}
 
 /** 有效区间：0.3 ~ 20 分钟 */
 const MIN_MIN = 0.3;

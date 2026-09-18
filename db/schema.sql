@@ -28,17 +28,56 @@ CREATE TABLE IF NOT EXISTS stations (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 2.3 地点↔站点步行耗时（v0.24.0：仅存实测值，由 db:walktimes 重灌；手工估算值已全部剔除）
+-- 2.3 地点↔站点步行耗时（v0.24.0：仅存实测值；v1.2.0 起可含由高德距离推算的值）
+--   ★★ 双重缩档禁令：minutes **只能存「常速基准分钟」**（tier 3 / 1.5 m/s 口径）。
+--      读端 src/lib/recommend/catch-up.ts#requiredSec 已经做了分档缩放
+--      （SPEED_RATIO = 0.27/0.48/1.0/1.5/2.5，基准档 3）——
+--      落库时若按分档速度算，读端会再乘一次 ⇒ 双重缩档 ✗
+--      由高德距离推算时：minutes = distance_m ÷ 90（= 1.5 m/s × 60）
 CREATE TABLE IF NOT EXISTS walk_times (
     id          SERIAL PRIMARY KEY,
     place_id    INT NOT NULL REFERENCES places(id),
     station_code TEXT NOT NULL REFERENCES stations(code),
     zone        TEXT,                      -- 澳科大校区 'B/C' | 'N/O' | 'R'；非澳科大 place 为 NULL
-    minutes     NUMERIC(5,1),              -- 实测均值；NULL = 尚未实测
-    samples     INT NOT NULL DEFAULT 0,    -- 实测样本数（1~2 次也写入，靠此列体现可信度）
-    source      TEXT NOT NULL DEFAULT 'timer',  -- v0.24.0 起只有 'timer'
+    minutes     NUMERIC(5,1),              -- 常速基准分钟（实测均值 或 distance_m÷90）；NULL = 未知
+    samples     INT NOT NULL DEFAULT 0,    -- 实测样本数（1~2 次也写入，靠此列体现可信度）；'amap' 行为 0
+    source      TEXT NOT NULL DEFAULT 'timer',  -- 'timer' 实测 | 'amap' 由距离推算 | 'mixed'
     measured_at DATE,                      -- 最近一次样本日期
+    distance_m  NUMERIC(7,1),              -- ★ v1.2.0：高德步行路径距离（米）；NULL = 未知
+    amap_fetched_at TIMESTAMPTZ,           -- ★ v1.2.0：上面 distance_m 的抓取时刻（>30 天会增量重抓）
     UNIQUE (place_id, station_code, zone)
+);
+
+-- 2.3a 地点坐标（v1.2.0）—— ★ 带 zone 粒度
+--   为什么独立成表而不是 places.lat/lng：聚合键是 (place_id, station主码, zone)，
+--   而 zone（澳科大 B/C、N/O、R）是**三栋不同建筑 = 三个不同目的地**。
+--   places 一行对应「整个澳科大」，单行坐标会让三个 zone 算出同一个距离 ⇒ 维度退化。
+CREATE TABLE IF NOT EXISTS place_coords (
+    id          SERIAL PRIMARY KEY,
+    place_id    INT NOT NULL REFERENCES places(id),
+    zone        TEXT,                      -- 'B/C' | 'N/O' | 'R'；非澳科大 place 为 NULL
+    lat         DOUBLE PRECISION NOT NULL,
+    lng         DOUBLE PRECISION NOT NULL,
+    source      TEXT NOT NULL DEFAULT 'manual',  -- 'manual' 人工拾取 | 'amap'
+    note        TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (place_id, zone)                -- ★ zone 维度的真正约束点
+);
+
+-- 2.3c 高德步行距离缓存（v1.2.0）—— 与 walk_times **分层**
+--   为什么独立成表：rebuildWalkTimes 是 DELETE + 全量重灌（每日 Cron），
+--   距离若存在那张表里 → 每天被清掉再重抓 → 浪费配额 + 高德一挂就全丢。
+--   分层后：距离是「外部事实」（慢变、可增量抓），minutes 是「派生值」。
+CREATE TABLE IF NOT EXISTS station_walk_distance (
+    id           SERIAL PRIMARY KEY,
+    place_id     INT NOT NULL REFERENCES places(id),
+    station_main TEXT NOT NULL,            -- 主码口径（C690、T363），与 walk_times 聚合键一致
+    zone         TEXT,
+    distance_m   NUMERIC(7,1) NOT NULL,    -- 高德步行路径距离（米）
+    snap_start_m NUMERIC(6,1),             -- ★ 坐标系健康指标：路径首点→输入点的球面距离
+    snap_end_m   NUMERIC(6,1),             -- ★ 同上，末点
+    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (place_id, station_main, zone)
 );
 
 -- 2.3b 站点↔站点换乘步行耗时（v1.0.0：自动选线的换乘方案计时用；由 db:transferwalks 重灌）

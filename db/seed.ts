@@ -1,4 +1,16 @@
 /**
+ * ⚠️⚠️ 跑本脚本前必读：**它会清空 stations 表，而种子数据不含坐标**
+ *
+ *   `TRUNCATE ... stations, places ...` 会让 **610 行站点坐标永久丢失**，
+ *   而种子插入语句只写 code/name/kind —— 不含 lat/lng。
+ *
+ *   跑完之后必须补一步恢复坐标：
+ *       npm run db:coords
+ *
+ *   （v1.2.0 起坐标导入已正式化为 db/import-station-coords.ts，可一键恢复；
+ *     在那之前恢复脚本躺在 .verify/ 里、没有 npm 入口，极容易踩坑。）
+ */
+/**
  * 种子数据导入（db/seed.ts）：data/commute-network.json → 数据库
  * 用法与建表相同：npm run db:seed -- [local|cloud]
  *

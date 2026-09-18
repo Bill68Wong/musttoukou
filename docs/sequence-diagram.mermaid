@@ -1,0 +1,101 @@
+%% 全澳导航 · 程序调用时序图（v1.3.0 提案，2026-09-18）
+%% 对应设计文档：docs/设计-全澳导航-v1-20260918.md §5
+%% 标注约定：蓝色/高德相关步骤 = 消耗高德配额；绿色/本地 = 0 配额
+
+%% ============================================================
+%% ① 「用户输入 → 输入提示」（含配额保护）
+%% ============================================================
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant SC as SearchHomeClient（前端）
+    participant API as /api/poi/suggest（server）
+    participant AL as alias-resolve（本地）
+    participant DC as Data Cache（跨实例）
+    participant QG as quota（熔断/限次）
+    participant AM as 高德 inputtips
+
+    U->>SC: 按键 "澳科枝"
+    Note over SC: 闸1 防抖 300ms + ≥2 字符
+    SC->>SC: 闸2 前端 LRU 命中?
+    alt LRU 命中
+        SC-->>U: 立即出候选（0 网络）
+    else 未命中
+        SC->>API: q=澳科枝 + 用户位置(GCJ-02)
+        API->>AL: 归一化（繁→简/小写/去标点）
+        AL->>AL: 查 poi_aliases（精确→前缀→包含）
+        alt 本地命中 ≥1
+            AL-->>API: 候选（weight 排序）+ distM（本地 haversine）
+            API-->>SC: source=local（0 配额）
+        else 本地未命中
+            API->>DC: 闸3 关键词缓存命中?
+            alt 缓存命中
+                DC-->>API: 缓存结果
+            else 未命中
+                API->>QG: 闸4 检查（熔断 + 会话限次）
+                alt 熔断中 或 超会话限次
+                    QG-->>API: 拒绝高德调用
+                    API-->>SC: 仅本地结果 + 提示「换个说法」
+                else 允许
+                    QG->>AM: inputtips(keywords, city=820000, citylimit)
+                    AM-->>API: 候选（含 location，无 dist）
+                    API->>API: 按 adcode∈{820000,820001-008} 过滤 + 本地 haversine 排序
+                    API->>QG: 记 search_quota_log
+                    API->>DC: 回写关键词缓存
+                    API-->>SC: source=amap-inputtips
+                end
+            end
+        end
+        SC-->>U: 候选下拉（标注来源：本地库 / 高德）
+    end
+
+%% ============================================================
+%% ② 「点出发 → 出 5 张卡」（含实时报站、并行调用、超时降级）
+%% ============================================================
+sequenceDiagram
+    autonumber
+    actor U as 用户（已定位）
+    participant NAV as /nav（server）
+    participant NS as nav-service
+    participant G as graph-search（本地）
+    participant WR as walk-resolver（高德 walking）
+    participant LV as fetchLive（DSAT + 轻轨）
+    participant MD as modelOption（建模）
+    participant NR as NavResultsClient
+
+    U->>NAV: 点「出发」（from=GPS GCJ-02, to=POI GCJ-02）
+    NAV->>NS: planNav(from, to, now)
+
+    Note over NS: ② 邻近站点（0 配额）
+    NS->>NS: 本地 610 站 haversine → S_from / S_to（≤1.2km）
+
+    Note over NS: ③ 候选枚举（0 配额）
+    NS->>G: enumerate(S_from, S_to, routeIdx)
+    G->>G: 有界 BFS（换乘 ≤2）+ 剪枝（步行>1.5km / 绕路>2.5 / 收班 / 黑名单）
+    G-->>NS: NavCandidate[]
+
+    par 并行（同一 RTT 窗口）
+        NS->>WR: 首末步行（walkOut × N + walkIn × N）
+        WR->>WR: walkRouteGcj（起点 GPS 不转 / 站坐标 wgs84ToGcj02）取 distance_m → ÷84 → 常速基准分钟，cache 落 walk_cache
+        WR-->>NS: WalkResolver（out/in）
+    and
+        NS->>LV: fetchLive(seeds, routeIdx, segIdx)
+        LV->>LV: 巴士桶并发（≤12/波，单桶 3s 超时）+ 轻轨 preload（0 DB 往返）
+        LV-->>NS: Map<route, RouteLive>（超时桶 → 该线剔除）
+    end
+
+    Note over NS: ④ 建模
+    loop 每个候选
+        NS->>MD: modelOption(seed, ctx{walkResolver, live, segIdx})
+        MD->>MD: walkOut + Σ(wait+ride+transfer) + walkIn；ride=lookupHop 逐跳累加（L1~L6）；首段 pickCatchTier（赶车 5 档）；首段赶不上 → 整条剔除
+        MD-->>NS: NavPlan | null
+    end
+    NS->>NS: 按 totalMin 升序取前 5（不足 5 张 → 空状态）
+    NS-->>NAV: NavPlan[]（含 provenance 分级）
+    NAV-->>NR: SSR 渲染 5 张卡
+
+    alt 实时层整体超时
+        NS-->>NAV: cards=[] + emptyReason=live_degraded
+        NAV-->>NR: 「實時報站暫不可用」空状态（绝不显示假数据）
+    end
+    NR-->>U: 5 张门到门卡（步行/车程/候车 + 赶车档 + 来源标注）

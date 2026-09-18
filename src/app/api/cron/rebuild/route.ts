@@ -17,13 +17,19 @@
  *   （middleware 已把本路径加入白名单，不走口令门，见 src/middleware.ts）
  *
  * 安全：重算本身幂等（清表后全量重算）；仍加内存锁避免重叠执行，
- *   并按顺序串行三个重算（都读 timer_events，串行避免连接竞争）。
+ *   并按顺序串行各步骤（都读 timer_events/segment_samples，串行避免连接竞争）。
+ *
+ * ★ v1.3.0：segment_stats 改为**新旧合并**口径（`sampleFrom: "both"`）——
+ *   事件(timer+free) + segment_samples 的 track 原始样本。**必须用 both**，
+ *   否则每日 Cron 会把合采后的结果**静默回退**成事件-only（track 数据白入）✗。
+ *   另新增「滚动窗口清理」步骤：segment_samples 只保留最近 30 轮 track（timer 永不删）。
  *
  * 幂等：可重复调用。
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { rebuildSegmentStats } from "@/lib/rebuild/segment-stats";
+import { trimSegmentSampleWindow } from "@/lib/rebuild/segment-samples";
 import { rebuildTransferWalks } from "@/lib/rebuild/transfer-walks";
 import { rebuildWalkTimes } from "@/lib/rebuild/walk-times";
 
@@ -95,10 +101,18 @@ async function handle(req: NextRequest) {
     const pool = getPool();
     const results: StepResult[] = [];
 
-    // 顺序执行：三者都读 timer_events，串行可避免 DB 连接竞争
+    // 顺序执行：各步骤都读 timer_events / segment_samples，串行可避免 DB 连接竞争
+    // ⓪ 滚动窗口：先清理 segment_samples（只留最近 30 轮 track），让 segment_stats 依保留窗口重算
+    results.push(
+      await step("segment_samples_window", async () => {
+        const r = await trimSegmentSampleWindow(pool, 30);
+        return { deleted: r.deleted, remaining: r.remaining, remainingRuns: r.remainingRuns };
+      }),
+    );
+    // ① segment_stats：★ sampleFrom="both"（事件 + segment_samples 的 track），勿改回默认
     results.push(
       await step("segment_stats", async () => {
-        const r = await rebuildSegmentStats(pool);
+        const r = await rebuildSegmentStats(pool, { sampleFrom: "both" });
         return {
           sessions: r.sessions,
           rides: r.rides,

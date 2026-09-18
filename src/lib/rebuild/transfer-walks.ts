@@ -137,6 +137,23 @@ export function transferSamplesOf(
 }
 
 /** 全量重算 transfer_walks（清表后按实测样本重灌）。**幂等、可重复运行**。 */
+/**
+ * ★ 人工设定的换乘步行时间（v1.2.2）
+ *
+ * 用途：给**没有实测样本**的换乘点兜底 —— 比全局常数 `TRANSFER_FALLBACK_MIN`
+ * （统一 3.0 分）精确，因为每个换乘点的实际步行距离不同。
+ *
+ * ⚠️ 落库规则：**人工优先** —— 用 `ON CONFLICT DO UPDATE`，会**覆盖**同键的实测值 ✓
+ *   理由：这些值是人工按站台布局/实测取整后明确设定的当前权威值。
+ *
+ * 数据来源：`LRT-UH` = 实测 2.9 分（n=9，2026-09-15）后取整为 3.0；
+ *          `LRT-LOT` = 无实测，按站台布局人工估算。
+ */
+const MANUAL_TRANSFER_MIN: { from: string; to: string; minutes: number; note: string }[] = [
+  { from: "LRT-UH", to: "LRT-UH", minutes: 3.0, note: "協和醫院站內換乘（石排灣線↔氹仔線）" },
+  { from: "LRT-LOT", to: "LRT-LOT", minutes: 4.0, note: "蓮花站內換乘（氹仔線↔橫琴線）" },
+];
+
 export async function rebuildTransferWalks(
   pool: Pool,
   opts: { dry?: boolean } = {},
@@ -247,6 +264,23 @@ export async function rebuildTransferWalks(
           rows.map((r) => r.minutes),
           rows.map((r) => r.samples),
           rows.map((r) => r.date),
+        ],
+      );
+    }
+    // ★ v1.2.2：人工换乘时间 —— **人工优先**（DO UPDATE ⇒ 覆盖同键的实测值）
+    //   理由：这些值是人工按站台实际布局/实测取整后**明确设定**的当前权威值。
+    //   ⚠️ 若日后要改回「实测优先」，把 DO UPDATE 改回 DO NOTHING 即可。
+    if (MANUAL_TRANSFER_MIN.length) {
+      await client.query(
+        `INSERT INTO transfer_walks (from_station, to_station, minutes, samples, source, measured_at)
+         SELECT f, t, m, 0, 'manual', NULL
+           FROM UNNEST($1::text[], $2::text[], $3::numeric[]) AS x(f, t, m)
+         ON CONFLICT (from_station, to_station)
+         DO UPDATE SET minutes = EXCLUDED.minutes, samples = 0, source = 'manual', measured_at = NULL`,
+        [
+          MANUAL_TRANSFER_MIN.map((r) => r.from),
+          MANUAL_TRANSFER_MIN.map((r) => r.to),
+          MANUAL_TRANSFER_MIN.map((r) => r.minutes),
         ],
       );
     }

@@ -27,17 +27,129 @@ export type CatchTier = 1 | 2 | 3 | 4 | 5;
 export const OVERHEAD_SEC = 15;
 
 /**
- * 各档相对「正常走」的**耗时比**（权威步速 5.5 / 3.1 / 1.5 / 1.0 / 0.6 m/s 归一）：
- *   正常走 1.5 m/s → ×1.0（基准 3）· 慢走 1.0 m/s → ×1.5 · 快走 2.3 m/s → ×0.65≈0.48(慢跑)
- *   冲刺 5.5 m/s → ×0.27 · 第⑤档「爬」0.6 m/s → ×2.5
+ * 各档相对「正常走」的**耗时比** = `基准速度 ÷ 该档速度`
+ *
+ * ── ★ 基准：正常走 = 1.4 m/s ──────────────────────────────────────────
+ *   双重依据（2026-09-18 调研 + 实测）：
+ *   1. **文献**：Bohannon & Andrews (2011) *Physiotherapy* 97(3):182-189（PMID 21820535，
+ *      41 项研究 / 23,111 人 meta）—— 青壮年男性舒适步速 **1.36~1.43 m/s**；
+ *      Andrews et al. (2022)（PMID 36528509，51,248 人）—— 范围 0.97~1.40，
+ *      且**结论：步速不因地理区域而异** ⇒ 澳门人群可直接套用 ✓
+ *   2. **本项目实测**：19 组真实样本（walk_times 实测分钟 × 高德步行距离）反算
+ *      隐含速度**中位数 1.43 m/s** —— 与 Bohannon 的 1.43 **完全吻合** ✓
+ *   ⇒ 取 1.4 m/s 为两者之间的稳妥值 ✓
+ *
+ * ── 各档速度与依据 ────────────────────────────────────────────────────
+ *   档1 冲刺 **3.6 m/s**（13 km/h）—— ★ 取「**20~50 米冲刺的平均速度**」，不是峰值
+ *         未训练成人**峰值**冲刺 4.5~5.8 m/s，但峰值只能维持 1~3 秒、且需 10~15 米加速；
+ *         赶车实际跑 20~50 米 ⇒ 平均 ≈ 峰值的 75~80% ⇒ 3.5~4.4 m/s；
+ *         再计**背包**（占体重 8~15%，约降 5%）⇒ 3.3~4.2 ⇒ 取保守侧 **3.6** ✓
+ *         ⚠️ 曾误用峰值 5.0 m/s（ratio 0.28）—— **过于乐观** ✗
+ *   档2 小跑 **2.0 m/s**（7.2 km/h）—— ★ 中文「小跑」= 快步小碎步，**不是慢跑**
+ *         参照：快走上限 1.8 · 小跑 2.0~2.2 · 慢跑(jogging) 2.2~2.7
+ *         计背包（-5%）⇒ 1.9~2.1 ⇒ 取 **2.0** ✓
+ *         ⚠️ 曾误引「慢跑 2.5 m/s」（ratio 0.56）—— **引错了口径** ✗
+ *   档3 正常 **1.4 m/s**（5.0 km/h）—— 见上（★ 含背包，因基准来自实测）
+ *   档4 慢走 **1.0 m/s**（3.6 km/h）—— 慢走典型值
+ *   档5 极慢 **0.7 m/s**（2.5 km/h）—— 极慢步速区间 0.6~0.9 的中位
+ *         ⚠️ 原值 0.6 偏极端（已属步行障碍区间）
+ *
+ * ── ★ 背包负重的处理原则（重要）───────────────────────────────────────
+ *   文献（负重占体重：<10% → 降 1~3% · 20% → 降 10~15%）；
+ *   学生书包约 8~15% 体重 ⇒ 约降 **5%** ✓
+ *   **但只对档 1、2 施加此修正** —— 因为**档 3/4/5 的基准来自本项目实测，
+ *   而实测时主人本就背着书包** ⇒ 背包影响已包含在内，不可重复扣 ✗
+ *
+ * ── ⚠️ 口径提醒（避免双重计数）────────────────────────────────────────
+ *   文献的「3~30m 舒适步速」**含起步加速**，论文自己警示短距离测量不可作标准。
+ *   而 `catch-up.ts#requiredSec` 已用 `OVERHEAD_SEC = 15` 秒**单独扣除**起步/反应/等灯，
+ *   ⇒ 本比值对应的应是「纯行走的稳态速度」✓
+ *   稳态速度略高于 3~30m 平均值（约 +5~10%），此处**刻意取保守侧** ——
+ *   与项目「能否赶上的判定一律用下限（往短了算）」的既有原则一致 ✓
+ *
+ * 📄 完整调研（含全部文献表与交叉验证）：`docs/步行速度五档-文献依据-20260918.md`
  */
 export const SPEED_RATIO: Record<CatchTier, number> = {
-  1: 0.27,
-  2: 0.48,
-  3: 1.0,
-  4: 1.5,
-  5: 2.5,
+  1: 0.39, // 3.6 m/s  全力冲刺（20~50m 平均 + 背包；★ 非峰值速度）
+  2: 0.7, // 2.0 m/s  小跑（快步小碎步 + 背包；★ 不是「慢跑」）
+  3: 1.0, // 1.4 m/s  ★ 基准：正常走（文献 1.36~1.43 + 本项目实测 1.43，已含背包）
+  4: 1.4, // 1.0 m/s  慢慢走
+  5: 2.0, // 0.7 m/s  极慢（原 2.5/0.6 偏极端）
 };
+
+/**
+ * ★ 常速步行速度（米/分钟）= **84**（= 1.4 m/s × 60）—— v1.2.0
+ *
+ * 用途：把高德返回的**步行路径距离（米）**折成「常速基准分钟」写入 `walk_times.minutes`：
+ *   `minutes = distance_m ÷ WALK_BASE_M_PER_MIN`
+ *
+ * 🚫🚫 **严禁用本常量之外的任何速度在这里折算** ——
+ *   分档缩放**只在** `catch-up.ts#requiredSec` 做（那里会乘 `SPEED_RATIO`）；
+ *   若在这里也按分档速度算，读端会再乘一次 ⇒ **双重缩档** ✗
+ *
+ * ⚠️ 必须与 `SPEED_RATIO[3] === 1` 的定义基准（1.4 m/s）保持一致，
+ *    `src/lib/rebuild/walk-times.ts` 顶部有运行时断言守着这条。
+ */
+export const WALK_BASE_M_PER_MIN = 84;
+
+/**
+ * ★ 档 1（全力冲刺）的**随距离衰减**模型 —— v1.2.0
+ *
+ * ── 为什么需要它 ──────────────────────────────────────────────────────
+ *   线性模型（一个 `SPEED_RATIO` 乘到底）隐含假设「3.6 m/s 能跑完全程」✗
+ *   但 **磷酸原（PCr）系统只能撑 8~10 秒**（≈30 米）——
+ *   之后糖酵解接管（速度降至峰值约 60%）、再之后有氧主导（约 50%）。
+ *   ⇒ 距离越长，恒定速度的高估越严重（1000 米时约高估 90 秒）✗
+ *
+ * ── 模型：按「时间」分四段（不是「30 米断崖」）────────────────────────
+ *   | 段位           | 时间窗      | 相对峰值 | 速度   | 该段可跑距离 |
+ *   |----------------|------------|---------|-------|------------|
+ *   | PCr（含加速）  | 0~8 s      | 85%     | 3.80  | ~30 m      |
+ *   | PCr→糖酵解     | 8~30 s     | 80%     | 3.58  | ~79 m      |
+ *   | **糖酵解主导** | **30~120 s** | **60%** | **2.68** | ~241 m   |
+ *   | 有氧主导       | >120 s     | 50%     | 2.24  | 不限        |
+ *
+ *   ⚠️ 峰值取**保守侧**：由「0~8 秒段 = 3.80 m/s」反推约 4.47 m/s
+ *      （而非文献中位的 5.15）—— 与项目「能否赶上的判定一律用下限」一致 ✓
+ *
+ *   ★ 校核：≤30 m 时得到 3.80 m/s，与线性基线 3.6 基本一致
+ *     ⇒ **最常见的赶车场景（校门口跑到站台）几乎不受影响** ✓
+ *
+ * 📄 完整推导与三版模型对比：`docs/步行速度五档-文献依据-20260918.md` §9
+ */
+export const TIER1_SEGMENTS: { name: string; durSec: number; speedMps: number }[] = [
+  { name: "PCr（含加速）", durSec: 8, speedMps: 3.8 },
+  { name: "PCr→糖酵解", durSec: 22, speedMps: 3.58 }, // 8 → 30 秒
+  { name: "糖酵解主导", durSec: 90, speedMps: 2.68 }, // 30 → 120 秒
+  { name: "有氧主导", durSec: Infinity, speedMps: 2.24 }, // > 120 秒
+];
+
+/** 档 1 走完 `distanceM` 米所需的**纯行走秒数**（分段累计） */
+export function sprintWalkSec(distanceM: number): number {
+  if (!Number.isFinite(distanceM) || distanceM <= 0) return 0;
+  let remain = distanceM;
+  let t = 0;
+  for (const seg of TIER1_SEGMENTS) {
+    if (remain <= 0) break;
+    const segMaxM = seg.durSec === Infinity ? Infinity : seg.durSec * seg.speedMps;
+    const m = Math.min(remain, segMaxM);
+    t += m / seg.speedMps;
+    remain -= m;
+  }
+  return t;
+}
+
+/**
+ * 档 1 的**有效速度比** = `基准速度 ÷ 该距离下的实际平均速度`。
+ * 距离未知时退回线性基线值 `SPEED_RATIO[1]`（保持向后兼容）。
+ */
+export function tier1EffRatio(distanceM: number | null | undefined): number {
+  if (distanceM == null || !Number.isFinite(distanceM) || distanceM <= 0) return SPEED_RATIO[1];
+  const sec = sprintWalkSec(distanceM);
+  if (sec <= 0) return SPEED_RATIO[1];
+  const avgSpeed = distanceM / sec; // m/s
+  return WALK_BASE_M_PER_MIN / 60 / avgSpeed;
+}
 
 /** 分档文案（固定话术，不用「推荐理由」标签） */
 export const TIER_TEXT: Record<CatchTier, string> = {
@@ -158,6 +270,21 @@ export interface WalkTimeRow {
   zone: string | null;
   minutes: number | string | null;
   samples: number;
+  /** ★ v1.2.0：高德步行路径距离（米）；NULL = 未知（此时档 1 退回线性） */
+  distance_m?: number | string | null;
+}
+
+/**
+ * ★ station_walk_distance 行（v1.2.0）
+ * 与 `walk_times` **分层**存储：距离是「外部事实」（慢变、可增量抓），
+ * minutes 是「派生值」。读端分开索引 —— 即使某组还没有实测样本，
+ * 只要抓过距离，档 1 的衰减就能算 ✓
+ */
+export interface StationWalkDistanceRow {
+  place_id: number;
+  station_main: string;
+  zone: string | null;
+  distance_m: number | string;
 }
 
 /** transfer_walks 行（v1.0.0 新表） */
@@ -236,6 +363,12 @@ export interface WalkLegView {
   /** level ≥ 3 → UI 标「估算」 */
   estimated: boolean;
   samples: number;
+  /**
+   * ★ v1.2.0：该段步行路径距离（米）；`null` = 未知。
+   * 来源 `station_walk_distance`（高德步行路径规划）。**仅用于档 1 的随距离衰减**，
+   * 不参与 minutes 的计算（minutes 仍是实测均值 / 距离推算值）。
+   */
+  distanceM?: number | null;
 }
 
 /** 载具段视图 */

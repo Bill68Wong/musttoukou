@@ -44,6 +44,7 @@ import type {
   SegmentStatRow,
   TransferWalkRow,
   WalkTimeRow,
+  StationWalkDistanceRow,
 } from "./types";
 
 export interface RecStatic {
@@ -81,6 +82,8 @@ interface StaticRows {
   stations: StationRow[];
   seg: SegmentStatRow[];
   walk: WalkTimeRow[];
+  /** ★ v1.2.0：高德步行距离（独立缓存表） */
+  walkDist: StationWalkDistanceRow[];
   transfer: TransferWalkRow[];
   places: { id: number; slug: string }[];
   plans: PlanLite[];
@@ -97,6 +100,7 @@ async function fetchStaticRowsUncached(pool: Pool): Promise<StaticRows> {
     routeIdxRows,
     segRes,
     walkRes,
+    walkDistRes,
     transferRes,
     placeRes,
     planRes,
@@ -111,7 +115,13 @@ async function fetchStaticRowsUncached(pool: Pool): Promise<StaticRows> {
       `SELECT route_code, from_station, to_station, weekday, time_bucket, arrive_kind,
               avg_minutes, p50_minutes, samples FROM segment_stats`,
     ),
-    pool.query(`SELECT place_id, station_code, zone, minutes, samples FROM walk_times`),
+    pool.query(`SELECT place_id, station_code, zone, minutes, samples, distance_m FROM walk_times`),
+    // ★ v1.2.0：高德步行距离（与 walk_times 分层的独立缓存表）
+    //   即使某组还没有实测样本，只要抓过距离，档 1 的随距离衰减就能算 ✓
+    //   表尚未建时容错为空（不阻塞推荐）
+    pool
+      .query(`SELECT place_id, station_main, zone, distance_m FROM station_walk_distance`)
+      .catch(() => ({ rows: [] as unknown[] })),
     // transfer_walks 在 v1.0.0 新建；表尚未建时容错为空（不阻塞推荐）
     pool
       .query(`SELECT from_station, to_station, minutes, samples, source FROM transfer_walks`)
@@ -151,6 +161,7 @@ async function fetchStaticRowsUncached(pool: Pool): Promise<StaticRows> {
     stations,
     seg: segRes.rows as unknown as SegmentStatRow[],
     walk: walkRes.rows as unknown as WalkTimeRow[],
+    walkDist: walkDistRes.rows as unknown as StationWalkDistanceRow[],
     transfer: transferRes.rows as unknown as TransferWalkRow[],
     places: placeRes.rows as { id: number; slug: string }[],
     plans: planRes.rows as unknown as PlanLite[],
@@ -231,7 +242,7 @@ async function loadStaticsUncached(): Promise<RecStatic> {
   return {
     routeIdx,
     segIdx: buildSegmentIndex(rows.seg),
-    walkIdx: buildWalkIndex(rows.walk),
+    walkIdx: buildWalkIndex(rows.walk, rows.walkDist),
     transferIdx: buildTransferIndex(rows.transfer),
     // 站序直接复用刚构建的 routeIdx.dirStops（不再单独查 route_stations）
     lrtPre: buildLrtPreload({

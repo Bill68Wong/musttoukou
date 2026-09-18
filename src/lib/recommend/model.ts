@@ -56,6 +56,7 @@ import {
   type TransferWalkRow,
   type WalkLegView,
   type WalkTimeRow,
+  StationWalkDistanceRow,
 } from "./types";
 
 const num = (v: number | string | null | undefined): number | null => {
@@ -69,13 +70,18 @@ const num = (v: number | string | null | undefined): number | null => {
 export interface WalkIndex {
   /** `placeId|main|zone` → 行（zone 空串表示 NULL） */
   byKey: Map<string, WalkTimeRow>;
+  /**
+   * ★ v1.2.0：`placeId|main|zone` → 高德步行距离（米）
+   * 与 byKey **独立** —— 来自 station_walk_distance；即使该组没有实测样本也能有距离 ✓
+   */
+  distByKey: Map<string, number>;
   /** placeId → 该地点全行样本加权均值 */
   byPlace: Map<number, number>;
   /** 全表样本加权均值 */
   global: number | null;
 }
 
-export function buildWalkIndex(rows: WalkTimeRow[]): WalkIndex {
+export function buildWalkIndex(rows: WalkTimeRow[], dists: StationWalkDistanceRow[] = []): WalkIndex {
   const byKey = new Map<string, WalkTimeRow>();
   const agg = new Map<number, { sum: number; n: number }>();
   let gs = 0;
@@ -94,7 +100,14 @@ export function buildWalkIndex(rows: WalkTimeRow[]): WalkIndex {
   }
   const byPlace = new Map<number, number>();
   for (const [k, v] of agg) if (v.n > 0) byPlace.set(k, v.sum / v.n);
-  return { byKey, byPlace, global: gn > 0 ? gs / gn : null };
+  // ★ v1.2.0：距离索引（独立于 walk_times）
+  const distByKey = new Map<string, number>();
+  for (const d of dists) {
+    const v = num(d.distance_m);
+    if (v === null || v <= 0) continue;
+    distByKey.set(`${d.place_id}|${d.station_main}|${d.zone ?? ""}`, v);
+  }
+  return { byKey, distByKey, byPlace, global: gn > 0 ? gs / gn : null };
 }
 
 export interface WalkLookup {
@@ -102,6 +115,8 @@ export interface WalkLookup {
   /** 1 = (place,主码,zone) 2 = (place,主码,NULL) 3 = 该地点均值 4 = 全表均值 5 = 常数 */
   level: 1 | 2 | 3 | 4 | 5;
   samples: number;
+  /** ★ v1.2.0：该段步行距离（米）；null = 未知（档 1 退回线性）。与 level 无关，独立查 */
+  distanceM: number | null;
 }
 
 /** 步行回退链（非 school 侧 zone 必须传 null） */
@@ -112,20 +127,25 @@ export function lookupWalk(
   zone: SchoolZone | null,
 ): WalkLookup {
   const main = mainCodeOf(station);
+  // ★ v1.2.0：距离独立于 minutes 的回退链 —— 先精确（含座区），再退回不分座区
+  //   （距离来自 station_walk_distance，即使该组没有实测样本也可能有 ✓）
+  const distanceM =
+    idx.distByKey.get(`${placeId}|${main}|${zone ?? ""}`) ?? idx.distByKey.get(`${placeId}|${main}|`) ?? null;
+
   const r1 = idx.byKey.get(`${placeId}|${main}|${zone ?? ""}`);
   const v1 = r1 ? num(r1.minutes) : null;
-  if (v1 !== null && v1 > 0) return { minutes: v1, level: 1, samples: r1!.samples };
+  if (v1 !== null && v1 > 0) return { minutes: v1, level: 1, samples: r1!.samples, distanceM };
 
   const r2 = idx.byKey.get(`${placeId}|${main}|`);
   const v2 = r2 ? num(r2.minutes) : null;
-  if (v2 !== null && v2 > 0) return { minutes: v2, level: 2, samples: r2!.samples };
+  if (v2 !== null && v2 > 0) return { minutes: v2, level: 2, samples: r2!.samples, distanceM };
 
   const p = idx.byPlace.get(placeId);
-  if (p !== undefined) return { minutes: p, level: 3, samples: 0 };
+  if (p !== undefined) return { minutes: p, level: 3, samples: 0, distanceM };
 
-  if (idx.global !== null) return { minutes: idx.global, level: 4, samples: 0 };
+  if (idx.global !== null) return { minutes: idx.global, level: 4, samples: 0, distanceM };
 
-  return { minutes: WALK_FALLBACK_MIN, level: 5, samples: 0 };
+  return { minutes: WALK_FALLBACK_MIN, level: 5, samples: 0, distanceM };
 }
 
 // ─────────────────────────── 换乘步行索引 ───────────────────────────
@@ -208,11 +228,11 @@ const labelOf = (ctx: ModelContext, code: string): string => ctx.nameOf.get(code
  *
  * @returns null = 前五辆在途车都赶不上 → 调用方**整条剔除**该方案（v1.0.6）
  */
-function pickBoardable(lv: BusLive, walkMin: number): BusArrival | null {
+function pickBoardable(lv: BusLive, walkMin: number, walkDistM?: number | null): BusArrival | null {
   let best: BusArrival | null = null;
   for (const cand of [lv.nearest, lv.second, ...(lv.more ?? [])]) {
     if (!cand) continue;
-    if (pickCatchTier(walkMin, cand.loSec) === null) continue;
+    if (pickCatchTier(walkMin, cand.loSec, walkDistM) === null) continue;
     if (!best || cand.loSec < best.loSec) best = cand;
   }
   return best;
@@ -234,6 +254,7 @@ function walkView(ctx: ModelContext, slug: string, station: string): WalkLegView
     level: r.level,
     estimated: r.level >= 3,
     samples: r.samples,
+    distanceM: r.distanceM, // ★ v1.2.0：档 1 随距离衰减用
   };
 }
 
@@ -299,9 +320,9 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): ModeledOption 
       return null;
     }
     busPool = [lv.nearest, lv.second, ...(lv.more ?? [])].filter((x): x is BusArrival => x !== null);
-    const chosen = pickBoardable(lv, wOut.minutes);
+    const chosen = pickBoardable(lv, wOut.minutes, wOut.distanceM);
     chosenBus = chosen;
-    const t0 = chosen ? pickCatchTier(wOut.minutes, chosen.loSec) : null;
+    const t0 = chosen ? pickCatchTier(wOut.minutes, chosen.loSec, wOut.distanceM) : null;
     if (!chosen || t0 === null) {
       // 最近两辆在途车都赶不上（连冲刺也不行）→ 不显示这张卡。
       // 旧行为是「按班距 ÷ 2 估一个等车值」，但卡面同时又写「还有 0 站 · 约 0 分」
@@ -329,7 +350,7 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): ModeledOption 
     // ★ 判据必须取「**从现在起**车还有多久到站」（与巴士侧的 `chosen.loSec` 同语义）。
     //   旧代码误传 `waitMin0 * 60`（= 你走完站台后才剩的余量）→ 参照系错位 →
     //   档位系统性偏保守，实测把「正常走能赶上」误报成「本班赶不上」。
-    const t0 = pickCatchTier(wOut.minutes, (depMs - nowMs) / 1000);
+    const t0 = pickCatchTier(wOut.minutes, (depMs - nowMs) / 1000, wOut.distanceM);
     if (t0 === null) {
       // 连冲刺都赶不上这一班 → 整条剔除（旧行为是直接用这班车算总用时 → 必然低估）
       ctx.missed.push(first.route);
@@ -393,7 +414,7 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): ModeledOption 
       //   卡面那一行「步行 X 分」是**常速实测均值**，而总用时按该档速度算
       //   ⇒ 可见项直接相加会比顶部大字大。大字没错，缺的是这句解释。
       //   字段挂在 rides[0]，但渲染在卡面第一行「步行」上（差额正出在那一行）。
-      tierHint: i === 0 ? tierHintOf(wOut.minutes, tier) : "",
+      tierHint: i === 0 ? tierHintOf(wOut.minutes, tier, wOut.distanceM) : "",
     });
 
     if (i + 1 >= segs.length) break;
@@ -493,7 +514,7 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): ModeledOption 
     for (const b of busPool) {
       if (b === chosenBus) continue; // 本班已在主行展示过
       if (seenSec.has(b.loSec)) continue; // 到达时刻与本班或已列出的某辆相同 → 无新信息
-      const t = pickCatchTier(wOut.minutes, b.loSec);
+      const t = pickCatchTier(wOut.minutes, b.loSec, wOut.distanceM);
       if (t === null) continue; // 赶不上的后车不列（列了也没用）
       seenSec.add(b.loSec);
       alts.push({

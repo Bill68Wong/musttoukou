@@ -13,25 +13,42 @@
  *      ★ v1.0.6 修正：早期误传 `depMs − 你走到站台的时刻`（走完才剩的余量），
  *        参照系错位 → 判据偏保守 → 实测把「正常走能赶上」误报成「赶不上」。
  */
-import { OVERHEAD_SEC, SPEED_RATIO, TIER_TEXT, type CatchTier } from "./types";
+import { OVERHEAD_SEC, SPEED_RATIO, TIER_TEXT, tier1EffRatio, type CatchTier } from "./types";
 
-/** 以某档速度走完给定基准时长，所需秒数 */
-export function requiredSec(baseMin: number, tier: CatchTier): number {
+/**
+ * 以某档速度走完给定基准时长，所需秒数。
+ *
+ * ★ v1.2.0：新增可选参数 `walkDistanceM` —— **档 1 用它做随距离衰减**。
+ *
+ *   背景：线性模型隐含「3.6 m/s 跑完全程」✗，但 PCr 只能撑 8~10 秒（≈30 米）。
+ *   现在档 1 改用 `tier1EffRatio(distanceM)`（按能量系统的四段模型）。
+ *   ⚠️ **不传距离时退回原来的线性行为**（向后兼容，且实测样本没有距离时也能算）。
+ *
+ *   ⚠️ 档 2~5 **不受距离影响** —— 2.0 m/s 是小跑（有氧强度，真的能跑 1 公里），
+ *      模型没算错，不需要修正 ✓（详见 docs/步行速度五档-文献依据-20260918.md §7.7）
+ *
+ * @param baseMin       该段步行的「正常走」基准时长（分钟）
+ * @param tier          档位
+ * @param walkDistanceM 该段步行路径距离（米）；`null`/缺省 = 未知，档 1 退回线性
+ */
+export function requiredSec(baseMin: number, tier: CatchTier, walkDistanceM?: number | null): number {
   const base = Math.max(0, baseMin * 60 - OVERHEAD_SEC);
-  return OVERHEAD_SEC + base * SPEED_RATIO[tier];
+  const ratio = tier === 1 ? tier1EffRatio(walkDistanceM) : SPEED_RATIO[tier];
+  return OVERHEAD_SEC + base * ratio;
 }
 
 /**
  * 判定档位：从 5 → 1 找**首个** `requiredSec ≤ waitSec` 的档（越慢的档要求越低）。
  * 都不满足（连冲刺都赶不上）→ null。
  *
- * @param baseMin 该段步行的「正常走」基准时长（分钟）
- * @param waitSec 车辆到站剩余（秒，**区间下限**）
+ * @param baseMin       该段步行的「正常走」基准时长（分钟）
+ * @param waitSec       车辆到站剩余（秒，**区间下限**）
+ * @param walkDistanceM 该段步行距离（米）；用于档 1 的随距离衰减
  */
-export function pickCatchTier(baseMin: number, waitSec: number): CatchTier | null {
+export function pickCatchTier(baseMin: number, waitSec: number, walkDistanceM?: number | null): CatchTier | null {
   for (let k = 5; k >= 1; k--) {
     const t = k as CatchTier;
-    if (requiredSec(baseMin, t) <= waitSec) return t;
+    if (requiredSec(baseMin, t, walkDistanceM) <= waitSec) return t;
   }
   return null;
 }
@@ -51,11 +68,12 @@ export function tierTextOf(tier: CatchTier): string {
  * 缺的只是一句解释 → 由这里补出「需較常速快 X 分」。
  *
  * @param baseMin 该段步行的「正常走」基准时长（分钟）—— 必须与卡面显示的同一份
+ * @param walkDistanceM 该段步行距离（米）；档 1 的差额会随距离变化（v1.2.0）
  * @returns 档 3~5（无需加速）或差额 < 30 秒 → `""`（不占版面）
  */
-export function tierHintOf(baseMin: number, tier: CatchTier): string {
+export function tierHintOf(baseMin: number, tier: CatchTier, walkDistanceM?: number | null): string {
   if (tier >= 3) return "";
-  const saveSec = requiredSec(baseMin, 3) - requiredSec(baseMin, tier);
+  const saveSec = requiredSec(baseMin, 3) - requiredSec(baseMin, tier, walkDistanceM);
   if (saveSec < 30) return "";
   const m = Math.round((saveSec / 60) * 10) / 10;
   return `需較常速快 ${m} 分`;

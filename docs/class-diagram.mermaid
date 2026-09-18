@@ -1,0 +1,218 @@
+%% 全澳导航 · 类图 / 数据结构（v1.3.0 提案，2026-09-18）
+%% 对应设计文档：docs/设计-全澳导航-v1-20260918.md §2 / §4
+%% 说明：带 «复用» 标注者沿用现有 src/lib/recommend/types.ts，不重写；
+%%       带 «新增» 者为 src/lib/nav/** 新代码。
+classDiagram
+    direction LR
+
+    %% ---------- 复用：既有推荐域类型（src/lib/recommend/types.ts） ----------
+    class RideSegment {
+      <<复用>>
+      +string route
+      +"bus"|"lrt" kind
+      +string board
+      +string alight
+      +[string,string][] hops
+    }
+    class TransferSegment {
+      <<复用>>
+      +string at
+      +string to
+      +boolean sameField
+    }
+    class WalkLegView {
+      <<复用>>
+      +number minutes
+      +string toLabel
+      +number level
+      +boolean estimated
+      +number samples
+      +number? distanceM
+    }
+    class RideLegView {
+      <<复用>>
+      +string route
+      +"bus"|"lrt" kind
+      +string boardLabel
+      +string alightLabel
+      +number minutes
+      +number hops
+      +number[] levels
+      +number waitMin
+      +string liveText
+      +CatchTier? tier
+      +string tierText
+    }
+    class TransferView {
+      <<复用>>
+      +string atLabel
+      +number minutes
+      +boolean estimated
+      +boolean sameField
+    }
+    class RecommendCard {
+      <<复用>>
+      +number planId
+      +number totalMin
+      +number arriveAt
+      +WalkLegView walkOut
+      +WalkLegView walkIn
+      +RideLegView[] rides
+      +TransferView[] transfers
+      +boolean crossBorder
+    }
+    class OptionSeed {
+      <<复用·旧功能>>
+      +number planId
+      +string fromSlug
+      +string toSlug
+      +RideSegment[] segments
+      +TransferSegment[] transfers
+    }
+
+    %% ---------- 新增：导航域类型（src/lib/nav/types.ts） ----------
+    class NavPoint {
+      <<新增>>
+      +"gps"|"poi"|"station"|"place" kind
+      +string label
+      +number lng  %% GCJ-02
+      +number lat  %% GCJ-02
+      +string? code
+      +string? poiId
+      +string? adcode
+    }
+    class PoiSearchResult {
+      <<新增>>
+      +"local"|"amap-inputtips"|"amap-text" source
+      +string name
+      +string? address
+      +string? district
+      +string? adcode
+      +number lng
+      +number lat
+      +"station"|"lrt_station"|"poi"|"place" kind
+      +number? distM
+      +number score
+    }
+    class AliasEntry {
+      <<新增>>
+      +string aliasNorm
+      +string targetKind
+      +string? targetCode
+      +string nameTc
+      +number? lng
+      +number? lat
+      +number weight
+      +string source
+    }
+    class StationAmapMap {
+      <<新增>>
+      +string amapName
+      +number amapLng
+      +number amapLat
+      +string dsatStationMain
+      +"coord"|"name"|"both" matchMethod
+      +number? matchDistM
+      +number confidence
+    }
+    class WalkInfo {
+      <<新增>>
+      +number minutes  %% 常速基准分钟 = distance_m / 84
+      +number? distanceM
+      +string toLabel
+      +"amap"|"amap-cache"|"straight-estimate"|"fallback" source
+      +boolean estimated
+      +number samples
+    }
+    class WalkResolver {
+      <<新增>>
+      +out(stationMain) WalkInfo
+      +in(stationMain) WalkInfo
+    }
+    class NavCandidate {
+      <<新增>>
+      +string id
+      +NavPoint from
+      +NavPoint to
+      +RideSegment[] segments
+      +TransferSegment[] transfers
+      +boolean crossBorder
+      +string key
+    }
+    class NavPlan {
+      <<新增>>
+      +string id
+      +number rank
+      +number totalMin
+      +number arriveAt
+      +WalkLegView walkOut
+      +WalkLegView walkIn
+      +RideLegView[] rides
+      +TransferView[] transfers
+      +boolean crossBorder
+      +Provenance provenance
+    }
+    class Provenance {
+      <<新增>>
+      +string walkOut
+      +string walkIn
+      +number[][] rideLevels
+      +boolean hasEstimate
+    }
+
+    %% ---------- 新增：服务类（src/lib/nav/**） ----------
+    class AliasResolver {
+      <<新增·服务>>
+      +normalize(q) string
+      +resolve(q) AliasEntry[]
+    }
+    class PoiSearchService {
+      <<新增·服务>>
+      +suggest(q, userPos) PoiSearchResult[]
+    }
+    class QuotaGuard {
+      <<新增·服务>>
+      +allow() boolean
+      +record(api, ok, infocode) void
+      +isTripped() boolean
+    }
+    class GraphSearch {
+      <<新增·服务>>
+      +search(S_from, S_to, routeIdx) Path[]
+    }
+    class WalkProvider {
+      <<新增·服务>>
+      +resolve(from, to, stations) WalkResolver
+    }
+    class NavPlanner {
+      <<新增·服务>>
+      +plan(pointFrom, pointTo, now) NavResult
+    }
+
+    %% ---------- 关系 ----------
+    OptionSeed ..> RideSegment : 复用
+    OptionSeed ..> TransferSegment : 复用
+    NavCandidate ..> RideSegment : 复用
+    NavCandidate ..> TransferSegment : 复用
+    NavCandidate --> NavPoint : from/to
+    NavPlan ..> WalkLegView : 复用
+    NavPlan ..> RideLegView : 复用
+    NavPlan ..> TransferView : 复用
+    NavPlan --> Provenance : 分级标注
+    NavPlan ..|> RecommendCard : 结构兼容（渲染复用）
+
+    PoiSearchResult --> NavPoint : 确认后
+    AliasEntry --> PoiSearchResult : 本地命中产出
+    StationAmapMap --> NavCandidate : 站码对齐接缝
+
+    AliasResolver --> AliasEntry
+    PoiSearchService --> AliasResolver
+    PoiSearchService --> QuotaGuard
+    GraphSearch --> NavCandidate
+    WalkProvider --> WalkResolver
+    WalkResolver --> WalkInfo
+    NavPlanner --> GraphSearch
+    NavPlanner --> WalkProvider
+    NavPlanner --> NavCandidate
+    NavPlanner --> NavPlan
+    NavPlanner --> RideLegView : 逐跳 lookupHop 建模

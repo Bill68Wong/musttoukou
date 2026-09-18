@@ -41,16 +41,19 @@
  */
 import type { Pool } from "pg";
 
-const mainCode = (code: string) => /^[A-Za-z]+\d+/.exec(code)?.[0] ?? code;
+/** 站码主码归一（剥掉站台号后缀：C690/3 → C690）。★ 导出供入库脚本复用，勿另起一套。 */
+export const mainCode = (code: string) => /^[A-Za-z]+\d+/.exec(code)?.[0] ?? code;
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
-function bucketOf(h: number): string {
+/** 时段分档（澳门时间小时 → am_peak|day|pm_peak|night）。★ 导出供入库脚本复用，勿另起一套。 */
+export function bucketOf(h: number): string {
   if (h >= 7 && h < 10) return "am_peak";
   if (h >= 10 && h < 17) return "day";
   if (h >= 17 && h < 20) return "pm_peak";
   return "night";
 }
-const macauParts = (t: Date) => {
+/** 澳门时间分量（GMT+8）。★ 导出供入库脚本复用，勿另起一套。 */
+export const macauParts = (t: Date) => {
   const m = new Date(t.getTime() + 8 * 3600e3);
   return { weekday: m.getUTCDay(), hour: m.getUTCHours() };
 };
@@ -87,7 +90,10 @@ export interface SegmentSample {
   bucket: string;
   arriveKind: "stop" | "pass";
   minutes: number;
-  source: "timer" | "free";
+  /** 来源：timer = 通勤计时；free = 自由记站；track = 追踪采集（读自 segment_samples） */
+  source: "timer" | "free" | "track";
+  /** 观测时刻（毫秒）。事件路径取起点站事件时刻；供 segment_samples 入库保留原始时间。 */
+  t: number;
 }
 
 export interface SegmentPairStat {
@@ -103,7 +109,7 @@ export interface SegmentRebuildResult {
   rides: number;
   /** 提取到的段样本总数 */
   samples: number;
-  bySource: { timer: number; free: number };
+  bySource: { timer: number; free: number; track: number };
   byKind: { stop: number; pass: number };
   /** 丢弃统计 */
   stats: {
@@ -129,13 +135,24 @@ export interface SegmentRebuildResult {
   /** 有 ≥2 次样本的区间（按样本数降序，已排序） */
   rep: SegmentPairStat[];
   inserted: number;
+  /** 事件路径产出的**原始**段样本（供 segment_samples 入库复用；dry 时同样产出） */
+  rawSamples: SegmentSample[];
+  /** 本次实际参与聚合的样本来源（由 opts.sampleFrom 决定） */
+  sampleFrom: "events" | "samples" | "both";
 }
 
 export async function rebuildSegmentStats(
   pool: Pool,
-  opts: { dry?: boolean } = {},
+  opts: { dry?: boolean; sampleFrom?: "events" | "samples" | "both" } = {},
 ): Promise<SegmentRebuildResult> {
   const dry = !!opts.dry;
+  // ★ v1.3.0：「样本来源」选项，默认 'events' = 完全保持原有行为（向后兼容）。
+  //   events  = 仅用 DB 事件（timer_sessions + free_rides）→ 旧行为
+  //   samples = 仅用 segment_samples 原始样本（追踪采集）
+  //   both    = 事件(timer+free) + segment_samples 中 source<>'timer' 的行
+  //             （★ 去重：timer 已由事件路径产出，segment_samples 里的 timer 行仅为留档，
+  //               不再重复计入，避免同一手动样本被算两遍）
+  const sampleFrom = opts.sampleFrom ?? "events";
   const q = async (sql: string, args?: unknown[]) =>
     (await pool.query(sql, args)).rows as Record<string, unknown>[];
 
@@ -362,6 +379,7 @@ export async function rebuildSegmentStats(
         arriveKind: kindOfStart(a.kind),
         minutes: r1(minutes),
         source,
+        t: a.t.getTime(),
       });
     }
     return { samples, st };
@@ -459,6 +477,35 @@ export async function rebuildSegmentStats(
     );
   }
 
+  // ============ ③-b 合并 segment_samples 原始样本（sampleFrom = 'samples' | 'both'）============
+  // 从 segment_samples 读回**追踪采集**的原始样本，倒进同一条聚合管线（同口径：按
+  // (route, from_station, to_station, weekday, time_bucket, arrive_kind) 分层）。
+  // ⚠️ 键的对齐：segment_samples 同时存主码(from_main)与站台码(from_station)；此处用
+  //    **站台码 from_station / to_station** —— 与事件路径（timer_events.station_code）以及
+  //    现有 segment_stats.from_station/to_station 的口径**完全一致**（现有实现即用站台码）。
+  // ⚠️ arrive_kind 档位：采集样本的起点站均为「DSAT status=1 停靠 → 翻 0 离开」，
+  //    无「甩站」概念 → 一律归 **stop** 档（与手动「停靠」样本同档，优先被 lookupHop 的 L1/L2 取用）。
+  let aggSamples: SegmentSample[] = samples;
+  if (sampleFrom !== "events") {
+    const tableRows = await q(
+      `SELECT route_code, from_station, to_station, weekday, time_bucket, minutes, observed_at
+         FROM segment_samples
+        ${sampleFrom === "both" ? "WHERE source <> 'timer'" : ""}`,
+    );
+    const fromTable: SegmentSample[] = tableRows.map((r) => ({
+      route: r.route_code as string,
+      from: r.from_station as string,
+      to: r.to_station as string,
+      weekday: r.weekday as number,
+      bucket: r.time_bucket as string,
+      arriveKind: "stop",
+      minutes: Number(r.minutes),
+      source: "track",
+      t: new Date(r.observed_at as string).getTime(),
+    }));
+    aggSamples = sampleFrom === "samples" ? fromTable : [...samples, ...fromTable];
+  }
+
   // ================= ④ 聚合 =================
   const keys = new Map<string, number[]>(); // route|from|to|weekday|bucket|kind -> minutes[]
   const push = (route: string, from: string, to: string, w: number, b: string, k: string, min: number) => {
@@ -466,7 +513,7 @@ export async function rebuildSegmentStats(
     if (!keys.has(key)) keys.set(key, []);
     keys.get(key)!.push(min);
   };
-  for (const s of samples) {
+  for (const s of aggSamples) {
     push(s.route, s.from, s.to, s.weekday, s.bucket, s.arriveKind, s.minutes); // 分层 + 档位
     push(s.route, s.from, s.to, -1, "all", s.arriveKind, s.minutes); // 兜底 + 档位
     push(s.route, s.from, s.to, -1, "all", "all", s.minutes); // 兜底 + 合并
@@ -531,16 +578,16 @@ export async function rebuildSegmentStats(
   }
 
   // ================= ⑥ 汇总（返回结构化结果，打印交给调用方） =================
-  const bySource = { timer: 0, free: 0 };
-  for (const s of samples) bySource[s.source]++;
+  const bySource = { timer: 0, free: 0, track: 0 };
+  for (const s of aggSamples) bySource[s.source]++;
   const byKind = { stop: 0, pass: 0 };
-  for (const s of samples) byKind[s.arriveKind]++;
+  for (const s of aggSamples) byKind[s.arriveKind]++;
 
   const routeCountMap = new Map<string, number>();
-  for (const s of samples) routeCountMap.set(s.route, (routeCountMap.get(s.route) ?? 0) + 1);
+  for (const s of aggSamples) routeCountMap.set(s.route, (routeCountMap.get(s.route) ?? 0) + 1);
 
   const cmp = new Map<string, { stop: number[]; pass: number[] }>();
-  for (const s of samples) {
+  for (const s of aggSamples) {
     const k = `${s.route}|${s.from}|${s.to}`;
     let bucket = cmp.get(k);
     if (!bucket) {
@@ -572,6 +619,8 @@ export async function rebuildSegmentStats(
     pairs,
     rep,
     inserted,
+    rawSamples: samples,
+    sampleFrom,
   };
 }
 

@@ -43,10 +43,9 @@ import { circuitState, recordSearchCall } from "./quota";
 /**
  * 本地未命中（且输入 ≥2 字符）时的灰字提示。
  * ★ 文案 = **简体**（产品总原则：界面文案一律简体 · 站名/线路名一律繁体）。
- *   ⚠️ 设计 §2.A.6 原文写成繁体「沒有本地結果 · 按回車搜尋網上新地點」——架构师笔误，
- *   经 team-lead 2026-09-18 更正为简体；若要回退只改这一个常量。
+ * ★ 【7②】v2.0.1：主入口已从「回车」改为**输入框右侧的搜索按钮** ⇒ 提示同步改为「点『搜索』」。
  */
-export const HINT_NO_LOCAL_ENTER = "没有本地结果 · 按回车搜索网上的新地点";
+export const HINT_NO_LOCAL_ENTER = "没有本地结果 · 点「搜索」查找网上的新地点";
 /** 高德也无结果时的行内提示（简体；同产品总原则） */
 export const HINT_AMAP_EMPTY = "找不到这个地点，试试换个说法";
 
@@ -114,6 +113,11 @@ export async function suggestLocal(query: string, opts: SuggestOptions = {}): Pr
       ? `${m.targetKind}|${mainCodeOf(m.targetCode)}`
       : `${m.targetKind}|${m.nameTc}`;
   for (const m of matches) {
+    // ★ 【7①】本地**结果**只保留「可用于出行的点」：巴士站 / 轻轨站 / 已知地点（校内部位、口岸）。
+    //   **线路名（targetKind='route'）一律不列为结果** ——
+    //   它不是一个「想去的地点」，且导致「输入 25 就返回 25 路巴士」的困惑（产品实测）；
+    //   线路名只在「按乘车的行内文案」里用 `.route-stack` 出现，不进搜索候选。
+    if (m.targetKind === "route") continue;
     const dk = dedupKey(m);
     if (seen.has(dk)) continue;
     const r = aliasToResult(m, { userPos: opts.userPos });

@@ -85,6 +85,17 @@ export function buildRouteIndexFromRows(stopsRows: RouteStopRow[], stationRows: 
     nameOf.set(s.code, s.kind === "bus" ? `${s.code} ${s.name_tc}` : s.name_tc);
   }
 
+  // ★ 【3】主码兜底（v2.0.1）：`stations` 里同一个巴士站可能只有「带站台的码」（如 `T363/1`），
+  //   而线路站序 / 高德桥接产物用的是**主码**（`T363`）⇒ `nameOf.get("T363")` 取不到名字，
+  //   界面就只剩纯站码（「步行 →  T363」，用户看不出这是哪一站）。
+  //   这里补一层「主码 → 带名标签」的兜底：**只在主码缺失时填**（不覆盖已有键，故对既有
+  //   显示零影响，纯增益）。轻轨主码 = 原码（`mainCodeOf('LRT-MUST')` 不变）。
+  for (const s of stationRows) {
+    if (!s.name_tc) continue;
+    const main = mainCodeOf(s.code);
+    if (!nameOf.has(main)) nameOf.set(main, s.kind === "bus" ? `${main} ${s.name_tc}` : s.name_tc);
+  }
+
   return { dirStops, seqIdx, dirsOf, nameOf, adjOwners };
 }
 

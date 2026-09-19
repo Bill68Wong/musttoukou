@@ -24,7 +24,14 @@ export interface StripBuildCtx {
 export function buildStrips(card: RecommendCard, ctx: StripBuildCtx): SegmentStrip[] {
   return card.rides.map((ride, i) => {
     const seg = segmentsOf(ctx.routeIdx, ride.route, ride.board, ride.alight);
-    const codes = seg && seg.stops.length >= 2 ? seg.stops : [ride.board, ride.alight];
+    // ★ 【2a】站条范围 = **用户实际上车点 → 下车点** 的切片，而不是整条线路（总站→总站）。
+    //   `segmentsOf().stops` 是**整个方向**的完整站序（起点总站…终点总站），
+    //   而 `segmentsOf().segs` 才是「board → alight」切片后的逐跳对
+    //   ⇒ 必须用 segs 还原 codes（`[segs[0][0], ...segs.map(s => s[1])]`）。
+    const codes =
+      seg && seg.segs.length
+        ? [seg.segs[0][0], ...seg.segs.map((s) => s[1])]
+        : [ride.board, ride.alight];
 
     const stops: StripStop[] = codes.map((code, k) => {
       const isFirst = k === 0;

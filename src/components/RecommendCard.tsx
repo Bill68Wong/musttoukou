@@ -21,7 +21,6 @@ import { useRouter } from "next/navigation";
 import { LrtEtaInline } from "./LrtEta";
 import RouteStack from "./RouteStack";
 import { macauClock, Row, TierBadge } from "./RoutePieces";
-import { lineNameOf } from "@/lib/route-label";
 import { buildCardHref } from "@/lib/recommend/card-link";
 import { usePressGuard } from "@/lib/use-press-guard";
 import type { RecommendCard as CardData, SchoolZone } from "@/lib/recommend/types";
@@ -173,13 +172,9 @@ export default function RecommendCard({
           dot="ride"
           main={
             <>
-              {multi ? (
-                <RouteStack codes={card.rides.map((r) => r.route)} colorOf={colorOf} size="sm" />
-              ) : (
-                <span className="rc-route" style={{ background: colorOf(card.rides[0].route) ?? "var(--primary)" }}>
-                  {lineNameOf(card.rides[0].route)}
-                </span>
-              )}
+              {/* ★ 【4】全站统一：单条线路也用 `.route-stack`（RouteStack 内已处理「单块不斜切」），
+                  不再用 `.rc-route` 胶囊（与多线标签风格不一致）。 */}
+              <RouteStack codes={card.rides.map((r) => r.route)} colorOf={colorOf} size="sm" />
               <b>{card.rides.reduce((s, r) => s + r.minutes, 0)}</b> 分
             </>
           }

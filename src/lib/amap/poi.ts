@@ -284,6 +284,35 @@ const REL_BASE: Record<number, number> = { 3: 900, 2: 650, 1: 400, 0: 150 };
 /** 同档内的距离近者加成上限（0~100；只做 tie-break，不跨档） */
 const REL_PROX_MAX = 100;
 
+/**
+ * ★ 【7③】POI 类别权重：**地标 / 酒店 / 建筑 优先于「公交站」**。
+ *
+ * 产品实测（2026-09-19）：搜「新葡京」，高德 `place/text` 原始返回**第一个是公交站**
+ *   「新葡京(公交站)」，而用户想去的「澳门新葡京酒店」被排在后面。
+ *   根因：我们的相关性档把「新葡京(公交站)」去括注后判为**完全匹配(档3)**，
+ *   而「澳门新葡京酒店」因以「澳门」开头只判为**包含(档1)** ⇒ 站点恒定压过酒店。
+ *
+ * 对策：给**场所型**类别加一个足以跨 1 个相关性档的加成（`+600`）——
+ *   · 住宿/风景名胜/商务住宅/政府机构/科教文化/公司企业（高德 typecode 前 3 位
+ *     `100/110/120/130/140/170`）⇒ **+600**（「地点/地标/建筑」）；
+ *   · **交通设施（`15xxxx`：公交站 150700 / 地铁·轻轨站 150500 / 机场 150100 等）⇒ 0**
+ *     （找车站时仍按档位+距离排序，不被加成淹没）；
+ *   · 餐饮/购物/生活服务等（`050/060/070…`）⇒ 0（避免「金峰餐廳」压过「金峰南岸」巴士站）；
+ *   · 无 typecode ⇒ **+300**（中性，仍略高于纯交通，但低于明确的场所型）。
+ *
+ * 效果（实测「新葡京」）：酒店 = 档1(400) + 600 = **1000** ＞ 公交站 = 档3(900) + 0 = 900
+ *   ⇒ 酒店排到公交站前面 ✓
+ */
+function poiCategoryBonus(typecode: string | undefined): number {
+  const t = typecode ?? "";
+  if (!t) return 300;
+  const p3 = t.slice(0, 3);
+  if (p3 === "100" || p3 === "110" || p3 === "120" || p3 === "130" || p3 === "140" || p3 === "170") {
+    return 600; // 住宿 / 风景名胜 / 商务住宅 / 政府机构 / 科教文化 / 公司企业
+  }
+  return 0; // 交通设施（15x）、餐饮购物等，以及其它类别
+}
+
 function toResults(
   rows: {
     name?: string;
@@ -307,9 +336,9 @@ function toResults(
     const distM = opts.userPos ? haversineM(opts.userPos, ll) : undefined;
     let score: number;
     if (opts.query) {
-      // ★ 相关性优先：档位基础分 + 档内距离加成（≤100，不会跨档）
+      // ★ 相关性优先：档位基础分 + 类别加成（地标/酒店/建筑优先于公交站）+ 档内距离加成
       const near = distM !== undefined ? Math.max(0, REL_PROX_MAX - distM / 50) : 0;
-      score = REL_BASE[relevanceTier(queryNorm, r.name)] + near;
+      score = REL_BASE[relevanceTier(queryNorm, r.name)] + poiCategoryBonus(r.typecode) + near;
     } else {
       // 旧口径（距离优先）——向后兼容
       score = (opts.baseScore ?? 1) + (distM !== undefined ? Math.max(0, 1000 - distM / 10) : 0);
@@ -330,7 +359,7 @@ function toResults(
       },
     });
   }
-  // score 已含「档位 + 档内距离」；同分再按高德原序（稳定 tie-break）
+  // score 已含「档位 + 类别 + 档内距离」；同分再按高德原序（稳定 tie-break）
   scored.sort((a, b) => b.r.score - a.r.score || a.i - b.i);
   return scored.map((x) => x.r);
 }

@@ -265,6 +265,7 @@ export default function CardDetailClient({
                   {rp.minutes !== null ? (
                     <>
                       全程 {Math.round(rp.minutes)} 分
+                      {/* ★ v2.0.1 回退：不再有「需等下一班」→ `tier` 恢复为非空五档（见 model.ts 顶部说明） */}
                       {rp.tierText && <span className={`rc-tier rc-tier--${rp.tier}`}>{rp.tierText}</span>}
                     </>
                   ) : rp.inPlan ? (
@@ -301,9 +302,15 @@ export default function CardDetailClient({
           dot="walk"
           last
           main={
+            /* ★ 【3】下车步行引导：**下车站编号 站名 → 目的地**（原为「步行 → 下车站编号」）。
+               `card.walkIn.toLabel` = 下车站带名标签；`toLabel` = 目的地名。繁体站名 + 简体连接词。 */
             <>
-              下车 → 步行 <b>{card.walkIn.minutes}</b> 分
-              {card.walkIn.estimated && <span className="rc-est">估算</span>} → {card.walkIn.toLabel}
+              步行 <b>{card.walkIn.minutes}</b> 分
+              {card.walkIn.estimated && <span className="rc-est">估算</span>}
+              {" → "}
+              <b>{card.walkIn.toLabel}</b>
+              {" → "}
+              {toLabel}
               {zoneBadge}
             </>
           }

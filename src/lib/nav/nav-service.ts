@@ -6,26 +6,32 @@
  *   ② 站码映射表 `loadStationMap()`（人工确认优先）；
  *   ③ **高德 transit**（`fetchTransitPlans`，`AlternativeRoute=10`，带 `transit_cache`）；
  *   ④ 解析 → 过滤（穿梭巴士/在建）→ **桥接**（高德站→我们主码 + 逐跳站序）；
- *   ⑤ **本地图枚举**（补漏来源；失败即降级引擎）→ 候选；
+ *   ⑤ **本地图枚举**（补漏来源；**请求期现场跑**，失败即降级引擎）→ 候选；
  *   ⑥ `fetchLive`（DSAT 巴士 + 本库轻轨时刻表，**两来源共用一次**）；
  *   ⑦ 逐方案：`modelOption`（**注入 walkResolver + 方案级换乘索引**）→ `patchAmapFallback`（映射失败段回落高德 + provenance）；
- *   ⑧ `merge-sources`（补漏质量闸门 + 最多 2 张）→ `rank`（`T_ours` 升序）；
+ *   ⑧ `merge-sources`（补漏质量闸门；数量**默认不限**）→ `rank`（`T_ours` 升序）；
  *   ⑨ 返回前 `limit` 张（与旧版**完全一致**的卡片结构 → T04 直接复用渲染）。
  *
  * ── ★ 降级（§B.6）─────────────────────────────────────────────────────
  *   高德失败/超时/限流/0 方案 → `degraded=true`，**只用本地枚举 + `walk_times`（旧实测）**出卡。
  *
- * ── ⚠️ 请求期图搜索（临时）─────────────────────────────────────────────
- *   设计 §B.5 要求「本地方案**离线**先算、请求期只查 `shadow_diff_report`」。
- *   本轮先 **优先读离线结果**；离线结果**缺失时**才**内联**跑一次**有界**图搜索
- *   （`allowInlineLocal`，默认 true）—— 待 T05 的 `scripts/shadow-diff.ts` 上线后应改为 false。
+ * ── ★ 请求期现场枚举（2026-09-19 口径变更）──────────────────────────────
+ *   产品拍板：本地枚举**每次请求现场执行**（`searchStationPaths`），**不再依赖离线表**
+ *   `shadow_diff_report`。理由：离线表只覆盖历史 OD，新 OD 拿不到补漏；且枚举已被
+ *   「链级限额 + 阶段预算」压到可控成本（研究报告 §4.6：修候选数控制后漏线率 20.5% → 8.6%）。
+ *   ⇒ 删除原「只读离线表 `loadOfflineExtras`」路径，`localSource` 语义固定为 `"inline"`。
+ *
+ * ── ★ 多策略按需补查（2026-09-19 口径变更）──────────────────────────────
+ *   默认只查高德 `strategy=0`；当**可用候选偏少**（`< MULTI_STRATEGY_WHEN_BELOW`）时
+ *   **并行**补查 s=7/s=8 并按方案指纹合并去重（省配额 15 万/月；见 `fetchMultiStrategySeeds`）。
+ *   补查**不得拖垮主流程**：整体失败静默降级为「只有 s=0 结果」。
  *
  * 设计：docs/设计-全澳导航-v1-20260918.md §1.1 / §2.B / §2.C / §B.5 / §B.6
  */
 import type { Pool } from "pg";
 import { gcj02ToWgs84, haversineM } from "@/lib/amap/coord";
 import { fixWalkDistance, walkMinutes } from "@/lib/amap/walk-fix";
-import { fetchTransitPlans, odCoordKey, odKeyOf, type RawPlan, type TransitCacheIo, type AmapTransitRawResponse } from "@/lib/amap/transit";
+import { fetchTransitPlans, type RawPlan, type TransitCacheIo, type AmapTransitRawResponse } from "@/lib/amap/transit";
 import { fetchLive } from "@/lib/recommend/live";
 import { amapPlanToSeed, modelOption, type ModeledOption } from "@/lib/recommend/model";
 import { contextFor, loadStatics, type RecStatic } from "@/lib/recommend/query";
@@ -53,10 +59,10 @@ export interface NavInput {
   nowMs?: number;
   /** 绕过 `transit_cache`（强制真实调用） */
   noCache?: boolean;
-  /** 允许「离线补漏结果缺失时」内联跑一次有界图搜索。
-   *  ★ **T05 起默认 `false`**（设计 §B.5：本地方案**离线先算**、请求期只查 `shadow_diff_report`）。
-   *     `scripts/shadow-diff.ts` 已灌入离线数据 ⇒ 请求期不再跑图搜索（省时，且与设计一致）。
-   *     如需临时内联（如离线数据未覆盖的新 OD），显式传 `allowInlineLocal: true`。 */
+  /**
+   * @deprecated 自 2026-09-19 起**本地枚举每次请求现场执行**（见文件头「请求期现场枚举」），
+   *   本字段不再生效，保留仅为**编译兼容**（现有调用方均未传，实际可删）。
+   */
   allowInlineLocal?: boolean;
   /** 测试/回放：直接注入高德原始响应（跳过网络） */
   transitFixture?: AmapTransitRawResponse;
@@ -72,7 +78,10 @@ export interface NavStats {
   dropped: { index: number; reason: string }[];
   localCandidates: number;
   localKept: number;
-  localSource: "offline" | "inline" | "none";
+  /** 本地枚举来源：`"inline"` = 请求期现场跑；`"none"` = 未产出（无近站等） */
+  localSource: "inline" | "none";
+  /** ★ 本次实际使用的高德策略（诊断用；如 `[0]` 或 `[0,7,8]`） */
+  strategiesUsed: number[];
   liveMs: number;
   modelMs: number;
   ms: number;
@@ -188,22 +197,94 @@ function makeTransitCacheIo(pool: Pool): TransitCacheIo {
   };
 }
 
-/** 离线补漏结果（`shadow_diff_report.extra_paths`：`StationPath[]`） */
-async function loadOfflineExtras(pool: Pool, odKey: string): Promise<StationPath[] | null> {
-  try {
-    const r = await pool.query(
-      `SELECT extra_paths FROM shadow_diff_report
-        WHERE od_key = $1 AND extra_paths IS NOT NULL
-        ORDER BY created_at DESC LIMIT 1`,
-      [odKey],
-    );
-    const row = (r.rows as { extra_paths?: unknown }[])[0];
-    if (!row?.extra_paths) return null;
-    const arr = row.extra_paths as unknown;
-    return Array.isArray(arr) ? (arr as StationPath[]) : null;
-  } catch {
-    return null;
+/**
+ * ★ 多策略按需补查阈值（产品口径 2026-09-19）：s=0 的**可用候选**（`seeds.length`）低于此值时，
+ *   补查 s=7/s=8 以覆盖「路线太少」问题；否则只查 s=0（省配额）。
+ */
+const MULTI_STRATEGY_WHEN_BELOW = 3;
+
+/** 补查使用的高德策略（产品指定：7/8） */
+const MULTI_STRATEGIES: readonly number[] = [7, 8];
+
+/**
+ * ★ 方案指纹（跨策略去重用）：乘车段按 `${kind}:${线路名}:${上车站名}>${下车站名}` 拼接。
+ *   用**高德原文**（`amapLineName`/`amapBoard.name`/`amapAlight.name`）而非桥接后主码——
+ *   桥接可能部分失败，主码为空会把不同方案误判成同一条，原文更稳。
+ */
+function planFingerprint(seed: AmapPlanSeed): string {
+  return seed.legs
+    .map((l) => `${l.kind}:${l.amapLineName}:${l.amapBoard.name}>${l.amapAlight.name}`)
+    .join("|");
+}
+
+/**
+ * 按指纹把 `extra` 方案并入 `base`（**`base` 优先保留**：已存在指纹的 extra 丢弃）。
+ * @returns 去重后的新数组（`base` 顺序不变，新增项追加在后）
+ */
+function mergeSeedsByFingerprint(base: AmapPlanSeed[], extra: AmapPlanSeed[]): AmapPlanSeed[] {
+  const seen = new Set(base.map(planFingerprint));
+  const out = [...base];
+  for (const s of extra) {
+    const fp = planFingerprint(s);
+    if (seen.has(fp)) continue;
+    seen.add(fp);
+    out.push(s);
   }
+  return out;
+}
+
+/**
+ * ★ 多策略按需补查（产品口径 2026-09-19）：并行抓 s=7/s=8 → 解析桥接 → 各策略独立容错。
+ *
+ * · 每个策略**独立 try/catch**：单个失败**静默忽略**（视为空），不影响其它策略与主流程；
+ * · 仍走原缓存（`transit_cache`，键含策略维度）与令牌桶（`rate-limit`）；
+ * · 整体失败 ⇒ 返回空，调用方自然降级为「只有 s=0 结果」（**补查不得拖垮主流程**）。
+ *
+ * @returns 补查 seeds（**未与 s=0 去重**，由调用方合并）、带策略标签的 dropped、成功的策略号
+ */
+async function fetchMultiStrategySeeds(
+  pool: Pool,
+  origin: NavPoint,
+  dest: NavPoint,
+  bridgeCtx: BridgeContext,
+  nowMs: number,
+  noCache?: boolean,
+): Promise<{ seeds: AmapPlanSeed[]; dropped: { index: number; reason: string }[]; strategiesUsed: number[] }> {
+  const results = await Promise.all(
+    MULTI_STRATEGIES.map(async (strategy) => {
+      try {
+        const r = await fetchTransitPlans(
+          { lng: origin.lng, lat: origin.lat },
+          { lng: dest.lng, lat: dest.lat },
+          { cache: makeTransitCacheIo(pool), noCache, nowMs, strategy },
+        );
+        if (!r.ok) return { strategy, ok: false as const, seeds: [], dropped: [] };
+        const raw: AmapTransitRawResponse = { status: "1", route: { transits: r.raw } };
+        const parsed = parseAndBridge(raw, origin, dest, bridgeCtx);
+        return {
+          strategy,
+          ok: true as const,
+          seeds: parsed.seeds,
+          // ★ 标注策略号，避免与 s=0 的 `index` 混淆（各策略 index 都从 1 起）
+          dropped: parsed.dropped.map((d) => ({ index: d.index, reason: `s${strategy}:${d.reason}` })),
+        };
+      } catch {
+        return { strategy, ok: false as const, seeds: [], dropped: [] };
+      }
+    }),
+  );
+
+  const seeds: AmapPlanSeed[] = [];
+  const dropped: { index: number; reason: string }[] = [];
+  const strategiesUsed: number[] = [];
+  for (const r of results) {
+    if (!r.ok) continue;
+    strategiesUsed.push(r.strategy);
+    seeds.push(...r.seeds);
+    dropped.push(...r.dropped);
+  }
+  strategiesUsed.sort((a, b) => a - b); // Promise.all 已保序，此处再兜一层
+  return { seeds, dropped, strategiesUsed };
 }
 
 /** NavPoint → 合成 slug（复用旧 `model.ts` 的 school 座区判据） */
@@ -237,11 +318,7 @@ export async function planNav(pool: Pool, input: NavInput): Promise<NavOutput> {
   const fromSlug = slugOf(origin, placeSlugs);
   const toSlug = slugOf(dest, placeSlugs);
 
-  const odKey = odKeyOf({ lng: origin.lng, lat: origin.lat }, { lng: dest.lng, lat: dest.lat }, nowMs);
-  /** ★ 离线补漏表用**桶无关**的稳定键（`shadow-diff.ts` 同键写入）——否则永远读不到 */
-  const odCoord = odCoordKey({ lng: origin.lng, lat: origin.lat }, { lng: dest.lng, lat: dest.lat });
-
-  // ③ 高德
+  // ③ 高德（默认 strategy=0）
   const tTransit = Date.now();
   let transitOk = false;
   let fromCache = false;
@@ -249,23 +326,28 @@ export async function planNav(pool: Pool, input: NavInput): Promise<NavOutput> {
   let bridgedSeeds: AmapPlanSeed[] = [];
   let dropped: { index: number; reason: string }[] = [];
   let amapTotal = 0;
+  /** ★ 本次实际用到的策略（诊断；s=0 恒在，命中补查时追加 7/8） */
+  const strategiesUsed: number[] = [];
 
   if (input.transitFixture) {
     rawPlans = input.transitFixture;
     amapTotal = (input.transitFixture.route?.transits ?? []).length;
     // ★ §B.6 触发条件③：高德返回 **0 方案** = 异常 ⇒ 视为**不可用**（走降级）
     transitOk = amapTotal > 0;
+    if (transitOk) strategiesUsed.push(0);
   } else {
     const r = await fetchTransitPlans({ lng: origin.lng, lat: origin.lat }, { lng: dest.lng, lat: dest.lat }, {
       cache: makeTransitCacheIo(pool),
       noCache: input.noCache,
       nowMs,
+      strategy: 0,
     });
     if (r.ok) {
       transitOk = true;
       fromCache = r.fromCache;
       rawPlans = { status: "1", route: { transits: r.raw } };
       amapTotal = r.raw.length;
+      strategiesUsed.push(0);
     }
   }
   const transitMs = Date.now() - tTransit;
@@ -274,20 +356,23 @@ export async function planNav(pool: Pool, input: NavInput): Promise<NavOutput> {
     const parsed = parseAndBridge(rawPlans, origin, dest, bridgeCtx);
     bridgedSeeds = parsed.seeds;
     dropped = parsed.dropped;
+
+    // ★ 多策略按需补查：s=0 可用候选偏少 ⇒ 并行补 s=7/s=8，按指纹合并去重（s=0 优先保留）。
+    //   ⚠️ fixture 模式（测试/回放）不补查；补查整体失败静默降级为「只有 s=0 结果」。
+    if (!input.transitFixture && bridgedSeeds.length < MULTI_STRATEGY_WHEN_BELOW) {
+      const extra = await fetchMultiStrategySeeds(pool, origin, dest, bridgeCtx, nowMs, input.noCache);
+      bridgedSeeds = mergeSeedsByFingerprint(bridgedSeeds, extra.seeds);
+      dropped = [...dropped, ...extra.dropped];
+      strategiesUsed.push(...extra.strategiesUsed);
+    }
   }
 
-  // ⑤ 本地候选（两种来源，用途不同）：
-  //    · **补漏**（主路径）：**只读离线表** `shadow_diff_report`（§B.5：请求期不跑图搜索）；
-  //    · **降级引擎**（高德不可用时，§B.6）：**必须**现场跑本地图搜索（R1 设计原样）——
-  //      这是「高德一挂不全哑」的唯一对冲，**不受 `allowInlineLocal` 约束**。
-  const offline = await loadOfflineExtras(pool, odCoord);
+  // ⑤ 本地候选（**请求期现场枚举**；补漏来源 + 降级引擎共用同一实现）。
+  //    已删除原「只读离线表 `shadow_diff_report`」路径（口径变更 2026-09-19，见文件头）。
   let localSource: NavStats["localSource"] = "none";
   let localCandidates: StationPath[] = [];
-  if (offline && offline.length) {
-    localCandidates = offline;
-    localSource = "offline";
-  } else if (!transitOk || (input.allowInlineLocal ?? false)) {
-    localCandidates = searchStationPaths(st.routeIdx, geo, fromWgs, toWgs, { maxCandidates: 60 });
+  if (geo.length) {
+    localCandidates = searchStationPaths(st.routeIdx, geo, fromWgs, toWgs, { maxCandidates: 240 });
     localSource = "inline";
   }
 
@@ -415,6 +500,7 @@ export async function planNav(pool: Pool, input: NavInput): Promise<NavOutput> {
       localCandidates: localCandidates.length,
       localKept: merged.items.filter((i) => i.origin === "local").length,
       localSource,
+      strategiesUsed,
       liveMs,
       modelMs,
       ms: Date.now() - tAll,

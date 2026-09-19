@@ -14,9 +14,15 @@ import { useRouter } from "next/navigation";
 import ConsentNotice from "./ConsentNotice";
 import PoiSearchBox from "./PoiSearchBox";
 import NavMap from "./NavMap";
+import StationCard, { type StationCardStation } from "./StationCard";
 import type { NavPoint } from "@/lib/nav/types";
 
 const MY_LOCATION = "我的位置";
+
+/** ★ v2.1.0：站点 → NavPoint（`kind='station'`，label 带站码，与 POI 搜索框口径一致） */
+function stationToNavPoint(s: StationCardStation): NavPoint {
+  return { kind: "station", label: `${s.code} ${s.name}`.trim(), lng: s.lng, lat: s.lat, code: s.code };
+}
 
 function navUrl(from: NavPoint, to: NavPoint): string {
   const sp = new URLSearchParams({
@@ -42,8 +48,11 @@ export default function NavShell({ jsKey, colors = {} }: { jsKey: string; colors
   const [from, setFrom] = useState<NavPoint | null>(null);
   const [to, setTo] = useState<NavPoint | null>(null);
   const [picking, setPicking] = useState(false);
+  /** ★ v2.1.0：地图上选中的巴士站（信息卡） */
+  const [station, setStation] = useState<StationCardStation | null>(null);
 
   const onLocate = useCallback((pos: { lng: number; lat: number } | null) => setUserPos(pos), []);
+  const onStationClick = useCallback((s: StationCardStation) => setStation(s), []);
 
   // 起点展示值与实际值
   const fromPoint: NavPoint | null =
@@ -59,7 +68,29 @@ export default function NavShell({ jsKey, colors = {} }: { jsKey: string; colors
 
   return (
     <section className="nav-shell">
-      <NavMap jsKey={jsKey} dest={to ? { lng: to.lng, lat: to.lat, label: to.label } : null} onLocate={onLocate} />
+      <div className="nav-map-wrap">
+        <NavMap
+          jsKey={jsKey}
+          dest={to ? { lng: to.lng, lat: to.lat, label: to.label } : null}
+          onLocate={onLocate}
+          onStationClick={onStationClick}
+        />
+        {station && (
+          <StationCard
+            station={station}
+            colors={colors}
+            onClose={() => setStation(null)}
+            onSetFrom={() => {
+              setFrom(stationToNavPoint(station));
+              setStation(null);
+            }}
+            onSetTo={() => {
+              setTo(stationToNavPoint(station));
+              setStation(null);
+            }}
+          />
+        )}
+      </div>
 
       <ConsentNotice />
 

@@ -310,7 +310,8 @@ export function roundCoord(v: number): string {
  *
  * 用途：**离线影子对照表**（`shadow_diff_report.od_key`）—— 补漏候选**不随时段变化**
  *   ⇒ 必须用**稳定键**，否则离线写入的桶与请求期计算的桶不同 ⇒ **永远读不到** ✗
- *   （`shadow-diff.ts` 写本键；`nav-service.loadOfflineExtras` 用本键查。）
+ *   （`shadow-diff.ts` 写/读本键。⚠️ 自 2026-09-19 起导航请求期**不再读该表**——
+ *    本地枚举改为请求期现场执行，见 `nav-service.ts` 文件头「请求期现场枚举」。）
  */
 export function odCoordKey(originGcj: LatLng, destGcj: LatLng): string {
   return `${roundCoord(originGcj.lng)},${roundCoord(originGcj.lat)}|${roundCoord(destGcj.lng)},${roundCoord(destGcj.lat)}`;
@@ -394,6 +395,11 @@ export interface TransitFetchOptions {
   nowMs?: number;
   /** 缓存读写钩子（缺省时不落库；由调用方注入以解耦 DB 依赖） */
   cache?: TransitCacheIo;
+  /**
+   * ★ 高德 `strategy`（默认 0 = 推荐）。取值见调研 A1.4（v5 实测扩展到 0~8）。
+   *   多策略按需补查时由调用方传 7/8；**缓存键含策略维度**（见下），防止跨策略串缓存。
+   */
+  strategy?: number;
 }
 
 /** 缓存读写钩子（把 DB 依赖从本模块剥离，便于纯逻辑测试） */
@@ -405,6 +411,9 @@ export interface TransitCacheIo {
 /**
  * 拉取高德公交方案（**限流 → 缓存 → 请求 → 缓存写回 → 解析**）。
  *
+ * ★ `strategy`（`opts.strategy`，默认 0）会传入查询串；**缓存键含策略维度**
+ *   （`<odKey>|s<strategy>`）⇒ 不同策略各自缓存、互不串味。多策略按需补查由调用方编排。
+ *
  * ⚠️ 本函数**不抛错**：任何失败都收敛为 `{ ok:false, degraded:true }`，由调用方降级。
  * @param originGcj 起点（GCJ-02）
  * @param destGcj   终点（GCJ-02）
@@ -415,7 +424,11 @@ export async function fetchTransitPlans(
   opts: TransitFetchOptions = {},
 ): Promise<TransitFetchResult> {
   const nowMs = opts.nowMs ?? Date.now();
-  const odKey = odKeyOf(originGcj, destGcj, nowMs);
+  const strategy = opts.strategy ?? TRANSIT_STRATEGY;
+  const baseOdKey = odKeyOf(originGcj, destGcj, nowMs);
+  // ★ 缓存键加**策略维度**：同一 OD 不同 `strategy` 的方案集合不同 ⇒ 若共用键会**跨策略串缓存** ✗
+  //   （如请求 s=0 却读到 s=7 写入的方案）。格式：`<odKey>|s<strategy>`。
+  const odKey = `${baseOdKey}|s${strategy}`;
 
   // ① 缓存（命中零调用）
   if (!opts.noCache && opts.cache) {
@@ -450,7 +463,7 @@ export async function fetchTransitPlans(
   const started = Date.now();
   let json: AmapTransitRawResponse | null = null;
   try {
-    const qs = alternativeRouteQuery(originGcj, destGcj, getKey());
+    const qs = alternativeRouteQuery(originGcj, destGcj, getKey(), { strategy: String(strategy) });
     const res = await fetch(`${TRANSIT_ENDPOINT}?${qs}`, {
       cache: "no-store",
       signal: AbortSignal.timeout(opts.timeoutMs ?? TRANSIT_TIMEOUT_MS),

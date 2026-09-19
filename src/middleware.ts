@@ -40,6 +40,8 @@ const PUBLIC_PREFIXES = [
   "/api/card", // 详情页数据（公开浏览的核心）
   "/api/poi/suggest", // ★ 全澳导航·POI 搜索建议（公众可搜；设计 §2.E / R-10）
   "/api/nav", // ★ 全澳导航·路线结果（公众可用；设计 §2.E）
+  "/api/stations", // ★ v2.1.0 首页地图·全量巴士站点（公众图层数据）
+  "/api/station/eta", // ★ v2.1.0 首页地图·站点实时报站（信息卡）
   "/_AMapService", // ★ 高德 JS API 安全代理（浏览器直连；密钥不下发前端，见 §2.D）
   "/api/amap-service", // ↑ 同一处理器的真实路由（`/_AMapService` 经 rewrite 指向它）
   "/_next", // 构建产物

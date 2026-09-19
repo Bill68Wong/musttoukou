@@ -90,6 +90,20 @@ export default function PoiSearchBox({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
+  // ★ v2.1.0：外部设点（地图信息卡「设为起点/目的地」等）→ 同步到输入框显示。
+  //   缺口背景：输入框显示的是**内部状态 `q`**，而外部传入的 `value`（NavPoint）原先
+  //   从不写入 `q`（只有组件内部 pick()/onInput() 会更新）—— v1.3.0 只有「内部选择」
+  //   一条路径故未暴露；#3 新增「地图设点」这条**外部设点**路径后缺口显现。
+  //   `value` 为 null 时不覆盖（保留用户正在输入的内容）。
+  // ★ 守卫：仅当外部 label 变化时才同步（避免「用户输入中被父组件重渲染覆盖」）。
+  const lastSyncedLabelRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!value) return;
+    if (lastSyncedLabelRef.current === value.label) return;
+    lastSyncedLabelRef.current = value.label;
+    setQ(value.label);
+  }, [value]);
+
   async function query(keyword: string, mode: "type" | "enter") {
     const s = keyword.trim();
     if (!s) {

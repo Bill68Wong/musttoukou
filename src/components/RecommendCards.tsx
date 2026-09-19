@@ -24,6 +24,8 @@ export default function RecommendCards({
   toSlug,
   excluded = [],
   missed = [],
+  hrefBuilder,
+  originOf,
 }: {
   cards: CardData[];
   colors: Record<string, string>;
@@ -35,24 +37,29 @@ export default function RecommendCards({
   excluded?: string[];
   /** ★ v1.0.6：因「首段赶不上」被剔除的路线（与 excluded 分开，文案要说实话） */
   missed?: string[];
+  /** ★ v1.3.0（全澳导航）：覆盖点击跳转（如 `/nav/detail?…`） */
+  hrefBuilder?: (card: CardData) => string;
+  /** ★ v1.3.0：来源（本地补漏 → 卡片带中性徽章「其他组合」） */
+  originOf?: (card: CardData) => "amap" | "local";
 }) {
   const devMode = useDevMode();
 
   // 剔除原因（分两类：没车 vs 赶不上）—— 合并成一个数组只用于文案拼接
+  // ★ P1-2（T05 修复）：界面文案**一律简体**（站名/线路名才用繁体）—— 旧版此处是简繁混排 bug
   const reasons: string[] = [];
-  if (excluded.length > 0) reasons.push(`${excluded.length} 條線路無實時車輛`);
-  if (missed.length > 0) reasons.push(`${missed.length} 條路線趕不上首班車`);
+  if (excluded.length > 0) reasons.push(`${excluded.length} 条线路无实时车辆`);
+  if (missed.length > 0) reasons.push(`${missed.length} 条路线赶不上首班车`);
 
   if (!cards.length) {
     return (
       <div className="card rc-empty">
-        <p className="h-title">暫時沒有可用的班次</p>
+        <p className="h-title">暂时没有可用的班次</p>
         <p className="t-body t-muted" style={{ marginTop: 6, lineHeight: 1.7 }}>
-          現在這個時段，通往該方向的線路大多已收班或暫時沒有在途車輛。
+          现在这个时段，通往该方向的线路大多已收班或暂时没有在途车辆。
           {reasons.length > 0 && <>（{reasons.join("・")}）</>}
         </p>
         <p className="t-label t-muted" style={{ marginTop: 8, lineHeight: 1.6 }}>
-          建議：稍後再試，或改用其他交通方式。輕軌服務時間約 06:30–23:30。
+          建议：稍后再试，或改用其他交通方式。轻轨服务时间约 06:30–23:30。
         </p>
       </div>
     );
@@ -65,9 +72,9 @@ export default function RecommendCards({
           后者已整条剔除而不是塞一张带估算等车的卡。 */}
       {cards.length < TARGET_CARDS && (
         <p className="t-label t-muted" style={{ margin: "0 2px 8px", lineHeight: 1.6 }}>
-          目前僅 {cards.length} 條路線可用
+          目前仅有 {cards.length} 条路线可用
           {reasons.length > 0 && <>・{reasons.join("・")}</>}
-          （列出均為實時結果，不含估算）
+          （均为实时结果，不含估算）
         </p>
       )}
       {cards.map((c, i) => (
@@ -80,6 +87,8 @@ export default function RecommendCards({
           rank={i + 1}
           fromSlug={fromSlug}
           toSlug={toSlug}
+          hrefOverride={hrefBuilder?.(c)}
+          origin={originOf?.(c)}
           /* ★ v1.1.8：入场错峰（原先 5 张卡同时同速上浮，既没方向感也白花一次动画预算） */
           delayMs={i * 40}
         />

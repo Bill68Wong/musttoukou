@@ -176,6 +176,73 @@ export async function walkRoute(origin: LatLng, dest: LatLng): Promise<AmapWalkR
   };
 }
 
+/**
+ * ★ v1.3.0：步行路径规划 —— **入参已是 GCJ-02** 的变体（**不再做坐标转换**）。
+ *
+ * 为什么要它：主路径的高德坐标（用户 GPS 已转 / POI / 站点）**本来就是 GCJ-02**，
+ *   若再走 `walkRoute()` 会被 `toAmapCoords()` **二次加偏** ✗。
+ *   `walkRouteGcj` 与 `walkRoute` **唯一区别**就是「不做 `toAmapCoords`」——
+ *   ★ 命名差异即为**防漏转/误转的标志**，调用方一眼可辨。
+ *
+ * ⚠️ 仍然受文件头**硬规则①**约束：本模块**只允许离线（`src/lib/rebuild/**`、`scripts/**`、
+ *   Cron）import**，禁止在请求期实时链路 import（含离线预热 `walk_cache`）。
+ *
+ * @param origin 起点（**GCJ-02**，原样传给高德）
+ * @param dest   终点（**GCJ-02**，原样传给高德）
+ */
+export async function walkRouteGcj(origin: LatLng, dest: LatLng): Promise<AmapWalkResult> {
+  const qs = new URLSearchParams({
+    origin: fmtAmapLngLat(origin),
+    destination: fmtAmapLngLat(dest),
+    key: getKey(),
+    show_fields: "cost,polyline",
+  });
+
+  await throttle();
+  stats.calls++;
+
+  let json: {
+    status?: string; info?: string; infocode?: string;
+    route?: { paths?: { distance?: string; cost?: { duration?: string }; steps?: { polyline?: string }[] }[] };
+  } | null = null;
+
+  try {
+    const res = await fetch(`${BASE}/v5/direction/walking?${qs}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(REQ_TIMEOUT_MS),
+    });
+    json = await res.json();
+  } catch (e) {
+    stats.failed++;
+    return { ok: false, error: `请求失败：${(e as Error).message}` };
+  }
+
+  const info = json?.info ?? "unknown";
+  const code = json?.infocode ?? "?";
+  stats.infocodes[code] = (stats.infocodes[code] ?? 0) + 1;
+
+  const path = json?.route?.paths?.[0];
+  const dist = Number(path?.distance ?? 0);
+  if (json?.status !== "1" || !path || !Number.isFinite(dist) || dist <= 0) {
+    stats.failed++;
+    return { ok: false, error: info, infocode: code };
+  }
+
+  const polyline = path.steps?.map((s) => s.polyline ?? "").join(";");
+  const ends = endsOfPolyline(polyline);
+  const snapStartM = ends ? haversineM(ends.first, origin) : -1;
+  const snapEndM = ends ? haversineM(ends.last, dest) : -1;
+
+  stats.ok++;
+  return {
+    ok: true,
+    distanceM: Math.round(dist),
+    durationS: Number(path.cost?.duration ?? 0) || 0,
+    snapStartM: Math.round(snapStartM),
+    snapEndM: Math.round(snapEndM),
+  };
+}
+
 /** 直线距离（对照用；**不是步行距离**，别拿它算时长） */
 export async function straightDistance(a: LatLng, b: LatLng): Promise<number | null> {
   const ao = toAmapCoords(a);

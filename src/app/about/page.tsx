@@ -91,8 +91,24 @@ export default function AboutPage() {
               <b>站間行駛時間與步行時間</b>：官方無此數據，全部來自我本人<b>實地通勤打點的樣本</b>，
               由本機自行統計得出。
             </>,
+            <>
+              <b>地圖底圖與路線規劃（全澳導航）</b>：本服務來源於<b>高德地圖</b>（AutoNavi）。
+              導航的候選路線、首末段步行幾何由高德路徑規劃接口提供；地圖底圖由高德 JS API 繪製。
+              本服務對其<strong>原始數據不作修改</strong>，僅在此之上做時間重算與排序。
+            </>,
           ]}
         />
+      </section>
+
+      <section className="card" style={{ padding: "16px 16px 18px", marginTop: 12 }}>
+        <H2>二之一、位置用途說明</H2>
+        <P>
+          全澳導航需要取得你的位置，用途<b>僅限於計算路線</b>：把位置作為路徑規劃的起點，
+          在裝置上即時使用。<b>位置不會上傳到伺服器保存，也不會用於任何其他目的或分享給第三方。</b>
+        </P>
+        <P>
+          你可以在瀏覽器／系統設定中隨時關閉定位授權；關閉後仍可<b>手動選擇出發點</b>使用本功能。
+        </P>
       </section>
 
       <section className="card" style={{ padding: "16px 16px 18px", marginTop: 12 }}>

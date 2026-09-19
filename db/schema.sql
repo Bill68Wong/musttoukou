@@ -384,3 +384,139 @@ CREATE TABLE IF NOT EXISTS lrt_holidays (
     source        TEXT NOT NULL DEFAULT 'macau_gov'
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_lrt_holidays_date ON lrt_holidays (holiday_date);
+
+-- =============================================================
+-- 3. 全澳导航数据地基（v1.3.0 提案 · 迁移 db/migrate-v1400.ts）
+--    ★ 本文件是「重建库唯一真相源」；生产库请走 db/migrate-v1400.ts（幂等）。
+--    设计：docs/设计-全澳导航-v1-20260918.md §2.F / §2.G
+-- =============================================================
+
+-- 3.1 高德站 ↔ 我们站码 映射表（自动生成 + 人工维护）
+--   ★ R5：amap_name（高德简体）与 name_tc（我们繁体）两列并存，不可合并。
+CREATE TABLE IF NOT EXISTS station_amap_map (
+    id                BIGSERIAL PRIMARY KEY,
+    amap_station_id   TEXT,                         -- 高德站 id（有则优先按 id 匹配）
+    amap_name         TEXT NOT NULL,                -- 高德站名（★简体）
+    amap_lng          DOUBLE PRECISION NOT NULL,    -- 高德坐标（GCJ-02，原样存）
+    amap_lat          DOUBLE PRECISION NOT NULL,
+    dsat_station_main TEXT,                         -- 我们【主码】（C653 / LRT-MUST）；NULL = 未匹配
+    name_tc           TEXT,                         -- 我们站名（★繁体官方原文）
+    match_method      TEXT NOT NULL DEFAULT 'coord',-- 'coord'|'name'|'both'|'manual'|'unmatched'
+    match_dist_m      NUMERIC(7,1),                 -- 坐标最近邻距离（米）
+    name_match        BOOLEAN NOT NULL DEFAULT FALSE,
+    confidence        TEXT NOT NULL DEFAULT 'low',  -- 'high'|'medium'|'low'
+    verified_by_human BOOLEAN NOT NULL DEFAULT FALSE,
+    verified_at       TIMESTAMPTZ,
+    verified_note     TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_station_amap_map_amap_id
+    ON station_amap_map (amap_station_id) WHERE amap_station_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_station_amap_map_amap_key
+    ON station_amap_map (amap_name, amap_lng, amap_lat);
+CREATE INDEX IF NOT EXISTS idx_station_amap_map_main ON station_amap_map (dsat_station_main);
+CREATE INDEX IF NOT EXISTS idx_station_amap_map_verified ON station_amap_map (verified_by_human);
+
+-- 3.2 本地地名别名库（0 配额搜索）
+CREATE TABLE IF NOT EXISTS poi_aliases (
+    id          BIGSERIAL PRIMARY KEY,
+    alias_norm  TEXT NOT NULL,                      -- 归一化别名（简体/去空白/去后缀）—— 匹配键
+    alias_raw   TEXT NOT NULL,                      -- 原始别名
+    target_kind TEXT NOT NULL,                      -- 'station'|'lrt_station'|'route'|'poi'|'place'
+    target_code TEXT NOT NULL DEFAULT '',           -- 站码 / 线路码 / 点位码
+    name_tc     TEXT NOT NULL,                      -- 目标显示名（★繁体官方原文）
+    lng         DOUBLE PRECISION,                   -- GCJ-02
+    lat         DOUBLE PRECISION,
+    weight      NUMERIC(6,3) NOT NULL DEFAULT 1,
+    source      TEXT NOT NULL DEFAULT 'seed',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (alias_norm, target_kind, target_code)
+);
+CREATE INDEX IF NOT EXISTS idx_poi_aliases_norm ON poi_aliases (alias_norm);
+CREATE INDEX IF NOT EXISTS idx_poi_aliases_kind ON poi_aliases (target_kind);
+
+-- 3.3 高德公交方案缓存（Q14：OD 取整 4 位 + 15min 时段桶，TTL 60s）
+CREATE TABLE IF NOT EXISTS transit_cache (
+    id          BIGSERIAL PRIMARY KEY,
+    od_key      TEXT NOT NULL,
+    plans_json  JSONB NOT NULL,                     -- 高德 transits[] 原样
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (od_key)
+);
+CREATE INDEX IF NOT EXISTS idx_transit_cache_time ON transit_cache (fetched_at DESC);
+
+-- 3.4 影子对照 / 本地补漏候选（离线产，请求期只读）
+CREATE TABLE IF NOT EXISTS shadow_diff_report (
+    id              BIGSERIAL PRIMARY KEY,
+    od_key          TEXT NOT NULL,
+    amap_plan_cnt   INT NOT NULL,
+    local_plan_cnt  INT NOT NULL,
+    missed_paths    JSONB,
+    extra_paths     JSONB,
+    extra_recompute JSONB,
+    miss_rate       NUMERIC(5,3),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_shadow_diff_created ON shadow_diff_report (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_shadow_diff_od ON shadow_diff_report (od_key);
+
+-- 3.5 跨实例令牌桶（3 QPS 全实例共享；pg_advisory_xact_lock 串行化）
+CREATE TABLE IF NOT EXISTS amap_rate_bucket (
+    bucket     TEXT PRIMARY KEY,                    -- 'transit'|'walking'|'search'
+    tokens     NUMERIC(10,4) NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 3.6 步行缓存（★降级路径用；键 = geohash-7 ≈150m）
+CREATE TABLE IF NOT EXISTS walk_cache (
+    id          BIGSERIAL PRIMARY KEY,
+    cache_key   TEXT NOT NULL UNIQUE,               -- geohash7(from) + '>' + geohash7(to)
+    kind        TEXT NOT NULL DEFAULT 'walk',       -- 'walk' | 'transfer'
+    from_key    TEXT NOT NULL,
+    to_key      TEXT NOT NULL,
+    from_lng    DOUBLE PRECISION NOT NULL,
+    from_lat    DOUBLE PRECISION NOT NULL,
+    to_lng      DOUBLE PRECISION NOT NULL,
+    to_lat      DOUBLE PRECISION NOT NULL,
+    distance_m  NUMERIC(7,1),
+    duration_s  NUMERIC(8,1),
+    straight_m  NUMERIC(7,1),
+    ratio       NUMERIC(6,3),
+    corrected_m NUMERIC(7,1),                       -- 短距修正后距离（★R3 修订：<200m 且 ratio≤3 用高德值；>3 才 ×1.5）
+    source      TEXT NOT NULL DEFAULT 'amap',
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_walk_cache_fetched ON walk_cache (fetched_at DESC);
+
+-- 3.7 步行缓存未命中补算队列（离线预热消费）
+CREATE TABLE IF NOT EXISTS walk_miss_queue (
+    id         BIGSERIAL PRIMARY KEY,
+    cache_key  TEXT NOT NULL UNIQUE,
+    kind       TEXT NOT NULL DEFAULT 'walk',
+    from_lng   DOUBLE PRECISION NOT NULL,
+    from_lat   DOUBLE PRECISION NOT NULL,
+    to_lng     DOUBLE PRECISION NOT NULL,
+    to_lat     DOUBLE PRECISION NOT NULL,
+    straight_m NUMERIC(7,1),
+    reason     TEXT,
+    status     TEXT NOT NULL DEFAULT 'pending',     -- 'pending'|'done'|'failed'
+    attempts   INT NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_walk_miss_status ON walk_miss_queue (status, created_at);
+
+-- 3.8 搜索配额记账（熔断 / 看板）
+CREATE TABLE IF NOT EXISTS search_quota_log (
+    id         BIGSERIAL PRIMARY KEY,
+    api        TEXT NOT NULL,                       -- 'inputtips'|'place/text'
+    ok         BOOLEAN NOT NULL,
+    infocode   TEXT,
+    latency_ms INT,
+    day        DATE NOT NULL DEFAULT (now())::date,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_search_quota_day ON search_quota_log (day, api);
+CREATE INDEX IF NOT EXISTS idx_search_quota_time ON search_quota_log (created_at DESC);

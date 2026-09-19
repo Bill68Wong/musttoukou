@@ -35,6 +35,8 @@ export default function RecommendCard({
   fromSlug,
   toSlug,
   delayMs,
+  hrefOverride,
+  origin,
 }: {
   card: CardData;
   /** 线路码 → 主题色（服务端下发） */
@@ -49,6 +51,13 @@ export default function RecommendCard({
   toSlug: string;
   /** ★ v1.1.8：入场错峰（列表按 i*40ms 传入） */
   delayMs?: number;
+  /**
+   * ★ v1.3.0（全澳导航）：**覆盖点击跳转目标**（如 `/nav/detail?...`）。
+   * 传了则**不再**走旧 `buildCardHref`（旧链路零影响）。
+   */
+  hrefOverride?: string;
+  /** ★ v1.3.0：来源徽章 —— 'local' = 本地补漏（中性文案「其他组合」，§B.5）；'amap' 不显示 */
+  origin?: "amap" | "local";
 }) {
   const router = useRouter();
   /** ★ v1.1.8：整卡可点 + 列表要滚动 → 位移 >8px 或长按 >700ms 判为滚动，不触发跳转 */
@@ -60,6 +69,10 @@ export default function RecommendCard({
   function onClick() {
     if (press.isGuarded()) return;
     if (!first) return;
+    if (hrefOverride) {
+      router.push(hrefOverride);
+      return;
+    }
     router.push(
       buildCardHref({
         from: fromSlug,
@@ -89,7 +102,7 @@ export default function RecommendCard({
         }
       }}
       style={delayMs ? { animationDelay: `${delayMs}ms` } : undefined}
-      aria-label={`第 ${rank} 名，全程 ${Math.round(card.totalMin)} 分钟，預計 ${macauClock(card.arriveAt)} 到達，點擊看詳情`}
+      aria-label={`第 ${rank} 名，全程 ${Math.round(card.totalMin)} 分钟，预计 ${macauClock(card.arriveAt)} 到达，点击看详情`}
     >
       {/* ── 头部：总用时 + 到达 + 线路组合标签 ── */}
       <div className="rc-head">
@@ -98,9 +111,10 @@ export default function RecommendCard({
           <span className="rc-total__unit">分</span>
         </div>
         <span className="rc-arrive">
-          預計 <b>{macauClock(card.arriveAt)}</b> 到達
-          {card.crossBorder && <span className="rc-warn"> · 不含通關</span>}
+          预计 <b>{macauClock(card.arriveAt)}</b> 到达
+          {card.crossBorder && <span className="rc-warn"> · 不含通关</span>}
         </span>
+        {origin === "local" && <span className="rc-badge-local">其他組合</span>}
         <RouteStack codes={card.rides.map((r) => r.route)} colorOf={colorOf} size="sm" />
       </div>
 
@@ -145,9 +159,9 @@ export default function RecommendCard({
             dot="wait"
             main={
               <>
-                <span className="rc-board">上車 · {first.boardLabel}</span>
+                <span className="rc-board">上车 · {first.boardLabel}</span>
                 <span className="rc-sub">
-                  {multi ? `共 ${card.rides.length} 段 · 詳情見路線圖` : `下車 · ${first.alightLabel}（行車 ${first.minutes} 分）`}
+                  {multi ? `共 ${card.rides.length} 段 · 详情见路线图` : `下车 · ${first.alightLabel}（行车 ${first.minutes} 分）`}
                 </span>
               </>
             }
@@ -159,19 +173,17 @@ export default function RecommendCard({
           dot="ride"
           main={
             <>
-              {card.rides.map((r, i) => (
-                <span key={`${r.route}-${i}`}>
-                  <span className="rc-route" style={{ background: colorOf(r.route) ?? "var(--primary)" }}>
-                    {lineNameOf(r.route)}
-                  </span>
-                  {multi && i < card.rides.length - 1 && <span className="rc-sub"> 轉 </span>}
+              {multi ? (
+                <RouteStack codes={card.rides.map((r) => r.route)} colorOf={colorOf} size="sm" />
+              ) : (
+                <span className="rc-route" style={{ background: colorOf(card.rides[0].route) ?? "var(--primary)" }}>
+                  {lineNameOf(card.rides[0].route)}
                 </span>
-              ))}
+              )}
               <b>{card.rides.reduce((s, r) => s + r.minutes, 0)}</b> 分
             </>
           }
         />
-
         <Row
           dot="walk"
           last
@@ -193,7 +205,7 @@ export default function RecommendCard({
           {card.altBuses!.map((a, k) => (
             <div className="rc-altrow" key={k}>
               <span>
-                後面還有 <b>{a.stopsAway}</b> 站 · {a.waitText}
+                后面还有 <b>{a.stopsAway}</b> 站 · {a.waitText}
               </span>
               <span className="rc-altrow__right">
                 全程 {a.totalMin} 分
@@ -205,7 +217,7 @@ export default function RecommendCard({
       )}
 
       <div className="rc-foot">
-        <span className="rc-hint">點擊看詳情 ›</span>
+        <span className="rc-hint">点击看详情 ›</span>
       </div>
     </div>
   );

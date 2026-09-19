@@ -250,6 +250,8 @@ export function searchStationPaths(
       for (const b of DST) {
         const rd = ride(r, a, b);
         if (rd) add([rd], []);
+        // ★ 硬上限校验（与 1 换乘阶段末尾同款语义）：到上限立即返回，防 0 换乘阶段退化为软上限
+        if (results.length >= o.maxCandidates) return results;
       }
     }
   }

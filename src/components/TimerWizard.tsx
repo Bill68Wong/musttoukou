@@ -101,12 +101,11 @@ function tryVibrate() {
   }
 }
 
-/* ---------- v0.7.0 主题色工具：徽章文字对比色 / 轻轨线名美化 ----------
+/* ---------- v0.7.0 主题色工具：轻轨线名美化 ----------
    v0.20.0（用户第 1 条）：所有主题色标签/卡片上的文字**统一白色**（含浅色轻轨线，
-   不再按亮度切黑字），与巴士标签保持一致 */
-function textOn(_hex: string): string {
-  return "#fff";
-}
+   不再按亮度切黑字），与巴士标签保持一致。
+   ★ v2.0.1：【4】全站线路标签统一为 `.route-stack`（RouteStack 组件），
+   `textOn()` 对比色工具已无消费方 → 删除（RouteStack 内写死白字）。 */
 // v0.15.1：轻轨标签去掉「輕軌·」前缀（🚈 图标/乘车语境已标识载具，无需重复）
 //   LRT-石排湾线 → 石排灣線；LRT-横琴线 → 橫琴線；LRT-氹仔线 → 氹仔線
 const lrtLabelOf = (code: string) =>
@@ -669,11 +668,6 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
       : boarded && data.session.route_code && step?.routeOptions?.includes(data.session.route_code)
         ? data.session.route_code
         : null;
-  const curLabel = chosenRoute
-    ? chosenRoute.startsWith("LRT-")
-      ? lrtLabelOf(chosenRoute)
-      : chosenRoute
-    : null;
   const curLine = (curRoute && routeColors[curRoute]) || step?.lineColor || null;
 
   /** v1.0.0：会话已带座区 → 只回显一行（不再询问，避免与首页已选重复） */
@@ -973,10 +967,10 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
               data.session.summary
             )}
           </span>
-          {curLine && curLabel && (
-            <span className="route-chip" style={{ background: curLine, color: textOn(curLine) }}>
-              {curLabel}
-            </span>
+          {curLine && chosenRoute && (
+            /* ★ 【4】全站统一：计时页单线路标签从 `.route-chip`（胶囊）改为 `.route-stack`
+               （单块不斜切），与其余页面的线路标签口径一致。 */
+            <RouteStack codes={[chosenRoute]} colorOf={() => curLine} size="sm" />
           )}
         </p>
         <p className="t-label t-muted">

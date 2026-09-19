@@ -61,6 +61,11 @@ export interface PoiSearchResult {
   /** 纬度（GCJ-02） */
   lat: number;
   kind: PoiKind;
+  /**
+   * ★ 【7①】我们库的**站码**（kind='station' 时 = 主码，如 `M1`；轻轨为 `LRT-*`）。
+   * 用于「巴士站带编号」显示（`M1 關閘總站`）与类型徽章；高德结果一般为空。
+   */
+  code?: string;
   /** 与用户当前位置的距离（米）；未知则不填（inputtips 无 dist，见调研 §6 坑#8） */
   distM?: number;
   /** 排序分（越大越靠前；本地命中普遍高于高德） */

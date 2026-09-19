@@ -578,10 +578,13 @@ button[aria-disabled="true"] {
 .route-stack__seg {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   color: #fff;
   font-weight: 700;
   letter-spacing: 0.2px;
-  line-height: 1;
+  /* ★ 【4】line-height 1.15（原 1）：CJK 字形略高于 em 框，1 会把上/下缘切掉一点
+     ⇒ 标签看起来「没有完全包裹文字」。1.15 让字形完整落在实色区内。 */
+  line-height: 1.15;
   /* 左右 padding 大于斜边宽度（8px）→ 文字始终完整落在实色区内，不被斜边切到 */
   padding: 4px 14px;
   white-space: nowrap;
@@ -597,12 +600,12 @@ button[aria-disabled="true"] {
 .route-stack__seg:first-child {
   /* 首块左端保持竖直（标签起始边），只斜右边界 */
   clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
-  padding-left: 9px;
+  padding-left: 10px;
 }
 .route-stack__seg:last-child {
   /* 尾块只斜左边界、右侧保持竖直 → 右下角不被斜边削掉，保留容器圆角 */
   margin-right: 0;
-  padding-right: 10px;
+  padding-right: 11px;
   clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%);
 }
 .route-stack--sm .route-stack__seg {
@@ -613,26 +616,28 @@ button[aria-disabled="true"] {
 }
 .route-stack--sm .route-stack__seg:first-child {
   clip-path: polygon(0 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
-  padding-left: 8px;
+  padding-left: 9px;
 }
 .route-stack--sm .route-stack__seg:last-child {
   margin-right: 0;
-  padding-right: 9px;
+  padding-right: 10px;
   clip-path: polygon(6px 0, 100% 0, 100% 100%, 0 100%);
 }
 .route-stack--sm .route-stack__seg:only-child {
   clip-path: none;
   margin-right: 0;
-  padding: 3px 8px;
+  padding: 3px 11px;
   font-size: 12px;
 }
 
 /* v0.20.8：只有一个线路时不做任何斜切——保留完整圆角矩形（此前单块同时命中
-   :first-child/:last-child，被「尾块右侧竖直」规则削掉了左上角） */
+   :first-child/:last-child，被「尾块右侧竖直」规则削掉了左上角）
+   ★ 【4】单块 = 左右都不斜切、左右 padding 对称 ⇒ 文字居中且完整包裹。 */
 .route-stack__seg:only-child {
   clip-path: none;
   margin-right: 0;
-  padding: 4px 9px;
+  /* 左右对称 padding（原 4px 9px 偏窄）；与线宽/字形匹配，保证完整包裹 + 水平居中。 */
+  padding: 4px 12px;
   font-size: 13px;
 }
 
@@ -1592,6 +1597,25 @@ button[aria-disabled="true"] {
   margin-top: 4px;
 }
 
+/* ★ 【5】导航详情页折叠栏一行 = 一条线路 + 其实时报站 */
+.nav-fold-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 0;
+  border-top: 1px solid var(--stroke);
+  font-size: var(--fs-mini);
+}
+.nav-fold-row__live {
+  flex: 1;
+  min-width: 0;
+  color: var(--on-surface-var);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* 折叠栏一行 = 一条线路 */
 .rc-report {
   display: flex;
@@ -1643,7 +1667,10 @@ button[aria-disabled="true"] {
 /* 左侧线路主题色纵条 */
 .rc-strip__rail {
   position: absolute;
-  left: 9px;
+  /* ★ 【2b】与节点圆点**几何对齐**：节点圆点 = 相对节点左缘 -21px、宽 9px，
+     而节点左缘 = `.rc-strip` 的 padding-left(26px) ⇒ 圆点中心 x = 26 − 21 + 9/2 = 9.5px。
+     竖条宽 3px ⇒ left = 9.5 − 3/2 = 8px（原为 9px，中心 10.5 → 与圆点差 1px，肉眼可辨为「没对齐」）。 */
+  left: 8px;
   top: 12px;
   bottom: 18px;
   width: 3px;
@@ -1881,6 +1908,43 @@ button[aria-disabled="true"] {
   border-top-color: var(--primary);
   border-radius: 50%;
   animation: anim-spin 0.7s linear infinite;
+}
+/* ★ 【7②】输入框右侧的搜索按钮（主入口）。按压回弹由全局 `button:active` 提供（§11.2）。 */
+.nav-sbox__go {
+  flex: 0 0 auto;
+  margin: 0 6px 0 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--r-field);
+  background: var(--primary);
+  color: #fff;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+}
+.nav-sbox__go:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* ★ 【7①】结果类型徽章（公交站 / 轻轨站 / 地点） */
+.nav-sbox__type {
+  flex: 0 0 auto;
+  font-size: var(--fs-mini);
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--surface-dim);
+  color: var(--on-surface-var);
+  box-shadow: var(--hairline-inset);
+}
+.nav-sbox__type--station {
+  background: var(--primary-container);
+  color: var(--primary);
+}
+.nav-sbox__type--lrt_station {
+  background: var(--surface-dim);
+  color: var(--primary);
 }
 .nav-sbox__drop {
   position: absolute;

@@ -159,12 +159,17 @@ export async function resolveAliases(
 export function aliasToResult(m: AliasMatch, opts: { userPos?: LatLng } = {}): PoiSearchResult | null {
   if (m.lng === null || m.lat === null) return null;
   const distM = opts.userPos ? Math.round(haversineM(opts.userPos, { lng: m.lng, lat: m.lat })) : undefined;
+  const kind = kindOfTarget(m.targetKind);
+  // ★ 【7①】巴士站带编号：本地命中的站点给「主码」（M1/11 → M1），供 UI 显示 `M1 關閘總站`。
+  const code =
+    kind === "station" || kind === "lrt_station" ? (/^[A-Za-z]+\d+/.exec(m.targetCode)?.[0] ?? m.targetCode) : undefined;
   return {
     source: "local",
     name: m.nameTc,
     lng: m.lng,
     lat: m.lat,
-    kind: kindOfTarget(m.targetKind),
+    kind,
+    code: code || undefined,
     distM,
     score: m.score,
   };

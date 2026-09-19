@@ -9,16 +9,20 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import type { Pool } from "pg";
 import ComplianceBar from "@/components/nav/ComplianceBar";
 import StationStrip from "@/components/card/StationStrip";
 import RouteStack from "@/components/RouteStack";
 import StationReachFold from "@/components/nav/StationReachFold";
+import { LrtEtaInline } from "@/components/LrtEta";
 import { Row, TierBadge, macauClock } from "@/components/RoutePieces";
 import { getPool } from "@/lib/db";
 import { parseNavParams } from "@/lib/nav/nav-params";
 import { planNav } from "@/lib/nav/nav-service";
 import { buildStrips } from "@/lib/nav/strips";
-import { loadStatics } from "@/lib/recommend/query";
+import { rangeText } from "@/lib/recommend/catch-up";
+import { fetchStationLive } from "@/lib/recommend/live";
+import { loadStatics, type RecStatic } from "@/lib/recommend/query";
 import { mainCodeOf } from "@/lib/recommend/segment-lookup";
 import type { NavPoint } from "@/lib/nav/types";
 import type { SchoolZone } from "@/lib/recommend/types";
@@ -98,6 +102,9 @@ async function DetailSection({
   const first = card.rides[0];
   const lastRide = card.rides[card.rides.length - 1];
   const lastAlightMain = lastRide ? mainCodeOf(lastRide.alight) : null;
+  const otherRoutes = lastAlightMain ? otherRoutesAt(st, lastAlightMain, card.rides.map((r) => r.route)) : [];
+  // ★ 【5】折叠栏「本站台其他线路」的实时报站（巴士）；失败不阻塞（收敛为空）
+  const foldLive = lastAlightMain ? await foldLiveAt(pool, st, lastAlightMain, otherRoutes, result.generatedAt) : {};
 
   return (
     <>
@@ -130,13 +137,27 @@ async function DetailSection({
         {first && (
           <Row
             dot="wait"
-            main={<>{first.liveText || `等 ${first.waitMin} 分`}</>}
+            main={
+              /* ★ 【5】与卡片口径一致：轻轨首段的倒计时由客户端每秒重算（`LrtEtaInline`）；
+                 巴士用服务端下发的报站文案（「还有 N 站 · 约 X~Y 分」= 距站信息 + 时间）。 */
+              first.kind === "lrt" && first.liveDepartures?.length ? (
+                <LrtEtaInline
+                  lineCode={first.route}
+                  departuresMs={first.liveDepartures}
+                  clocks={first.liveClocks}
+                  state="running"
+                  directionName={null}
+                />
+              ) : (
+                <>{first.liveText || `等 ${first.waitMin} 分`}</>
+              )
+            }
             aside={first.tierText ? <TierBadge tier={first.tier} tierText={first.tierText} /> : null}
           />
         )}
       </div>
 
-      {/* 纵向站条：一趟一条 */}
+      {/* 纵向站条：一趟一条（★【2a】范围 = 上车站 → 下车站） */}
       <div className="rc-strips">
         {strips.map((strip, i) => (
           <StationStrip
@@ -153,21 +174,26 @@ async function DetailSection({
           dot="walk"
           last
           main={
+            /* ★ 【3】下车步行引导：**下车站编号 站名 → 目的地**（不再是「步行 → 下车站编号」）。
+               `card.walkIn.toLabel` = 下车站带名标签（如「C653 金峰南岸/金譽峰」）；
+               `dest.label` = 目的地名。繁体站名 + 简体连接词。 */
             <>
               步行 <b>{card.walkIn.minutes}</b> 分
               {card.walkIn.estimated && <span className="rc-est">估算</span>}
               {" → "}
-              {card.walkIn.toLabel}
+              <b>{card.walkIn.toLabel}</b>
+              {" → "}
+              {dest.label}
             </>
           }
         />
       </div>
 
-      {/* ★ T05：本站台其他线路（折叠栏，单独实现，不动 StationStrip） */}
+      {/* ★ T05：本站台其他线路（折叠栏，单独实现，不动 StationStrip）；★【5】含实时报站 */}
       {lastAlightMain && (
         <StationReachFold
-          stationLabel={card.rides[card.rides.length - 1]?.alightLabel ?? lastAlightMain}
-          routes={otherRoutesAt(st, lastAlightMain, card.rides.map((r) => r.route))}
+          stationLabel={lastRide?.alightLabel ?? lastAlightMain}
+          items={otherRoutes.map((r) => ({ route: r, live: foldLive[r] ?? "" }))}
           colors={result.colors}
         />
       )}
@@ -194,6 +220,49 @@ function otherRoutesAt(st: Awaited<ReturnType<typeof loadStatics>>, main: string
     }
   }
   return [...out].slice(0, 16);
+}
+
+/**
+ * ★ 【5】「本站台其他线路」实时报站（**巴士**）：route → 文案（「还有 N 站 · 约 X~Y 分」）。
+ *
+ * 口径：对每条线路，取「经过本站的第一个方向」，以**本站的下一站**为目的点
+ *   （DSAT 的 `queryEta` 需要目的点来定方向、并把已过站的车排除）→ 得到该线在本站的
+ *   最近一班 → 距站数 + 区间时间。**轻轨**不在本表（走时刻表，非 DSAT）；失败一律收敛为空。
+ */
+async function foldLiveAt(
+  pool: Pool,
+  st: RecStatic,
+  stationMain: string,
+  routes: string[],
+  nowMs: number,
+): Promise<Record<string, string>> {
+  const weekday = new Date(nowMs + 8 * 3_600_000).getUTCDay();
+  const jobs: { station: string; dest: string; routes: string[] }[] = [];
+  const stopCodeOf: Record<string, string> = {};
+  for (const r of routes) {
+    if (r.startsWith("LRT-")) continue; // 轻轨无 DSAT 实时；折叠栏暂不含
+    for (const d of st.routeIdx.dirsOf.get(r) ?? []) {
+      const stops = st.routeIdx.dirStops.get(`${r}|${d}`) ?? [];
+      const i = stops.findIndex((c) => mainCodeOf(c) === stationMain);
+      if (i >= 0 && i + 1 < stops.length) {
+        jobs.push({ station: stops[i], dest: stops[i + 1], routes: [r] });
+        stopCodeOf[r] = stops[i];
+        break;
+      }
+    }
+  }
+  if (!jobs.length) return {};
+  const out: Record<string, string> = {};
+  try {
+    const live = await fetchStationLive(pool, jobs, st.routeIdx, st.segIdx, { todayWeekday: weekday, nowMs });
+    for (const r of Object.keys(stopCodeOf)) {
+      const b = live.get(`${r}@${stopCodeOf[r]}`)?.nearest ?? null;
+      out[r] = b ? `还有 ${b.stopsAway} 站 · ${rangeText(b.loSec, b.hiSec)}` : "暂无在途车";
+    }
+  } catch {
+    /* 实时不可用 → 收敛为空（折叠栏仍显示线路标签） */
+  }
+  return out;
 }
 
 function DetailSkeleton() {

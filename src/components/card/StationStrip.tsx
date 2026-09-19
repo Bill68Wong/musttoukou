@@ -7,7 +7,7 @@
  * 转车时：巴士标上一趟终点 + 写换乘站台，然后接下一条；轻轨写明换乘步行时长。
  */
 import { useState } from "react";
-import { lineNameOf } from "@/lib/route-label";
+import RouteStack from "@/components/RouteStack";
 import type { SegmentStrip } from "@/lib/recommend/types";
 
 export default function StationStrip({
@@ -37,9 +37,9 @@ export default function StationStrip({
         <div className="rc-strip__node rc-strip__node--end">
           <span className="rc-strip__dot" aria-hidden="true" />
           <span className="rc-strip__label">
-            <span className={`rc-route rc-route--inline`} style={{ background: rail }}>
-              {lineNameOf(strip.route)}
-            </span>
+            {/* ★ 【4】全站统一：站条段头也改用 `.route-stack`（RouteStack 单块不斜切），
+                不再用 `.rc-route--inline` 胶囊。 */}
+            <RouteStack codes={[strip.route]} colorOf={() => rail} />
             <b>{board.label}</b>
             <span className="rc-sub">上车</span>
           </span>

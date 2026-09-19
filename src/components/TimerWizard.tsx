@@ -1076,7 +1076,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
               v1.0.0：会话已带座区（自动选线大卡）→ 只回显，不再询问 */}
           {showFromZone &&
             (fromZone ? (
-              <ZoneLocked label={`從 ${fromZone} 座出發`} />
+              <ZoneLocked label={`从 ${fromZone} 座出发`} />
             ) : (
               renderZones("从哪个座出发？", fromZone, setFromZone)
             ))}
@@ -1452,7 +1452,7 @@ export default function TimerWizard({ sessionId }: { sessionId: number }) {
           {lrtOnward && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <p className="t-label t-muted" style={{ margin: 0 }}>
-                🚈 换乘预览 · 於「{stationName(lrtOnward.station)}」轉乘
+                🚈 换乘预览 · 于「{stationName(lrtOnward.station)}」转乘
                 {lrtOnward.dest ? ` → ${stationName(lrtOnward.dest)}` : ""}
               </p>
               <LrtEta

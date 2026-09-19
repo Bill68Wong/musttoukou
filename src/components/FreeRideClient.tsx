@@ -1023,7 +1023,7 @@ export default function FreeRideClient({ restoreRideId }: { restoreRideId: numbe
                         分不清是还在加载、坏了、还是搜不到。 */}
                     {stationsLoading && !stations && (
                       <p className="t-label t-muted t-center" style={{ padding: "20px 0" }}>
-                        正在載入站點列表…
+                        正在加载站点列表…
                       </p>
                     )}
                     {stationsErr && !stations && (

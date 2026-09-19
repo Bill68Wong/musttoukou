@@ -94,7 +94,7 @@ export default function HomeClient({
           </span>
           {PLACE_SHORT[to] ?? to}
         </span>
-        <span className="t-label t-muted">看最快路線 →</span>
+        <span className="t-label t-muted">看最快路线 →</span>
       </span>
     </button>
   );
@@ -104,7 +104,7 @@ export default function HomeClient({
       <header style={{ marginBottom: 16, padding: "4px 2px" }}>
         <h1 className="h-headline">MUST登校</h1>
         <p className="t-label t-muted" style={{ marginTop: 2 }}>
-          選方向 → 立刻看到最快路線
+          选方向 → 立刻看到最快路线
         </p>
       </header>
 
@@ -168,7 +168,7 @@ export default function HomeClient({
               onClick={() => router.push("/records")}
               style={{ flex: 1, minHeight: 44, fontWeight: 500 }}
             >
-              📋 通勤記錄
+              📋 通勤记录
             </button>
             <button
               className="btn btn--outline btn--sm"
@@ -183,7 +183,7 @@ export default function HomeClient({
             onClick={() => router.push("/free")}
             style={{ width: "100%", minHeight: 44, fontWeight: 500, marginTop: 8 }}
           >
-            ⏱ 自由記站（實測站間時長）
+            ⏱ 自由记站（实测站间时长）
           </button>
         </>
       )}
@@ -207,7 +207,7 @@ export default function HomeClient({
           数据来源：澳门交通事务局 ·{" "}
           {/* ★ v1.1.7：纯文字链接原热区仅 ~20px 高，走路时基本点不中 → .link-hit 撑到 44px */}
           <Link href="/about" className="link-hit" style={{ color: "var(--primary)" }}>
-            關於本專案
+            关于本专案
           </Link>
         </p>
       </div>

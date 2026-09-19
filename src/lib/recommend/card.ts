@@ -223,7 +223,7 @@ async function buildReports(
       if (lv && !lv.empty) {
         live = true;
         const n = lv.nearest;
-        liveText = n ? `還有 ${n.stopsAway} 站 · 約 ${Math.max(1, Math.round(n.loSec / 60))}~${Math.max(1, Math.round(n.hiSec / 60))} 分` : "有車";
+        liveText = n ? `还有 ${n.stopsAway} 站 · 约 ${Math.max(1, Math.round(n.loSec / 60))}~${Math.max(1, Math.round(n.hiSec / 60))} 分` : "有车";
         // ★ 只把该线自己的 live 注入模型，避免其它线的实时数据污染（model.ts 的取用键是 route）
         if (seed) {
           const m = modelOption(seed, { ...ctx, live: new Map([[r.route, lv]]) as never });
@@ -253,7 +253,7 @@ async function buildReports(
         // ★ v1.1.8 修正：原先这里直接把 minutes 留成 null → 会和「方案表外」混为一谈。
         //   现在 minutes 仍为 null（本轮确实没有车、算不出门到门时长），
         //   但 UI 靠 inPlan 区分文案：「暫無實時車」（在方案里但没车）vs「未收錄於方案」（没 seed）。
-        liveText = "暫無實時車";
+        liveText = "暂无实时车";
       }
     } else {
       // 轻轨：直接问下一班（**必须带 pre**，否则线上跨洲往返恒定超时）
@@ -270,12 +270,12 @@ async function buildReports(
           live = true;
           liveDepartures = res.departures.map((d) => d.depMs);
           liveClocks = res.departures.map((d) => d.clock);
-          liveText = `${liveClocks[0]} 開出`;
+          liveText = `${liveClocks[0]} 开出`;
         } else {
-          liveText = "暫無實時報站";
+          liveText = "暂无实时报站";
         }
       } catch {
-        liveText = "暫無實時報站";
+        liveText = "暂无实时报站";
       }
       href = buildCardHref({
         from: input.fromSlug, to: input.toSlug, zone: input.zone,

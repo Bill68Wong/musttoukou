@@ -13,7 +13,7 @@ export default function Loading() {
         <span className="btn btn--text btn--sm">↻ 刷新</span>
       </div>
       <h1 className="h-headline rc-title">正在計算…</h1>
-      <p className="t-label t-muted rc-subtitle">分析實時班次與步行時間</p>
+      <p className="t-label t-muted rc-subtitle">分析实时班次与步行时间</p>
       <div className="rc-list">
         {[0, 1, 2, 3, 4].map((i) => (
           <div key={i} className="card rc rc--skeleton" aria-hidden="true">

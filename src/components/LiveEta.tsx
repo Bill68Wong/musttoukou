@@ -262,7 +262,7 @@ export default function LiveEta({
                 <p className="t-body t-muted" style={{ lineHeight: 1.7 }}>
                   {r.headTerminal
                     ? (r.busCount ?? 0) > 0
-                      ? "暫未發車 · 总站暂无待发车"
+                      ? "暂未发车 · 总站暂无待发车"
                       : "暂未发车"
                     : (r.busCount ?? 0) > 0
                       ? "暂无车辆在途"

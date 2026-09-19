@@ -27,7 +27,7 @@ import { gcj02ToWgs84, haversineM } from "@/lib/amap/coord";
 import { fixWalkDistance, walkMinutes } from "@/lib/amap/walk-fix";
 import { fetchTransitPlans, odCoordKey, odKeyOf, type RawPlan, type TransitCacheIo, type AmapTransitRawResponse } from "@/lib/amap/transit";
 import { fetchLive } from "@/lib/recommend/live";
-import { amapPlanToSeed, modelOption } from "@/lib/recommend/model";
+import { amapPlanToSeed, modelOption, type ModeledOption } from "@/lib/recommend/model";
 import { contextFor, loadStatics, type RecStatic } from "@/lib/recommend/query";
 import { mainCodeOf } from "@/lib/recommend/segment-lookup";
 import type { RecommendCard, SchoolZone } from "@/lib/recommend/types";
@@ -319,6 +319,8 @@ export async function planNav(pool: Pool, input: NavInput): Promise<NavOutput> {
   // ⑦ 建模
   const tModel = Date.now();
   const provenance: Record<string, RecomputeProvenance> = {};
+  /** ★ P2-a：保留 `modelOption` 的 `alts`（本班之外的后续班次），排序后按旧口径回填 `altBuses` */
+  const modeled: ModeledOption[] = [];
   const amapItems: RankedItem[] = [];
   for (const { seed, opt } of amapSeeds) {
     if (!opt) continue;
@@ -327,11 +329,12 @@ export async function planNav(pool: Pool, input: NavInput): Promise<NavOutput> {
       walkResolver: makeWalkResolver(seed, st.routeIdx.nameOf),
       transferIdx: overlayTransferIndex(seed, st.transferIdx),
     };
-    const modeled = modelOption(opt, ctx);
-    if (!modeled) continue;
-    const prov = patchAmapFallback(modeled.card, seed, st.segIdx, weekday);
+    const modeled1 = modelOption(opt, ctx);
+    if (!modeled1) continue;
+    const prov = patchAmapFallback(modeled1.card, seed, st.segIdx, weekday);
     provenance[opt.key] = prov;
-    amapItems.push({ card: modeled.card, origin: "amap", key: opt.key, seed, provenance: prov });
+    modeled.push(modeled1);
+    amapItems.push({ card: modeled1.card, origin: "amap", key: opt.key, seed, provenance: prov });
   }
 
   // 本地（**P1-4**：首末步行走 `walk_cache`（未命中 → 直线×1.5），不再落 `walkIdx` 的全局均值）
@@ -344,9 +347,9 @@ export async function planNav(pool: Pool, input: NavInput): Promise<NavOutput> {
       ...baseCtx,
       walkResolver: makeCacheWalkResolver(lseed, fromWgs, toWgs, geoOf, walkCache, st.routeIdx.nameOf),
     };
-    const modeled = modelOption(lseed, ctx);
-    if (!modeled) continue;
-    const card = modeled.card;
+    const modeled1 = modelOption(lseed, ctx);
+    if (!modeled1) continue;
+    const card = modeled1.card;
     const hopLevels = card.rides.map((r) => r.levels as SegmentLevel[]);
     const prov: RecomputeProvenance = {
       usedOurDataLegs: card.rides.length,
@@ -355,6 +358,7 @@ export async function planNav(pool: Pool, input: NavInput): Promise<NavOutput> {
       deviationRatio: 0,
       suspect: false,
     };
+    modeled.push(modeled1);
     localItems.push({
       card,
       origin: "local",
@@ -369,6 +373,9 @@ export async function planNav(pool: Pool, input: NavInput): Promise<NavOutput> {
   const merged = mergeSources(amapItems, rankedLocal, {});
   const ranked = rankItems(merged.items);
   const cards = ranked.slice(0, limit).map((r) => r.card);
+
+  // ★ P2-a：回填「本班之外的后续班次」（**逐字复用旧 `service.ts` v1.1.5 口径**）
+  backfillAltBuses(cards, modeled);
   const modelMs = Date.now() - tModel;
 
   // ── 空状态原因（§11.4）──
@@ -418,3 +425,22 @@ export async function planNav(pool: Pool, input: NavInput): Promise<NavOutput> {
 
 /** 供 UI 做「另一種走法」中性文案（产品口径，§B.5） */
 export const NEUTRAL_LOCAL_LABEL = LOCAL_SUMMARY;
+
+/**
+ * ★ P2-a：把「本班之外的后续班次」按**旧口径**回填到卡片（逐字复用 `service.ts` v1.1.5）。
+ *
+ * 规则：阈值 = **最后一张卡**的总时长；只列 `totalMin ≤ 阈值` 的后续班次
+ *   （用户口径：坐这一班的车，门到门总时长**不差于第 N 张卡**才值得列）。
+ * ⚠️ `modelOption` 内部已按 `loSec` 去重并排除本班（v1.1.6）—— 此处**不重复**该逻辑。
+ * 独立成函数便于**单测**（数据不足时真实链路可能一条 alts 都没有）。
+ */
+export function backfillAltBuses(cards: RecommendCard[], modeled: ModeledOption[]): void {
+  if (!cards.length) return;
+  const threshold = cards[cards.length - 1].totalMin;
+  const topSet = new Set(cards);
+  for (const m of modeled) {
+    if (!topSet.has(m.card)) continue;
+    const keep = m.alts.filter((a) => a.totalMin <= threshold + 1e-9);
+    if (keep.length) m.card.altBuses = keep;
+  }
+}

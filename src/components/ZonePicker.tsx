@@ -66,7 +66,7 @@ export default function ZonePicker({
   return (
     <div className="zone-picker">
       <p className="t-label t-muted" style={{ marginBottom: 6 }}>
-        {hint ?? "你在澳科大哪一座？（去程影響下車後步行、回程影響出門到站步行）"}
+        {hint ?? "你在澳科大哪一座？（去程影响下车后步行、回程影响出门到站步行）"}
       </p>
       <div className="chip-row">
         {SCHOOL_ZONES.map((z) => (

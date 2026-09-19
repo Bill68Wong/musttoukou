@@ -105,6 +105,48 @@ export function toTraditional(input: string): string {
 }
 
 /**
+ * ★ 异体字 → 常用字 折叠表（每项 = 「异体 常用」两字，空白分隔；结构与 `TCSC_PAIRS` 一致）。
+ *
+ * ── 为什么要有它 ──────────────────────────────────────────────────────
+ *   繁→简（`TCSC_PAIRS`）**不含**异体字：库内站名「荷蘭園**柏**蕙」与高德 v5 返回的
+ *   「荷兰园**栢**蕙」只差一个异体字，`normalizeName` 折叠不掉 ⇒ 站码桥接 byName 命中 0 行
+ *   ⇒ 候选被剔（研究报告 §4.6 / 附录 D：b3 样本 14 条**全部**此因）。折叠后两写法归一到
+ *   「柏」即可对上。**坐标匹配仍是第一判据**（§B.3a：≤60m 为准），本表只补名称法/别名的
+ *   交叉验证面 ⇒ 折叠错误的风险被坐标判据兜住。
+ *
+ * ── 收录原则（**只加有把握的**）────────────────────────────────────────
+ *   · `栢 柏`：**必加**。栢 是 柏 的异体（澳门「荷蘭園栢蕙」实测差异来源）。
+ *   · `峯 峰`：峯 是 峰 的异体（山名/楼名常见，如「峯景」）。
+ *   · `恆 恒`：恆 是 恒 的异体（「恆基」「永恆」等）。
+ *   · `羣 群`：羣 是 群 的异体（楼宇/街名常见）。
+ *   · `滙 汇`：滙 是 匯（→简「汇」）的异体（「滙景」「滙豐」等）。
+ *   · `邨 村`：邨 是 村 的异体（公共屋邨/村落写法：「石排灣邨」↔「石排灣村」）。
+ *   ⚠️ 刻意**未收录**把握不足者（如 涌/湧、菀/苑、廸/迪）——宁可漏配也不误并。
+ */
+const VARIANT_PAIRS = `
+栢柏 峯峰 恆恒 羣群 滙汇 邨村
+`;
+
+/** 异体字 → 常用字 映射表（由对照串构建；重复项同字同映射，天然幂等） */
+const VARIANT_TO_COMMON: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  for (const pair of VARIANT_PAIRS.split(/\s+/)) {
+    if (pair.length < 2) continue;
+    const v = pair[0];
+    const c = pair[1];
+    map[v] = c;
+  }
+  return map;
+})();
+
+/** 折叠异体字为常用字（逐字查表；未收录的字原样保留） */
+function foldVariants(input: string): string {
+  let out = "";
+  for (const ch of input) out += VARIANT_TO_COMMON[ch] ?? ch;
+  return out;
+}
+
+/**
  * 去掉「公交站」类的噪声后缀与括注。
  * 高德站名典型形态：`关闸总站(C车道)`、`氹仔CEM货仓(公交站)`、`永利皇宫(公交站)`。
  * 我们站名典型形态：`關閘總站`、`金峰南岸/金譽峰`。
@@ -137,9 +179,12 @@ function stripParen(raw: string): string {
  *   ① 全角→半角 + 兼容归一（NFKC）：`（）` → `()`、全角字母数字折叠；
  *   ② 去括注（高德站名常见 `(公交站)`/`(C车道)` 后缀）；
  *   ③ 繁 → 简（本地表）；
- *   ④ 转小写 + 去所有空白与常见分隔符（`/`·`·`-`·`·`）；
- *   ⑤ 迭代剥掉交通后缀（`公交站`/`總站`/`站`…）——确保「关闸总站」与「關閘」对齐；
- *   ⑥ 空串保护（全剥光时退回 ④ 的结果）。
+ *   ④ ★ **异体字 → 常用字 折叠**（`VARIANT_PAIRS`，如 栢→柏）——放在「繁→简」之后、
+ *      「去分隔符」之前：此时已是简体，再折叠异体写法，两边写法才能对齐
+ *      （高德「荷兰园栢蕙」vs 库「荷蘭園柏蕙」）；
+ *   ⑤ 转小写 + 去所有空白与常见分隔符（`/`·`·`-`·`·`）；
+ *   ⑥ 迭代剥掉交通后缀（`公交站`/`總站`/`站`…）——确保「关闸总站」与「關閘」对齐；
+ *   ⑦ 空串保护（全剥光时退回 ⑤ 的结果）。
  *
  * @returns 归一化键（简体、无空白、已去后缀）；**用于相等比较**，不用于展示。
  */
@@ -148,6 +193,7 @@ export function normalizeName(raw: string): string {
   let s = raw.normalize("NFKC");
   s = stripParen(s);
   s = toSimplified(s);
+  s = foldVariants(s); // ★ 异体字折叠（栢→柏 等）
   s = s.toLowerCase();
   // 去分隔符与空白（站名里 `/` 常作「别名」分隔：`金峰南岸/金譽峰`）
   s = s.replace(/[\s/·・\-—_、,，.。:：；;·]+/g, "");
@@ -166,10 +212,17 @@ export function normalizeName(raw: string): string {
 }
 
 /**
- * 轻归一化（用于搜索输入 / 别名库入库）：NFKC + 繁→简 + 去空白，**不剥后缀**。
+ * 轻归一化（用于搜索输入 / 别名库入库）：NFKC + 繁→简 + ★异体字折叠 + 去空白，**不剥后缀**。
  * 别名库匹配允许「部分包含」，故不在此剥后缀（避免把「澳科大站」误伤成「澳科大」）。
+ *
+ * ★ **同步折叠异体字**（理由）：别名库入库（`seed-poi-aliases`）与查询（`poi-search` /
+ *   `alias-resolve`）**都走本函数**——若只让 `normalizeName` 折叠而本函数不折叠，则
+ *   「栢蕙」与「柏蕙」两写法在**别名检索**这一路上仍无法互相命中，且两函数对同一输入会给出
+ *   不一致的键 ⇒ 跨函数比较（`seed-poi-aliases` 的 `core !== normalizeQuery(name)`）也会漂移。
+ *   ⚠️ 已入库的 `poi_aliases.alias_norm` 是**旧版**本函数所生成 ⇒ 想完全受益于折叠，需重跑
+ *   `seed-poi-aliases` 重灌别名（属数据管线任务；折叠本身幂等，重跑安全）。
  */
 export function normalizeQuery(raw: string): string {
   if (!raw) return "";
-  return toSimplified(raw.normalize("NFKC")).toLowerCase().replace(/\s+/g, "");
+  return foldVariants(toSimplified(raw.normalize("NFKC"))).toLowerCase().replace(/\s+/g, "");
 }

@@ -1864,6 +1864,76 @@ button[aria-disabled="true"] {
   box-shadow: var(--hairline-inset);
 }
 
+/* ── ★ v2.1.0：巴士站点图层 + 站点信息卡 ── */
+.nav-map-wrap {
+  position: relative;
+}
+.nav-map__station {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+.nav-station-card {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 5;
+  max-height: 62%;
+  overflow: auto;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-1);
+}
+.nav-station-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.nav-station-card__name {
+  font-weight: 600;
+  color: var(--on-surface);
+}
+.nav-station-card__close {
+  flex: 0 0 auto;
+  min-width: 28px;
+  min-height: 28px;
+  border: none;
+  border-radius: var(--r-field);
+  background: transparent;
+  color: var(--on-surface-var);
+  cursor: pointer;
+}
+.nav-station-card__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.nav-station-card__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-station-card__eta {
+  margin-left: auto;
+  color: var(--on-surface-var);
+  white-space: nowrap;
+}
+.nav-station-card__acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 /* ── 搜索面板 + 搜索框 ── */
 .nav-shell__panel {
   display: flex;

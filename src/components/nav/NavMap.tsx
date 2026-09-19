@@ -8,6 +8,10 @@
  *   · **默认视角**：定位「我的位置」+ ★【6】**横向 5km**（`zoomForAcross`，随容器宽/纬度实时算）；
  *     **定位失败 → 全澳门视角** 中心 `113.558,22.155` · 同样横向 5km + 顶部提示「无法定位 · 请手动选择出发点」；
  *   · 标记：用户位置蓝点 + 目的地图标；
+ *   · ★ **巴士站点图层（v2.1.0）**：地图就绪后一次性拉 `/api/stations` 并缓存（ref），
+ *     仅在 `zoom >= STATION_MIN_ZOOM` 时渲染**屏幕内**站点（`getBounds()` 裁剪），
+ *     拉远即清空；监听 `zoomend`/`moveend`（~150ms throttle），移动/缩放过程**零请求** ⇒ 不卡。
+ *     点击站点 → `onStationClick`（信息卡）。移除点务必 `map.remove()` 清理，防泄漏。
  *   · ★ **地图失败不阻塞**：JS 加载失败/缺 Key/初始化异常 → 显示静态占位 + 「重试」，
  *     **搜索/出卡/详情完全不受影响**（产品已拍，§Q7）。
  *
@@ -36,6 +40,22 @@ const INIT_ZOOM = 13.5;
  */
 const TARGET_METERS_ACROSS = 5000;
 
+/**
+ * ★ 站点图层显示阈值：`zoom < STATION_MIN_ZOOM` 时不显示任何站点（拉远即清空）。
+ * 放显眼位置便于调试。16 时米/像素≈2.2（澳门纬度），一屏可见几十个站点 ⇒ 简洁不卡。
+ */
+const STATION_MIN_ZOOM = 16;
+/** 视图事件节流（毫秒）：`zoomend`/`moveend` 高频触发，节流后再裁剪/渲染 */
+const STATION_REFRESH_THROTTLE_MS = 150;
+
+/** `/api/stations` 一条站点（坐标 **GCJ-02**，服务端已转好） */
+export interface StationPointLite {
+  code: string;
+  name: string;
+  lng: number;
+  lat: number;
+}
+
 /** 让「一屏宽」横向放下 `TARGET_METERS_ACROSS` 米的 zoom（按纬度与容器像素宽实时算） */
 function zoomForAcross(lat: number, widthPx: number): number {
   const w = widthPx > 0 ? widthPx : 390;
@@ -52,16 +72,23 @@ export interface NavMapProps {
   dest?: { lng: number; lat: number; label: string } | null;
   /** 定位回调：成功给 GCJ-02 坐标；失败给 null */
   onLocate?: (pos: { lng: number; lat: number } | null) => void;
+  /** ★ v2.1.0：点击巴士站点回调（信息卡）——坐标 GCJ-02 */
+  onStationClick?: (s: StationPointLite) => void;
   /** 顶部说明（如「无法定位 · 请手动选择出发点」） */
   className?: string;
 }
 
-export default function NavMap({ jsKey, dest, onLocate, className = "" }: NavMapProps) {
+export default function NavMap({ jsKey, dest, onLocate, onStationClick, className = "" }: NavMapProps) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
   const userMarkerRef = useRef<any>(null);
   const destMarkerRef = useRef<any>(null);
   const locatedRef = useRef(false);
+  /** ★ v2.1.0：全量站点（一次拉取，ref 缓存）与已渲染标记（code → marker） */
+  const stationsRef = useRef<StationPointLite[] | null>(null);
+  const stationMarkersRef = useRef<Map<string, any>>(new Map());
+  /** 点击回调放进 ref：避免 prop 变化导致图层重新绑定事件 */
+  const onStationClickRef = useRef<NavMapProps["onStationClick"]>(undefined);
 
   const [phase, setPhase] = useState<"loading" | "ready" | "failed">("loading");
   const [note, setNote] = useState<string>("");
@@ -170,6 +197,123 @@ export default function NavMap({ jsKey, dest, onLocate, className = "" }: NavMap
       /* 标记失败不影响底图 */
     }
   }, [dest, phase]);
+
+  // ★ v2.1.0：同步点击回调到 ref（避免回调变化导致图层重建）
+  useEffect(() => {
+    onStationClickRef.current = onStationClick;
+  }, [onStationClick]);
+
+  // ── ★ v2.1.0：巴士站点图层（仅阈值内、仅视野内）──
+  useEffect(() => {
+    if (phase !== "ready") return;
+    const AMap = typeof window !== "undefined" ? window.AMap : undefined;
+    const map = mapRef.current;
+    if (!map || !AMap) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+
+    const clearAll = () => {
+      for (const [, mk] of stationMarkersRef.current) {
+        try {
+          map.remove(mk);
+        } catch {
+          /* ignore */
+        }
+      }
+      stationMarkersRef.current.clear();
+    };
+
+    const render = () => {
+      if (cancelled) return;
+      try {
+        const zoom = typeof map.getZoom === "function" ? map.getZoom() : 0;
+        // ★ 无副作用观测钩子（同 `data-nav-zoom` 传统）：自动化验收读取实际生效的 zoom
+        canvasRef.current?.setAttribute("data-nav-z", String(zoom));
+        if (zoom < STATION_MIN_ZOOM) {
+          clearAll(); // 拉远：清空（产品口径）
+          return;
+        }
+        const data = stationsRef.current;
+        if (!data) return;
+        const bounds = typeof map.getBounds === "function" ? map.getBounds() : null;
+        if (!bounds) return;
+        const sw = bounds.getSouthWest();
+        const ne = bounds.getNorthEast();
+        const visible = new Set<string>();
+        for (const s of data) {
+          if (s.lat < sw.lat || s.lat > ne.lat || s.lng < sw.lng || s.lng > ne.lng) continue;
+          visible.add(s.code);
+          if (stationMarkersRef.current.has(s.code)) continue;
+          const marker = new AMap.Marker({
+            position: [s.lng, s.lat],
+            content: `<div class="nav-map__station" data-code="${esc(s.code)}" title="${esc(s.name)}"></div>`,
+            offset: new AMap.Pixel(-6, -6),
+            zIndex: 90,
+          });
+          marker.on("click", () => onStationClickRef.current?.(s));
+          map.add(marker);
+          stationMarkersRef.current.set(s.code, marker);
+        }
+        // 移出视野的点：逐个 remove 清理（防泄漏）
+        for (const [code, mk] of [...stationMarkersRef.current]) {
+          if (visible.has(code)) continue;
+          try {
+            map.remove(mk);
+          } catch {
+            /* ignore */
+          }
+          stationMarkersRef.current.delete(code);
+        }
+      } catch {
+        /* 图层失败不影响底图 */
+      } finally {
+        // ★ 无副作用观测钩子：无论走哪个分支，都回写当前已渲染站点数（拉远/清空后 = 0）
+        canvasRef.current?.setAttribute("data-station-count", String(stationMarkersRef.current.size));
+      }
+    };
+
+    const schedule = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        render();
+      }, STATION_REFRESH_THROTTLE_MS);
+    };
+
+    map.on("zoomend", schedule);
+    map.on("moveend", schedule);
+
+    // 一次性拉全量站点（ref 缓存；失败静默，不影响其他功能）
+    if (!stationsRef.current) {
+      fetch("/api/stations", { cache: "force-cache" })
+        .then((r) => r.json())
+        .then((j: { stations?: StationPointLite[] }) => {
+          if (cancelled) return;
+          stationsRef.current = Array.isArray(j.stations) ? j.stations : [];
+          render();
+        })
+        .catch(() => {
+          console.warn("[NavMap] 站点列表加载失败（站点图层不可用，不影响其他功能）");
+          stationsRef.current = [];
+        });
+    } else {
+      render();
+    }
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      try {
+        map.off("zoomend", schedule);
+        map.off("moveend", schedule);
+      } catch {
+        /* ignore */
+      }
+      clearAll();
+    };
+  }, [phase]);
 
   return (
     <div className={`nav-map ${className}`}>

@@ -41,7 +41,7 @@ export default function StationStrip({
               {lineNameOf(strip.route)}
             </span>
             <b>{board.label}</b>
-            <span className="rc-sub">上車</span>
+            <span className="rc-sub">上车</span>
           </span>
         </div>
       )}
@@ -49,7 +49,7 @@ export default function StationStrip({
       {/* 中间站：默认收起成一行可点的说明 */}
       {mids > 0 && !open && (
         <button className="rc-strip__toggle" onClick={() => setOpen(true)} aria-expanded={false}>
-          途經 <b>{mids}</b> 站 · 車上約 <b>{strip.rideMin}</b> 分
+          途经 <b>{mids}</b> 站 · 车上约 <b>{strip.rideMin}</b> 分
           {est && <span className="rc-est">含估算</span>}
           <span className="rc-strip__caret">▼</span>
         </button>
@@ -73,7 +73,7 @@ export default function StationStrip({
 
       {mids > 0 && open && (
         <button className="rc-strip__toggle rc-strip__toggle--collapse" onClick={() => setOpen(false)}>
-          收起中間站 <span className="rc-strip__caret">▲</span>
+          收起中间站 <span className="rc-strip__caret">▲</span>
         </button>
       )}
 
@@ -83,7 +83,7 @@ export default function StationStrip({
           <span className="rc-strip__dot rc-strip__dot--end" aria-hidden="true" />
           <span className="rc-strip__label">
             <b>{alight.label}</b>
-            <span className="rc-sub">下車 · 車上約 {strip.rideMin} 分</span>
+            <span className="rc-sub">下车 · 车上约 {strip.rideMin} 分</span>
           </span>
         </div>
       )}
@@ -93,10 +93,10 @@ export default function StationStrip({
         <div className="rc-strip__transfer">
           <span aria-hidden="true">↕</span>
           {strip.transferAfter.sameField ? (
-            <>同站台換乘 · 無需步行</>
+            <>同站台换乘 · 无需步行</>
           ) : (
             <>
-              換乘步行 <b>{strip.transferAfter.minutes}</b> 分
+              换乘步行 <b>{strip.transferAfter.minutes}</b> 分
               {strip.transferAfter.estimated && <span className="rc-est">估算</span>}
             </>
           )}

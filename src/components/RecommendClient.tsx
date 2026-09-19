@@ -164,7 +164,7 @@ export default function RecommendClient({
         />
       </h1>
       <p className="t-label t-muted rc-subtitle">
-        現在出發 · 最快 {data.count} 條 · 更新於 {hhmm}
+        现在出发 · 最快 {data.count} 条 · 更新于 {hhmm}
       </p>
 
       {err && <p className="t-error rc-err">{err}</p>}
@@ -186,21 +186,21 @@ export default function RecommendClient({
             href={`/routes?from=${encodeURIComponent(fromSlug)}&to=${encodeURIComponent(toSlug)}`}
             className="btn btn--outline btn--sm"
           >
-            查看全部路線（含第 6 名以後）→
+            查看全部路线（含第 6 名以后）→
           </Link>
         </div>
       )}
 
       <footer className="rc-footer">
         <p>
-          行駛時間為站間實測統計、步行時間為實測樣本均值、輕軌按表定逐跳 2 分鐘估算 —— 均可能有誤差，
-          請以現場為準。跨境行程不計通關時間。
+          行驶时间为站间实测统计、步行时间为实测样本均值、轻轨按表定逐跳 2 分钟估算 —— 均可能有误差，
+          请以现场为准。跨境行程不计通关时间。
         </p>
         <p>
-          資料來源：澳門特別行政區交通事務局實時報站 · 澳門輕軌時刻表 ·{" "}
+          数据来源：澳门特别行政区交通事务局实时报站 · 澳门轻轨时刻表 ·{" "}
           {/* ★ v1.1.7：纯文字链接热区仅 ~19px，走路点不中 → .link-hit 撑到 44px */}
           <Link href="/about" className="link-hit">
-            關於本專案與資料說明
+            关于本专案与数据说明
           </Link>
         </p>
         <p>

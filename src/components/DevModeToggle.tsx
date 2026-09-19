@@ -43,7 +43,7 @@ export default function DevModeToggle({
       <Link
         href={`/login?from=${encodeURIComponent(pathname)}&dev=1`}
         className="btn btn--text btn--sm"
-        title="開發者模式需要口令"
+        title="开发者模式需要口令"
         style={compact ? undefined : { display: "inline-flex", alignItems: "center", gap: 6 }}
       >
         <span
@@ -56,7 +56,7 @@ export default function DevModeToggle({
             background: "var(--outline)",
           }}
         />
-        開發者模式：需口令 🔒
+        开发者模式：需口令 🔒
       </Link>
     );
   }
@@ -66,7 +66,7 @@ export default function DevModeToggle({
       className="btn btn--text btn--sm"
       onClick={() => writeDevMode(!on)}
       aria-pressed={on}
-      title={on ? "點擊關閉：路線卡將只展示資訊" : "點擊開啟：路線卡可直接開始計時（採集實測樣本）"}
+      title={on ? "点击关闭：路线卡将只展示信息" : "点击开启：路线卡可直接开始计时（采集实测样本）"}
       style={compact ? undefined : { display: "inline-flex", alignItems: "center", gap: 6 }}
     >
       <span
@@ -79,7 +79,7 @@ export default function DevModeToggle({
           background: on ? "var(--ok)" : "var(--outline)",
         }}
       />
-      開發者模式：{on ? "已開啟" : "已關閉"}
+      开发者模式：{on ? "已开启" : "已关闭"}
     </button>
   );
 }

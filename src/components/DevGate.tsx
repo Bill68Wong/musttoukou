@@ -50,7 +50,7 @@ export default function DevGate({
     return (
       <div className="devgate">
         <p className="t-label t-muted t-center">
-          此頁面僅供開發者使用，正在帶您回上一頁…
+          此页面仅供开发者使用，正在带您回上一页…
         </p>
         <p className="t-center" style={{ marginTop: 10 }}>
           <a className="btn btn--text btn--sm" href={fallbackHref}>

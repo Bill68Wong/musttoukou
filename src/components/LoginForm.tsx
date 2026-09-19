@@ -73,7 +73,7 @@ export default function LoginForm({
         <p className="t-label t-muted t-center" style={{ marginBottom: 28 }}>
           请输入访问口令
           <br />
-          <span style={{ opacity: 0.75 }}>開發者模式與數據頁需要口令</span>
+          <span style={{ opacity: 0.75 }}>开发者模式与数据页需要口令</span>
         </p>
         <form
           onSubmit={submit}

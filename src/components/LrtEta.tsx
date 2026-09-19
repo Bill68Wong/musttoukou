@@ -267,19 +267,19 @@ export default function LrtEta({
         <p className="t-body t-muted">获取中…</p>
       ) : !data.ok ? (
         <p className="t-body t-muted" style={{ lineHeight: 1.7 }}>
-          輕軌時刻暫不可用 · {data.error}
+          轻轨时刻暂不可用 · {data.error}
         </p>
       ) : data.state !== "running" ? (
         <p className="t-body t-muted" style={{ lineHeight: 1.7, textAlign: "center", marginTop: 4 }}>
           {data.state === "before_first" && data.firstClock
-            ? `首班 ${data.firstClock} 開出${data.directionName ? ` · 往${data.directionName}` : ""}`
+            ? `首班 ${data.firstClock} 开出${data.directionName ? ` · 往${data.directionName}` : ""}`
             : data.state === "after_last" && data.lastClock
-              ? `今日已收車 · 末班 ${data.lastClock}`
+              ? `今日已收车 · 末班 ${data.lastClock}`
               : data.state === "before_first"
-                ? "尚未開出首班"
+                ? "尚未开出首班"
                 : data.state === "after_last"
-                  ? "今日已收車"
-                  : "該方向暫無時刻數據"}
+                  ? "今日已收车"
+                  : "该方向暂无时刻数据"}
         </p>
       ) : gapSilent ? (
         /* v0.18.4：列车到站后 45s 留白——什么都不显示（同真实站台灯），
@@ -287,7 +287,7 @@ export default function LrtEta({
         <div style={{ height: 72 }} aria-hidden="true" />
       ) : !nxtDep ? (
         <p className="t-body t-muted" style={{ lineHeight: 1.7, textAlign: "center", marginTop: 4 }}>
-          該方向暫無時刻數據
+          该方向暂无时刻数据
         </p>
       ) : (
         <div style={{ marginTop: 2 }}>
@@ -326,7 +326,7 @@ export default function LrtEta({
             style={{ textAlign: "center", lineHeight: 1.5, marginTop: 2 }}
           >
             {data.directionName ? `往${data.directionName} · ` : ""}
-            {nxtDep.clock} 開出
+            {nxtDep.clock} 开出
           </p>
           {/* 再下一班 */}
           {sndDep && (
@@ -343,7 +343,7 @@ export default function LrtEta({
 
       {data?.ok && data.serverNow && (
         <p className="t-label t-muted" style={{ marginTop: 8 }}>
-          更新于 {fmtTime(data.serverNow)} · 時刻表來源 澳門輕軌
+          更新于 {fmtTime(data.serverNow)} · 时刻表来源 澳門輕軌
         </p>
       )}
     </div>
@@ -401,11 +401,11 @@ export function LrtEtaInline({
   if (state && state !== "running") {
     return (
       <span className="rc-live rc-live--dim">
-        {state === "before_first" ? "首班前" : state === "after_last" ? "今日已收車" : "暫無時刻"}
+        {state === "before_first" ? "首班前" : state === "after_last" ? "今日已收车" : "暂无时刻"}
       </span>
     );
   }
-  if (!dep.length) return <span className="rc-live rc-live--dim">暫無時刻</span>;
+  if (!dep.length) return <span className="rc-live rc-live--dim">暂无时刻</span>;
   if (!mounted) return <span className="rc-live rc-live--dim">—</span>;
 
   const nowMs = Date.now();
@@ -413,7 +413,7 @@ export function LrtEtaInline({
   const sec = tickSecLine(lineCode);
   // 到站留白期（上一班刚过点 ≤45s）：与站台灯一致，静默不显示
   if (!nxt) {
-    return <span className="rc-live rc-live--dim">{arrivalGapActive(dep, nowMs) ? "" : "今日已收車"}</span>;
+    return <span className="rc-live rc-live--dim">{arrivalGapActive(dep, nowMs) ? "" : "今日已收车"}</span>;
   }
   const remainMs = nxt.depMs - nowMs;
   const totalSec = Math.max(0, Math.floor(remainMs / 1000));
@@ -421,14 +421,14 @@ export function LrtEtaInline({
     <span className="rc-live">
       {sec
         ? totalSec < 60
-          ? "現正到達"
-          : `還有 ${Math.floor(totalSec / 60)} 分 ${totalSec % 60} 秒`
+          ? "现正到达"
+          : `还有 ${Math.floor(totalSec / 60)} 分 ${totalSec % 60} 秒`
         : remainMs >= 60_000
-          ? `下一班 ${Math.floor(remainMs / 60_000)} 分鐘`
-          : "現正到達"}
+          ? `下一班 ${Math.floor(remainMs / 60_000)} 分钟`
+          : "现正到达"}
       <span className="rc-live__sub">
         {directionName ? `往${directionName} · ` : ""}
-        {nxt.clock} 開出
+        {nxt.clock} 开出
       </span>
     </span>
   );

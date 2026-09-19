@@ -488,12 +488,12 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): ModeledOption 
       waitNext = Math.max(0, (depMs - cursor) / 60_000);
       cursor = depMs;
       // 轻轨第 2 段拿到的是**真实班次时刻** → 文案用绝对时刻（就是你会坐的那一班）
-      liveTextNext = `${hhmmOf(((depMs + 8 * 3_600_000) % 86_400_000) / 1000)} 開出`;
+      liveTextNext = `${hhmmOf(((depMs + 8 * 3_600_000) % 86_400_000) / 1000)} 开出`;
     } else {
       waitNext = BUS_HEADWAY_FALLBACK_SEC / 2 / 60;
       cursor += (BUS_HEADWAY_FALLBACK_SEC / 2) * 1000;
       // 巴士第 2 段没有第二路实时数据源 → 明说是估算（口径见 types.ts 常量注释）
-      liveTextNext = "按班次間隔估算";
+      liveTextNext = "按班次间隔估算";
     }
   }
 
@@ -509,7 +509,7 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): ModeledOption 
   const hints: string[] = [];
   hints.push(
     seed.fromSlug === "school" && ctx.zone
-      ? `從澳科大（${ctx.zone} 座）步行出發，在 ${labelOf(ctx, first.board)} 上车，乘 ${first.route}`
+      ? `从澳科大（${ctx.zone} 座）步行出发，在 ${labelOf(ctx, first.board)} 上车，乘 ${first.route}`
       : `在 ${labelOf(ctx, first.board)} 上车，乘 ${first.route}`,
   );
   for (let i = 0; i + 1 < segs.length; i++) {

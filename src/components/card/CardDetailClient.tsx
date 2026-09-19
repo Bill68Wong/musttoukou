@@ -99,7 +99,7 @@ export default function CardDetailClient({
         </div>
         <div className="card rc-empty">
           <p className="t-body">
-            {err === "route_changed" ? "這條路線現在的班次變了，暫時算不出來。" : (err ?? "暫時沒有資料。")}
+            {err === "route_changed" ? "这条路线现在的班次变了，暂时算不出来。" : (err ?? "暂时没有资料。")}
           </p>
           <Link
             className="btn btn--outline btn--sm"
@@ -164,13 +164,13 @@ export default function CardDetailClient({
 
       {data.liveDegraded && (
         <p className="rc-warn-block" role="alert">
-          實時報站暫時不可用 · 請按右上角「刷新」重試
+          实时报站暂时不可用 · 请按右上角「刷新」重试
         </p>
       )}
 
       {/* ① 步行信息 + ② 上车站信息 */}
       <section className="rc-block">
-        <h2 className="rc-block__title">出發</h2>
+        <h2 className="rc-block__title">出发</h2>
         <Row
           dot="walk"
           main={
@@ -185,10 +185,10 @@ export default function CardDetailClient({
           dot="wait"
           main={
             <>
-              在 <b>{first?.boardLabel ?? card.walkOut.toLabel}</b> 上車
+              在 <b>{first?.boardLabel ?? card.walkOut.toLabel}</b> 上车
               <span className="rc-sub">
                 （站台 {first?.board ?? "—"} ·{" "}
-                {card.walkOut.samples ? `步行樣本 ${card.walkOut.samples} 次` : "步行為估算"}）
+                {card.walkOut.samples ? `步行样本 ${card.walkOut.samples} 次` : "步行为估算"}）
               </span>
             </>
           }
@@ -197,7 +197,7 @@ export default function CardDetailClient({
 
       {/* ③ 折叠栏 */}
       <section className="rc-block rc-fold">
-        <h2 className="rc-block__title">本班車</h2>
+        <h2 className="rc-block__title">本班车</h2>
 
         {/* 本班：始终显示、字号更大 */}
         {first && (
@@ -218,7 +218,7 @@ export default function CardDetailClient({
               <TierBadge tier={first.tier} tierText={first.tierText} />
             </div>
             <p className="rc-fold__meta">
-              {first.boardLabel} → {first.alightLabel} · 車上 <b>{first.minutes}</b> 分
+              {first.boardLabel} → {first.alightLabel} · 车上 <b>{first.minutes}</b> 分
             </p>
           </div>
         )}
@@ -226,11 +226,11 @@ export default function CardDetailClient({
         {/* 后续班次：始终显示、字号更小 */}
         {(card.altBuses?.length ?? 0) > 0 && (
           <div className="rc-fold__alts">
-            <p className="t-label t-muted">後續班次</p>
+            <p className="t-label t-muted">后续班次</p>
             {card.altBuses!.map((a, k) => (
               <div className="rc-altrow" key={k}>
                 <span>
-                  還有 <b>{a.stopsAway}</b> 站 · {a.waitText}
+                  还有 <b>{a.stopsAway}</b> 站 · {a.waitText}
                 </span>
                 <span className="rc-altrow__right">
                   全程 {a.totalMin} 分
@@ -249,18 +249,18 @@ export default function CardDetailClient({
         >
           <span>
             本站台其他可達路線
-            <span className="rc-sub">（{data.reports.length} 條 · 點擊展開）</span>
+            <span className="rc-sub">（{data.reports.length} 条 · 点击展开）</span>
           </span>
           <span className="rc-strip__caret">{openFold ? "▲" : "▼"}</span>
         </button>
 
         {openFold && (
           <div className="rc-fold__body">
-            {data.reports.length === 0 && <p className="t-label t-muted">（暫無資料）</p>}
+            {data.reports.length === 0 && <p className="t-label t-muted">（暂无资料）</p>}
             {data.reports.map((rp) => (
               <div className="rc-report" key={`${rp.route}-${rp.alightLabel}`}>
                 <RouteStack codes={[rp.route]} colorOf={colorOf} size="sm" />
-                <span className="rc-report__live">{rp.live ? rp.liveText : "暫無實時報站"}</span>
+                <span className="rc-report__live">{rp.live ? rp.liveText : "暂无实时报站"}</span>
                 <span className="rc-report__right">
                   {rp.minutes !== null ? (
                     <>
@@ -269,13 +269,13 @@ export default function CardDetailClient({
                     </>
                   ) : rp.inPlan ? (
                     // 在方案表里，但本轮没有在途车（收车 / 不在营运时段）→ 不编数字
-                    <span className="t-muted t-label">暫無實時車</span>
+                    <span className="t-muted t-label">暂无实时车</span>
                   ) : (
                     // 方案表外的线（如 N5）→ 永远算不出门到门总时长，只展示报站
-                    <span className="t-muted t-label">未收錄於方案</span>
+                    <span className="t-muted t-label">未收录于方案</span>
                   )}
                   {rp.href && (
-                    <Link className="rc-report__link" href={rp.href} aria-label={`看 ${lineNameOf(rp.route)} 詳情`}>
+                    <Link className="rc-report__link" href={rp.href} aria-label={`看 ${lineNameOf(rp.route)} 详情`}>
                       ›
                     </Link>
                   )}
@@ -302,7 +302,7 @@ export default function CardDetailClient({
           last
           main={
             <>
-              下車 → 步行 <b>{card.walkIn.minutes}</b> 分
+              下车 → 步行 <b>{card.walkIn.minutes}</b> 分
               {card.walkIn.estimated && <span className="rc-est">估算</span>} → {card.walkIn.toLabel}
               {zoneBadge}
             </>

@@ -261,7 +261,14 @@ export async function queryEta(
       let effDir = queryDir;
       let stops = await loadStops(queryDir);
       let userIdx = findStopIdx(stops, st);
-      if (userIdx < 0 && !isLoop) {
+      // v2.0.2（bugfix）：原条件 `!isLoop` 只覆盖「双方向线、站不在本方向站序」；
+      // 漏掉了「**单套站序线路被传入无效方向**」——此时 loadStops(queryDir) 为空数组，
+      // 而 isLoop=true 又跳过兜底 ⇒ 直接报「未同步站序（dir=N）」。
+      // 触发实例：计时会话 dsat_dir=1（如 21A 会话）套用到 50 路（只有 dir=0 一套）、
+      // 且 dest 不在 50 站序（如科大方位的下车站）⇒ 方向推导失败 fallback "1"。
+      // 修复：站序为空（方向本身无效）时，**即使 isLoop 也换方向兜底**一次。
+      // 影响面：仅在原「直接报错」路径上新增一次尝试 ⇒ 所有原有成功路径不变。
+      if ((userIdx < 0 && !isLoop) || stops.length === 0) {
         const alt = queryDir === "0" ? "1" : "0";
         const altStops = await loadStops(alt);
         if (altStops.length > 0 && findStopIdx(altStops, st) >= 0) {

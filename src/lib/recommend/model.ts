@@ -36,6 +36,7 @@
  */
 import { PLACE_SHORT } from "@/lib/home-plans-shared";
 import { hhmmOf } from "@/lib/lrt/eta";
+import type { AmapPlanSeed, WalkResolver } from "@/lib/nav/types";
 import { pickCatchTier, rangeText, tierHintOf, tierTextOf } from "./catch-up";
 import { mainCodeOf, rideOfHops, type SegmentIndex } from "./segment-lookup";
 import {
@@ -50,8 +51,10 @@ import {
   type OptionSeed,
   type RecommendCard,
   type RideLegView,
+  type RideSegment,
   type RouteLive,
   type SchoolZone,
+  type TransferSegment,
   type TransferView,
   type TransferWalkRow,
   type WalkLegView,
@@ -207,6 +210,14 @@ export interface ModelContext {
   missed: string[];
   /** 今天星期（0 = 周日 … 6 = 周六） */
   todayWeekday: number;
+  /**
+   * ★ v1.3.0（全澳导航接缝，设计 §C.8）：**可选**的步行解析器。
+   *
+   * 有则 `walkView` 用它（任意 POI 场景：首末步行 = **高德几何（短距修正后）÷84**）；
+   * **无则走原 `walkIdx`（`walk_times` 实测）** ⇒ **旧链路零变化** ✓。
+   * ⚠️ 由 `nav-service.ts` 按方案注入（每个方案的步行段各不相同）。
+   */
+  walkResolver?: WalkResolver;
 }
 
 const labelOf = (ctx: ModelContext, code: string): string => ctx.nameOf.get(code) ?? code;
@@ -240,7 +251,23 @@ function pickBoardable(lv: BusLive, walkMin: number, walkDistM?: number | null):
 
 // ─────────────────────────── 主模型 ───────────────────────────
 
-function walkView(ctx: ModelContext, slug: string, station: string): WalkLegView {
+/**
+ * 步行视图。
+ * @param dir 'out'（起点→上车站）/ 'in'（下车站→目的地）—— 仅 `walkResolver` 分支用到
+ */
+function walkView(ctx: ModelContext, slug: string, station: string, dir: "out" | "in"): WalkLegView {
+  // ★ v1.3.0 接缝：有 walkResolver（全澳导航）→ 用高德几何（短距修正后 ÷84）
+  if (ctx.walkResolver) {
+    const info = dir === "out" ? ctx.walkResolver.out(mainCodeOf(station)) : ctx.walkResolver.in(mainCodeOf(station));
+    return {
+      minutes: Math.round(info.minutes * 10) / 10,
+      toLabel: info.toLabel || labelOf(ctx, station),
+      level: info.estimated ? 3 : 1,
+      estimated: info.estimated,
+      samples: info.samples,
+      distanceM: info.distanceM ?? null,
+    };
+  }
   const pid = ctx.placeIds[slug];
   // ⚠️ 判据只看「这个 place 是不是学校」，**不看它是起点还是终点** ——
   //    `walk_times` 是 (place, 站主码, zone) 合并键、不分出发/到达口径，
@@ -289,7 +316,7 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): ModeledOption 
   const first = segs[0];
 
   // ── 步行到上车站 ──
-  const wOut = walkView(ctx, seed.fromSlug, first.board);
+  const wOut = walkView(ctx, seed.fromSlug, first.board, "out");
   const walkOutMs = wOut.minutes * 60_000;
 
   const rides: RideLegView[] = [];
@@ -472,7 +499,7 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): ModeledOption 
 
   // ── 下车后步行到目的地 ──
   const last = segs[segs.length - 1];
-  const wIn = walkView(ctx, seed.toSlug, last.alight);
+  const wIn = walkView(ctx, seed.toSlug, last.alight, "in");
   cursor += wIn.minutes * 60_000;
 
   const totalMin = Math.max(0, (cursor - nowMs) / 60_000);
@@ -550,4 +577,68 @@ export function modelOption(seed: OptionSeed, ctx: ModelContext): ModeledOption 
 /** 方案排序：总耗时升序 → 计划 id 升序（稳定） */
 export function sortCards(cards: RecommendCard[]): RecommendCard[] {
   return [...cards].sort((a, b) => a.totalMin - b.totalMin || a.planId - b.planId);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ★ v1.3.0：全澳导航适配层（设计 §C.8）—— 「高德骨架 → OptionSeed」
+   ──────────────────────────────────────────────────────────────────────────
+   把高德方案的**乘车段站序**注入 `segments[].hops`，即可让**旧 `modelOption`**
+   原样计算（逐跳 `lookupHop` / 等车 / 赶车档 / 实时文案）—— **不改 `modelOption` 签名**。
+   首末步行不走这里，而是由 `ModelContext.walkResolver` 注入（见 `walkView`）。
+   ⚠️ 与 `segments` **一一对应**地保留**映射失败段**（hops 为空）—— 便于
+      `recompute.patchAmapFallback` 按同一索引把高德时长补进去。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface AmapSeedMeta {
+  /** 合成 planId（高德方案用 1..N；本地候选请用 ≥900000） */
+  planId: number;
+  summary: string;
+  fromSlug: string;
+  toSlug: string;
+  crossBorder?: boolean;
+}
+
+/**
+ * 高德骨架 → `OptionSeed`。
+ *
+ * @returns null = 无乘车段（无法建模）
+ */
+export function amapPlanToSeed(seed: AmapPlanSeed, meta: AmapSeedMeta): OptionSeed | null {
+  const segments: RideSegment[] = [];
+  for (const leg of seed.legs) {
+    // 线路名认不出（mappedRoute=null）→ 用占位 route（该段无实时/无段统计 → 后续回落高德时长；
+    //   若它是**首段**，`modelOption` 因取不到实时而整条剔除 —— 属预期，见 nav-service 注释）
+    const route = leg.mappedRoute ?? `__amap_${leg.kind}`;
+    const board = leg.mappedBoard ?? leg.amapBoard.name;
+    const alight = leg.mappedAlight ?? leg.amapAlight.name;
+    segments.push({
+      route,
+      kind: leg.kind,
+      board,
+      alight,
+      hops: leg.mappedHops ?? [],
+    });
+  }
+  if (!segments.length) return null;
+
+  const transfers: TransferSegment[] = [];
+  for (let i = 0; i + 1 < segments.length; i++) {
+    const a = segments[i];
+    const b = segments[i + 1];
+    // 换乘口径由 `recompute.overlayTransferIndex` 决定（sameField 恒 false →
+    // 让 `model.ts#transferMinutes` 走「注入的方案级换乘索引」而非写死 0）
+    transfers.push({ at: a.alight, to: b.board, sameField: false });
+  }
+
+  const key = segments.map((s) => `${s.route}@${mainCodeOf(s.board)}>${mainCodeOf(s.alight)}`).join("|");
+  return {
+    planId: meta.planId,
+    summary: meta.summary,
+    fromSlug: meta.fromSlug,
+    toSlug: meta.toSlug,
+    crossBorder: meta.crossBorder ?? false,
+    segments,
+    transfers,
+    key,
+  };
 }

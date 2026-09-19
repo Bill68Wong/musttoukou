@@ -57,45 +57,43 @@ sequenceDiagram
     actor U as 用户（已定位）
     participant NAV as /nav（server）
     participant NS as nav-service
-    participant G as graph-search（本地）
-    participant WR as walk-resolver（高德 walking）
+    participant TR as 高德 transit（transit/integrated）
+    participant MP as 站码映射 / 过滤
+    participant RC as 二次计算（lookupHop 重算）
     participant LV as fetchLive（DSAT + 轻轨）
-    participant MD as modelOption（建模）
     participant NR as NavResultsClient
 
     U->>NAV: 点「出发」（from=GPS GCJ-02, to=POI GCJ-02）
     NAV->>NS: planNav(from, to, now)
 
-    Note over NS: ② 邻近站点（0 配额）
-    NS->>NS: 本地 610 站 haversine → S_from / S_to（≤1.2km）
+    Note over NS: ★★R2 候选来源改为高德（1 次调用，含步行段）
+    NS->>TR: transit/integrated(origin=GPS, destination=POI, city1/city2, AlternativeRoute=10, strategy=0)
+    TR-->>NS: 全部方案（步行段 + 乘车段[上下车站/完整站序] + 换乘段）
+    Note over NS: transit_cache 命中（OD 取整+15min 时段桶，TTL 60s）则跳过调用<br/>跨实例令牌桶 3QPS（transit/walking/search 分桶）
 
-    Note over NS: ③ 候选枚举（0 配额）
-    NS->>G: enumerate(S_from, S_to, routeIdx)
-    G->>G: 有界 BFS（换乘 ≤2）+ 剪枝（步行>1.5km / 绕路>2.5 / 收班 / 黑名单）
-    G-->>NS: NavCandidate[]
+    NS->>MP: 过滤（穿梭巴士黑名单 / ES1-ES6 / 地铁→轻轨）+ 站码映射（坐标≤60m + 繁简双校验）
+    MP-->>NS: 映射后的方案骨架（部分段可能映射失败）
 
     par 并行（同一 RTT 窗口）
-        NS->>WR: 首末步行（walkOut × N + walkIn × N）
-        WR->>WR: walkRouteGcj（起点 GPS 不转 / 站坐标 wgs84ToGcj02）取 distance_m → ÷84 → 常速基准分钟，cache 落 walk_cache
-        WR-->>NS: WalkResolver（out/in）
+        NS->>RC: 二次时间计算
+        RC->>RC: 乘车段逐跳 lookupHop（L1~L4 实测 / L5-L6 估算）<br/>映射失败段 → 高德时长（标「高德」）<br/>首末步行：高德 walking distance → 短距修正(<200m→直线×1.5) → ÷84<br/>换乘：轻轨相关=高德时间 / 巴士-巴士=我们模型
+        RC-->>NS: RecomputeResult[]（含 deviationRatio / suspect）
     and
-        NS->>LV: fetchLive(seeds, routeIdx, segIdx)
+        NS->>LV: fetchLive(routes, routeIdx, segIdx)
         LV->>LV: 巴士桶并发（≤12/波，单桶 3s 超时）+ 轻轨 preload（0 DB 往返）
         LV-->>NS: Map<route, RouteLive>（超时桶 → 该线剔除）
     end
 
-    Note over NS: ④ 建模
-    loop 每个候选
-        NS->>MD: modelOption(seed, ctx{walkResolver, live, segIdx})
-        MD->>MD: walkOut + Σ(wait+ride+transfer) + walkIn；ride=lookupHop 逐跳累加（L1~L6）；首段 pickCatchTier（赶车 5 档）；首段赶不上 → 整条剔除
-        MD-->>NS: NavPlan | null
-    end
-    NS->>NS: 按 totalMin 升序取前 5（不足 5 张 → 空状态）
-    NS-->>NAV: NavPlan[]（含 provenance 分级）
-    NAV-->>NR: SSR 渲染 5 张卡
+    NS->>NS: ★重排序：T_ours 升序 → 换乘次数 → 步行量<br/>单段 ourHop/amapHop∉[0.4,3.0] → 标存疑；整方案偏差>50% → 告警
+    NS->>NS: 有 1~5 条就按实际数量显示（含纯步行方案）；仅 0 条才空状态
+    NS-->>NAV: NavPlan[]（复用 RecommendCard 形状，与旧版一致）
+    NAV-->>NR: SSR 渲染卡片
 
     alt 实时层整体超时
         NS-->>NAV: cards=[] + emptyReason=live_degraded
         NAV-->>NR: 「實時報站暫不可用」空状态（绝不显示假数据）
     end
-    NR-->>U: 5 张门到门卡（步行/车程/候车 + 赶车档 + 来源标注）
+    alt 高德整体不可用（降级）
+        NS-->>NAV: 启用本地图搜索 + walk_cache 兜底出卡（R1 路径）
+    end
+    NR-->>U: 门到门卡（1~5 张 + 纯步行；步行/车程/候车 + 赶车档 + 来源标注）

@@ -12,24 +12,35 @@ import { lineNameOf, sortRouteOptions } from "@/lib/route-label";
 export default function RouteStack({
   codes,
   colorOf,
+  colors,
   size = "md",
   className = "",
 }: {
   codes: (string | null | undefined)[];
-  /** 线路码 → 主题色（缺省用主色） */
+  /**
+   * 线路码 → 主题色（缺省用主色）。
+   * ⚠️ **只允许在 Client Component 之间传**（函数不可跨 RSC 边界序列化）。
+   */
   colorOf?: (code: string) => string | null | undefined;
+  /**
+   * ★ 可序列化的「线路码 → 色」表。
+   * **Server Component 必须用本 prop**（不能传 `colorOf` 函数，否则 RSC 序列化报错 ✗）。
+   * 二者同时给时**以 `colorOf` 优先**（客户端内部函数更精确）。
+   */
+  colors?: Record<string, string> | null;
   size?: "sm" | "md";
   className?: string;
 }) {
   const list = sortRouteOptions((codes ?? []).filter(Boolean) as string[]);
   if (!list.length) return null;
+  const resolve = colorOf ?? (colors ? (c: string) => colors[c] : undefined);
   return (
     <span className={`route-stack${size === "sm" ? " route-stack--sm" : ""} ${className}`}>
       {list.map((c) => (
         <span
           key={c}
           className="route-stack__seg"
-          style={{ background: colorOf?.(c) || "var(--primary)" }}
+          style={{ background: resolve?.(c) || "var(--primary)" }}
           title={lineNameOf(c)}
         >
           {lineNameOf(c)}

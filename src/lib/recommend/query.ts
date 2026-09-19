@@ -204,7 +204,15 @@ export async function loadStatics(pool: Pool, force = false): Promise<RecStatic>
 }
 
 async function loadStaticsUncached(): Promise<RecStatic> {
-  const rows = await getStaticRows();
+  // ★ v1.3.0：非 Next 运行时（`tsx` 脚本 / 探针）里 `unstable_cache` 不可用
+  //   （会抛 `Invariant: incrementalCache missing`）→ 回落到**直接查库**。
+  //   ⚠️ 只在 Next 运行时之外触发 ⇒ 线上行为**零变化**（正常路径仍走 Data Cache）。
+  let rows: StaticRows;
+  try {
+    rows = await getStaticRows();
+  } catch {
+    rows = await fetchStaticRowsUncached(getPool());
+  }
 
   const placeIds: Record<string, number> = {};
   for (const r of rows.places) placeIds[r.slug] = r.id;

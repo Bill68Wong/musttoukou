@@ -21,13 +21,27 @@ import { NextRequest, NextResponse } from "next/server";
  */
 
 /** ① 完全公开的**页面**（精确匹配，不含子路径）—— 别人用的推荐功能 + 合规说明 + 登录页 */
-const PUBLIC_PAGES = new Set(["/", "/recommend", "/card", "/about", "/login"]);
+const PUBLIC_PAGES = new Set([
+  "/",
+  "/recommend",
+  "/card",
+  "/about",
+  "/login",
+  // ★ v1.3.0 全澳导航（公众功能，R-10）—— 不加则路人用不了（fail-closed）
+  "/nav", // 导航结果页
+  "/nav/detail", // 导航详情页
+  "/commute", // 旧首页（原 `/` 的 HomeClient 原样迁此）
+]);
 
 /** ② 完全公开的**接口 / 静态资源**（前缀匹配） */
 const PUBLIC_PREFIXES = [
   "/api/auth", // 登录接口本身
   "/api/recommend", // 推荐卡片数据（公开浏览的核心）
   "/api/card", // 详情页数据（公开浏览的核心）
+  "/api/poi/suggest", // ★ 全澳导航·POI 搜索建议（公众可搜；设计 §2.E / R-10）
+  "/api/nav", // ★ 全澳导航·路线结果（公众可用；设计 §2.E）
+  "/_AMapService", // ★ 高德 JS API 安全代理（浏览器直连；密钥不下发前端，见 §2.D）
+  "/api/amap-service", // ↑ 同一处理器的真实路由（`/_AMapService` 经 rewrite 指向它）
   "/_next", // 构建产物
 ];
 

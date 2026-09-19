@@ -76,7 +76,8 @@ export function tierHintOf(baseMin: number, tier: CatchTier, walkDistanceM?: num
   const saveSec = requiredSec(baseMin, 3) - requiredSec(baseMin, tier, walkDistanceM);
   if (saveSec < 30) return "";
   const m = Math.round((saveSec / 60) * 10) / 10;
-  return `需較常速快 ${m} 分`;
+  // ★ P1-2：界面文案**一律简体**（站名/线路名才用繁体）
+  return `需较常速快 ${m} 分`;
 }
 
 /**

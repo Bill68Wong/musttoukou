@@ -1,5 +1,7 @@
-%% 全澳导航 · 类图 / 数据结构（v1.3.0 提案，2026-09-18）
+%% 全澳导航 · 类图 / 数据结构（v1.3.0 提案 · 修订 R2，2026-09-18）
 %% 对应设计文档：docs/设计-全澳导航-v1-20260918.md §2 / §4
+%% ★R2：候选来源改为高德 transit（TransitClient/AmapPlanSeed），我们做二次计算（Recomputer）与重排（Ranker）；
+%%      本地图搜索（GraphSearch/NavCandidate）降级为离线影子对照 / 降级路径。
 %% 说明：带 «复用» 标注者沿用现有 src/lib/recommend/types.ts，不重写；
 %%       带 «新增» 者为 src/lib/nav/** 新代码。
 classDiagram
@@ -117,12 +119,48 @@ classDiagram
     }
     class WalkInfo {
       <<新增>>
-      +number minutes  %% 常速基准分钟 = distance_m / 84
+      +number minutes  %% 首末: distance_m / 84 ; 换乘: 轻轨相关=高德时间
       +number? distanceM
       +string toLabel
-      +"amap"|"amap-cache"|"straight-estimate"|"fallback" source
+      +WalkSource source
       +boolean estimated
       +number samples
+    }
+    class WalkSource {
+      <<新增·枚举>>
+      amap · amap-cache · walk-times
+      amap-transfer · straight-estimate · fallback
+    }
+    class RateLimiter {
+      <<新增·服务·跨实例>>
+      +acquire(bucket) boolean  %% Postgres 令牌桶 (advisory lock)
+    }
+    class WalkWarmer {
+      <<新增·离线>>
+      +run() void  %% 消费 walk_miss_queue，调 client.ts（离线侧）
+    }
+    class SeedAdapter {
+      <<新增·适配层>>
+      +amapPlanToSeed(AmapPlanSeed) OptionSeed
+    }
+    class AmapPlanSeed {
+      <<新增·R2>>
+      +number index
+      +number amapTotalSec
+      +object walkOut
+      +object walkIn
+      +Leg[] legs  %% 含 amapBoard/Alight/ViaStops + mappedBoard/Alight/Hops
+      +Transfer[] transfers
+    }
+    class RecomputeResult {
+      <<新增·R2>>
+      +AmapPlanSeed seed
+      +number totalMin  %% 排序主键（我们算的）
+      +RideLegView[] rides
+      +WalkLegView walkOut
+      +WalkLegView walkIn
+      +TransferView[] transfers
+      +Provenance provenance  %% deviationRatio / suspect
     }
     class WalkResolver {
       <<新增>>
@@ -130,7 +168,7 @@ classDiagram
       +in(stationMain) WalkInfo
     }
     class NavCandidate {
-      <<新增>>
+      <<新增·R1保留（R2 降级为降级路径）>>
       +string id
       +NavPoint from
       +NavPoint to
@@ -177,8 +215,20 @@ classDiagram
       +isTripped() boolean
     }
     class GraphSearch {
-      <<新增·服务>>
-      +search(S_from, S_to, routeIdx) Path[]
+      <<新增·服务·★R2 降级：离线影子对照>>
+      +search(S_from, S_to, routeIdx) Path[]  %% 仅离线跑，漏线率监控
+    }
+    class TransitClient {
+      <<新增·服务·R2>>
+      +fetchPlans(originGcj, destGcj) AmapPlanSeed[]  %% AlternativeRoute=10
+    }
+    class Recomputer {
+      <<新增·服务·R2>>
+      +recompute(AmapPlanSeed) RecomputeResult  %% lookupHop 逐跳重算 + 短距修正 + 差异检测
+    }
+    class Ranker {
+      <<新增·服务·R2>>
+      +rank(RecomputeResult[]) RecomputeResult[]  %% T_ours 升序 → 换乘 → 步行
     }
     class WalkProvider {
       <<新增·服务>>
@@ -203,7 +253,19 @@ classDiagram
 
     PoiSearchResult --> NavPoint : 确认后
     AliasEntry --> PoiSearchResult : 本地命中产出
-    StationAmapMap --> NavCandidate : 站码对齐接缝
+    StationAmapMap --> AmapPlanSeed : 站码对齐接缝（映射失败→退高德时长）
+
+    %% ---- R2 关系 ----
+    TransitClient --> AmapPlanSeed : 高德方案解析
+    Recomputer --> RecomputeResult
+    RecomputeResult --> AmapPlanSeed
+    Recomputer ..> RideLegView : 复用（逐跳 lookupHop）
+    Recomputer ..> WalkInfo : 短距修正 ÷84
+    Ranker --> RecomputeResult
+    SeedAdapter ..> AmapPlanSeed
+    SeedAdapter ..> OptionSeed
+    TransitClient ..> RateLimiter : 跨实例令牌桶 3QPS
+    GraphSearch ..> AmapPlanSeed : 离线 diff（漏线率）
 
     AliasResolver --> AliasEntry
     PoiSearchService --> AliasResolver
